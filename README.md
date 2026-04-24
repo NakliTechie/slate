@@ -2,6 +2,8 @@
 
 IrfanView for the browser. No install. No upload. Any OS.
 
+📖 **Guide & screenshots →** [slate.naklitechie.com/guide/](https://slate.naklitechie.com/guide/)
+
 ---
 
 ## Features (v1.0)

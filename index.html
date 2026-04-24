@@ -626,6 +626,19 @@
 
 .help-p { font-size: 12px; color: var(--fg-1); margin: 4px 0; line-height: 1.6; }
 
+.help-footer {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--bg-2);
+  text-align: right;
+}
+.help-footer-link {
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+}
+.help-footer-link:hover { text-decoration: underline; }
+
 .shortcut-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .shortcut-table td { padding: 4px 8px 4px 0; vertical-align: baseline; }
 .shortcut-table td:last-child { color: var(--fg-1); }
@@ -3043,6 +3056,9 @@ function showHelp() {
       ${panel(3, adjustments())}
       ${panel(4, saving())}
       ${panel(5, shortcuts())}
+    </div>
+    <div class="help-footer">
+      <a class="help-footer-link" href="guide/" target="_blank" rel="noopener">Open full guide &rarr;</a>
     </div>
   `;
 
