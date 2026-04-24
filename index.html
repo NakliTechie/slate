@@ -4241,119 +4241,15 @@ function initToasts() {
 return { initToasts };
 })();
 
-const __m_encode_png_js = (() => {
-async function encodePng(canvas) {
-  const out = new OffscreenCanvas(canvas.width, canvas.height);
-  out.getContext('2d').drawImage(canvas, 0, 0);
-  return out.convertToBlob({ type: 'image/png' });
-}
-
-return { encodePng };
-})();
-
-const __m_encode_jpeg_js = (() => {
-async function encodeJpeg(canvas, quality = 0.9, exifRaw = null) {
-  const out = new OffscreenCanvas(canvas.width, canvas.height);
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(canvas, 0, 0);
-  const blob = await out.convertToBlob({ type: 'image/jpeg', quality: quality / 100 });
-
-  if (!exifRaw) return blob;
-
-  // Inject raw APP1 EXIF segment right after the SOI marker
-  const jpegBuf = await blob.arrayBuffer();
-  const app1 = new Uint8Array(exifRaw);
-  const rest = new Uint8Array(jpegBuf, 2); // skip SOI
-  const merged = new Uint8Array(2 + app1.byteLength + rest.byteLength);
-  merged[0] = 0xFF; merged[1] = 0xD8;       // SOI
-  merged.set(app1, 2);
-  merged.set(rest, 2 + app1.byteLength);
-  return new Blob([merged], { type: 'image/jpeg' });
-}
-
-return { encodeJpeg };
-})();
-
-const __m_encode_webp_js = (() => {
-async function encodeWebp(canvas, quality = 0.9, lossless = false) {
-  const out = new OffscreenCanvas(canvas.width, canvas.height);
-  out.getContext('2d').drawImage(canvas, 0, 0);
-  return out.convertToBlob({
-    type: 'image/webp',
-    quality: lossless ? undefined : quality / 100
-  });
-}
-
-return { encodeWebp };
-})();
-
-const __m_ops_rotate_js = (() => {
-async function apply(canvas, { deg }) {
-  const rad = deg * Math.PI / 180;
-  const W = canvas.width, H = canvas.height;
-  const cos = Math.abs(Math.cos(rad));
-  const sin = Math.abs(Math.sin(rad));
-  const outW = Math.round(W * cos + H * sin);
-  const outH = Math.round(W * sin + H * cos);
-  const out = new OffscreenCanvas(outW, outH);
-  const ctx = out.getContext('2d');
-  ctx.translate(outW / 2, outH / 2);
-  ctx.rotate(rad);
-  ctx.drawImage(canvas, -W / 2, -H / 2);
-  return out;
-}
-
-return { apply };
-})();
-
-const __m_ops_flip_js = (() => {
-async function apply(canvas, { axis }) {
-  const { width: W, height: H } = canvas;
-  const out = new OffscreenCanvas(W, H);
-  const ctx = out.getContext('2d');
-  if (axis === 'h') { ctx.translate(W, 0); ctx.scale(-1, 1); }
-  else              { ctx.translate(0, H); ctx.scale(1, -1); }
-  ctx.drawImage(canvas, 0, 0);
-  return out;
-}
-
-return { apply };
-})();
-
-const __m_ops_resize_js = (() => {
-async function apply(canvas, { w, h }) {
-  const ow = Math.max(1, Math.round(w));
-  const oh = Math.max(1, Math.round(h));
-  const out = new OffscreenCanvas(ow, oh);
-  const ctx = out.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(canvas, 0, 0, ow, oh);
-  return out;
-}
-
-return { apply };
-})();
-
 const __m_ui_batch_js = (() => {
 const state = __m_core_state_js.state;
 const on = __m_core_events_js.on;
 const emit = __m_core_events_js.emit;
 const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const decode = __m_decode_registry_js.decode;
 const formatOf = __m_decode_registry_js.formatOf;
 const isSupportedFile = __m_decode_registry_js.isSupportedFile;
 const parseExif = __m_exif_js.parseExif;
-const encodePng = __m_encode_png_js.encodePng;
-const encodeJpeg = __m_encode_jpeg_js.encodeJpeg;
-const encodeWebp = __m_encode_webp_js.encodeWebp;
 const esc = __m_core_html_js.esc;
-
-const rotateOp = __m_ops_rotate_js;
-const flipOp = __m_ops_flip_js;
-const resizeOp = __m_ops_resize_js;
 
 // Runtime state
 let _sources  = [];      // [{ name, size, file, handle? }]
@@ -4654,86 +4550,188 @@ async function doRun(dlg) {
 
   _cancelled = false;
 
-  // Resolve destination handle
   let dest;
   try {
     dest = await resolveDestination();
   } catch (err) { emit('error', { message: `Destination error: ${err.message}` }); return; }
 
-  // Switch modal to progress view
   showProgressView(dlg);
   const progressBar = dlg.querySelector('.batch-progress-bar-fill');
   const progressText = dlg.querySelector('.batch-progress-text');
   const cancelBtn = dlg.querySelector('[data-batch="cancel-run"]');
   cancelBtn?.addEventListener('click', () => { _cancelled = true; });
 
-  const results = { ok: 0, errors: [] };
-  for (let i = 0; i < _sources.length; i++) {
-    if (_cancelled) break;
-    const src = _sources[i];
-    const pct = Math.round((i / _sources.length) * 100);
-    progressBar.style.width = pct + '%';
-    progressText.textContent = `Processing ${i + 1} / ${_sources.length} — ${src.name}`;
+  // Worker pool: hardwareConcurrency − 1, clamped 2..8
+  const poolSize = Math.max(2, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+  const pool = makeWorkerPool(poolSize);
 
-    try {
-      await processOne(src, i, dest);
-      results.ok++;
-    } catch (err) {
-      results.errors.push({ name: src.name, message: err.message });
+  const results = { ok: 0, errors: [] };
+  let done = 0;
+  const snapshot = { ...ops, convert: { ...ops.convert }, resize: { ...ops.resize }, rotate: { ...ops.rotate }, flip: { ...ops.flip } };
+  const queue = _sources.map((src, index) => ({ src, index }));
+
+  const updateProgress = (src) => {
+    const pct = Math.round((done / _sources.length) * 100);
+    progressBar.style.width = pct + '%';
+    progressText.textContent = `Processing ${done} / ${_sources.length} — ${src.name}`;
+  };
+
+  async function worker(w) {
+    while (queue.length && !_cancelled) {
+      const job = queue.shift();
+      if (!job) break;
+      updateProgress(job.src);
+      try {
+        // Parse EXIF + compute output name on main thread
+        const exif = await parseExif(job.src.file);
+        const outFmt = snapshot.convert.enabled ? snapshot.convert.format : (formatOf(job.src.file) ?? 'png');
+        const exifRaw = (!snapshot.convert.enabled || !snapshot.convert.stripExif) && outFmt === 'jpeg' ? exif?.raw : null;
+        const outName = await computeOutputName(job.src, job.index, exif, outFmt);
+        // Send work to worker
+        const blob = await dispatchWorker(w, {
+          file:    job.src.file,
+          ops:     snapshot,
+          outFmt,
+          quality: snapshot.convert.enabled ? snapshot.convert.quality : 90,
+          exifRaw,
+        });
+        await writeToDestination(dest, outName, blob, job.src);
+        results.ok++;
+      } catch (err) {
+        results.errors.push({ name: job.src.name, message: err.message });
+      } finally {
+        done++;
+        updateProgress(job.src);
+      }
     }
-    // Yield to the event loop for the UI to repaint
-    await new Promise(r => setTimeout(r, 0));
   }
+
+  await Promise.all(pool.map(w => worker(w)));
+  pool.forEach(w => w.terminate());
 
   progressBar.style.width = '100%';
   showSummary(dlg, results);
 }
 
-async function processOne(src, index, dest) {
-  // Decode
-  const bitmap = await decode(src.file);
-  const exif = await parseExif(src.file);
+// ── Worker pool ──────────────────────────────────────────────────────────────
 
-  // Draw to OffscreenCanvas
-  let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  canvas.getContext('2d').drawImage(bitmap, 0, 0);
-
-  // Apply ops in spec order
-  if (ops.resize.enabled) {
-    let tw, th;
-    if (ops.resize.mode === 'pct') {
-      tw = Math.max(1, Math.round(canvas.width  * ops.resize.w / 100));
-      th = Math.max(1, Math.round(canvas.height * ops.resize.h / 100));
-    } else {
-      tw = ops.resize.w; th = ops.resize.h;
-      if (ops.resize.lockAspect) {
-        const ar = canvas.width / canvas.height;
-        // Fit inside the target box preserving aspect
-        if (tw / th > ar) tw = Math.round(th * ar);
-        else th = Math.round(tw / ar);
-      }
-    }
-    canvas = await resizeOp.apply(canvas, { w: tw, h: th });
-  }
-  if (ops.rotate.enabled) canvas = await rotateOp.apply(canvas, { deg: ops.rotate.deg });
-  if (ops.flip.enabled)   canvas = await flipOp.apply(canvas, { axis: ops.flip.axis });
-
-  // Encode
-  const outFmt = ops.convert.enabled ? ops.convert.format : (formatOf(src.file) ?? 'png');
-  const quality = ops.convert.enabled ? ops.convert.quality : 90;
-  const exifRaw = (!ops.convert.enabled || !ops.convert.stripExif) && outFmt === 'jpeg' ? exif?.raw : null;
-
-  let blob;
-  if (outFmt === 'png')       blob = await encodePng(canvas);
-  else if (outFmt === 'jpeg') blob = await encodeJpeg(canvas, quality, exifRaw);
-  else                        blob = await encodeWebp(canvas, quality);
-
-  // Compute output name
-  const outName = await computeOutputName(src, index, exif, outFmt);
-
-  // Write
-  await writeToDestination(dest, outName, blob, src);
+function makeWorkerPool(size) {
+  const blob = new Blob([WORKER_SRC], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  const workers = Array.from({ length: size }, () => {
+    const w = new Worker(url);
+    w._pending = new Map();
+    w.addEventListener('message', (e) => {
+      const { id, blob, error } = e.data;
+      const pending = w._pending.get(id);
+      if (!pending) return;
+      w._pending.delete(id);
+      if (error) pending.reject(new Error(error));
+      else pending.resolve(blob);
+    });
+    return w;
+  });
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return workers;
 }
+
+function dispatchWorker(w, payload) {
+  return new Promise((resolve, reject) => {
+    const id = Math.random().toString(36).slice(2);
+    w._pending.set(id, { resolve, reject });
+    w.postMessage({ id, ...payload });
+  });
+}
+
+// Worker script — inlined as a string so the single-file build stays single-file.
+// Uses createImageBitmap + OffscreenCanvas + convertToBlob, all available in workers.
+const WORKER_SRC = `
+function rotateCanvas(src, deg) {
+  const r = (deg % 360 + 360) % 360;
+  const rad = r * Math.PI / 180;
+  const sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+  const w = Math.round(src.width * cos + src.height * sin);
+  const h = Math.round(src.width * sin + src.height * cos);
+  const out = new OffscreenCanvas(w, h);
+  const ctx = out.getContext('2d');
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  return out;
+}
+
+function flipCanvas(src, axis) {
+  const out = new OffscreenCanvas(src.width, src.height);
+  const ctx = out.getContext('2d');
+  if (axis === 'h') { ctx.translate(src.width, 0); ctx.scale(-1, 1); }
+  else              { ctx.translate(0, src.height); ctx.scale(1, -1); }
+  ctx.drawImage(src, 0, 0);
+  return out;
+}
+
+function resizeCanvas(src, w, h) {
+  const out = new OffscreenCanvas(w, h);
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return out;
+}
+
+async function encode(canvas, outFmt, quality, exifRaw) {
+  if (outFmt === 'png')  return canvas.convertToBlob({ type: 'image/png' });
+  if (outFmt === 'webp') return canvas.convertToBlob({ type: 'image/webp', quality: quality / 100 });
+  // JPEG — flatten onto white first, then optionally re-inject raw EXIF
+  const flat = new OffscreenCanvas(canvas.width, canvas.height);
+  const fctx = flat.getContext('2d');
+  fctx.fillStyle = '#ffffff';
+  fctx.fillRect(0, 0, flat.width, flat.height);
+  fctx.drawImage(canvas, 0, 0);
+  const blob = await flat.convertToBlob({ type: 'image/jpeg', quality: quality / 100 });
+  if (!exifRaw) return blob;
+  const jpegBuf = await blob.arrayBuffer();
+  const app1 = new Uint8Array(exifRaw);
+  const rest = new Uint8Array(jpegBuf, 2);
+  const merged = new Uint8Array(2 + app1.byteLength + rest.byteLength);
+  merged[0] = 0xFF; merged[1] = 0xD8;
+  merged.set(app1, 2);
+  merged.set(rest, 2 + app1.byteLength);
+  return new Blob([merged], { type: 'image/jpeg' });
+}
+
+self.onmessage = async (e) => {
+  const { id, file, ops, outFmt, quality, exifRaw } = e.data;
+  try {
+    const bitmap = await createImageBitmap(file);
+    let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+
+    if (ops.resize.enabled) {
+      let tw, th;
+      if (ops.resize.mode === 'pct') {
+        tw = Math.max(1, Math.round(canvas.width  * ops.resize.w / 100));
+        th = Math.max(1, Math.round(canvas.height * ops.resize.h / 100));
+      } else {
+        tw = ops.resize.w; th = ops.resize.h;
+        if (ops.resize.lockAspect) {
+          const ar = canvas.width / canvas.height;
+          if (tw / th > ar) tw = Math.round(th * ar);
+          else th = Math.round(tw / ar);
+        }
+      }
+      canvas = resizeCanvas(canvas, tw, th);
+    }
+    if (ops.rotate.enabled) canvas = rotateCanvas(canvas, ops.rotate.deg);
+    if (ops.flip.enabled)   canvas = flipCanvas(canvas, ops.flip.axis);
+
+    const blob = await encode(canvas, outFmt, quality, exifRaw);
+    self.postMessage({ id, blob });
+  } catch (err) {
+    self.postMessage({ id, error: err.message });
+  }
+};
+`;
 
 async function writeToDestination(dest, name, blob, src) {
   if (dest.mode === 'overwrite') {
@@ -5462,6 +5460,39 @@ async function apply(canvas, { x, y, w, h }) {
 return { apply };
 })();
 
+const __m_ops_rotate_js = (() => {
+async function apply(canvas, { deg }) {
+  const rad = deg * Math.PI / 180;
+  const W = canvas.width, H = canvas.height;
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const outW = Math.round(W * cos + H * sin);
+  const outH = Math.round(W * sin + H * cos);
+  const out = new OffscreenCanvas(outW, outH);
+  const ctx = out.getContext('2d');
+  ctx.translate(outW / 2, outH / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(canvas, -W / 2, -H / 2);
+  return out;
+}
+
+return { apply };
+})();
+
+const __m_ops_flip_js = (() => {
+async function apply(canvas, { axis }) {
+  const { width: W, height: H } = canvas;
+  const out = new OffscreenCanvas(W, H);
+  const ctx = out.getContext('2d');
+  if (axis === 'h') { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  else              { ctx.translate(0, H); ctx.scale(1, -1); }
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+return { apply };
+})();
+
 const __m_ops_redact_js = (() => {
 async function apply(canvas, { x, y, w, h, fill = '#000000' }) {
   const out = new OffscreenCanvas(canvas.width, canvas.height);
@@ -5499,6 +5530,21 @@ async function apply(canvas, { x, y, w, h, strength = 10 }) {
   ctx.drawImage(tmp, rx - pad, ry - pad);
   ctx.restore();
 
+  return out;
+}
+
+return { apply };
+})();
+
+const __m_ops_resize_js = (() => {
+async function apply(canvas, { w, h }) {
+  const ow = Math.max(1, Math.round(w));
+  const oh = Math.max(1, Math.round(h));
+  const out = new OffscreenCanvas(ow, oh);
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, ow, oh);
   return out;
 }
 
@@ -6385,6 +6431,54 @@ async function clearSession() {
 }
 
 return { saveSession, loadSession, clearSession };
+})();
+
+const __m_encode_png_js = (() => {
+async function encodePng(canvas) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  out.getContext('2d').drawImage(canvas, 0, 0);
+  return out.convertToBlob({ type: 'image/png' });
+}
+
+return { encodePng };
+})();
+
+const __m_encode_jpeg_js = (() => {
+async function encodeJpeg(canvas, quality = 0.9, exifRaw = null) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0);
+  const blob = await out.convertToBlob({ type: 'image/jpeg', quality: quality / 100 });
+
+  if (!exifRaw) return blob;
+
+  // Inject raw APP1 EXIF segment right after the SOI marker
+  const jpegBuf = await blob.arrayBuffer();
+  const app1 = new Uint8Array(exifRaw);
+  const rest = new Uint8Array(jpegBuf, 2); // skip SOI
+  const merged = new Uint8Array(2 + app1.byteLength + rest.byteLength);
+  merged[0] = 0xFF; merged[1] = 0xD8;       // SOI
+  merged.set(app1, 2);
+  merged.set(rest, 2 + app1.byteLength);
+  return new Blob([merged], { type: 'image/jpeg' });
+}
+
+return { encodeJpeg };
+})();
+
+const __m_encode_webp_js = (() => {
+async function encodeWebp(canvas, quality = 0.9, lossless = false) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  out.getContext('2d').drawImage(canvas, 0, 0);
+  return out.convertToBlob({
+    type: 'image/webp',
+    quality: lossless ? undefined : quality / 100
+  });
+}
+
+return { encodeWebp };
 })();
 
 const __m_app_js = (() => {
