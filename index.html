@@ -1911,27 +1911,162 @@ async function decodeHeic(blob) {
 return { decodeHeic };
 })();
 
+const __m_decode_tiff_js = (() => {
+const emit = __m_core_events_js.emit;
+
+// UTIF — pure-JS TIFF decoder (~50 KB). Lazy-loaded from esm.sh on first use.
+const UTIF_URL = 'https://esm.sh/utif@3.1.0';
+
+let _utifPromise = null;
+
+async function getUtif() {
+  if (_utifPromise) return _utifPromise;
+  emit('toast', { message: 'Loading TIFF decoder…', level: 'info', duration: 6000 });
+  _utifPromise = import(UTIF_URL)
+    .then(mod => mod.default ?? mod)
+    .catch(err => { _utifPromise = null; throw new Error('Could not load TIFF decoder: ' + err.message); });
+  return _utifPromise;
+}
+
+async function decodeTiff(blob) {
+  const UTIF = await getUtif();
+  const buf = await blob.arrayBuffer();
+  const ifds = UTIF.decode(buf);
+  if (!ifds || ifds.length === 0) throw new Error('No images found in TIFF');
+  const ifd = ifds[0];
+  UTIF.decodeImage(buf, ifd);
+  const rgba = UTIF.toRGBA8(ifd);
+  const width = ifd.width;
+  const height = ifd.height;
+  const canvas = new OffscreenCanvas(width, height);
+  const imageData = new ImageData(new Uint8ClampedArray(rgba.buffer ?? rgba), width, height);
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+  return canvas.transferToImageBitmap();
+}
+
+return { decodeTiff };
+})();
+
+const __m_decode_raw_js = (() => {
+// RAW decode via embedded JPEG preview extraction.
+// Most RAW formats (CR2, NEF, ARW, DNG, RAF, ORF) are TIFF-based containers that
+// embed a full-resolution JPEG preview. For a viewer/editor app, extracting that
+// preview gives a usable image without the ~5 MB libraw wasm.
+// True sensor-level demosaicing is a v3+ feature.
+
+async function decodeRaw(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const jpegs = findEmbeddedJpegs(buf);
+  if (jpegs.length === 0) throw new Error('No embedded JPEG preview found in this RAW file');
+
+  // Pick the largest preview (usually the full-res one)
+  jpegs.sort((a, b) => b.size - a.size);
+  const largest = jpegs[0];
+  const jpegBytes = buf.subarray(largest.start, largest.start + largest.size);
+  const jpegBlob = new Blob([jpegBytes], { type: 'image/jpeg' });
+  return createImageBitmap(jpegBlob);
+}
+
+// Scan for JPEG SOI/EOI pairs. Returns [{ start, size }] of each embedded JPEG.
+// The first SOI must be followed by a valid marker (FFE0-FFEF or FFDB/FFC0) to
+// reduce false positives from random 0xFFD8 bytes in sensor data.
+function findEmbeddedJpegs(buf) {
+  const out = [];
+  const len = buf.length;
+  let i = 0;
+  while (i < len - 3) {
+    // Find SOI marker
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8 && buf[i + 2] === 0xFF) {
+      const third = buf[i + 3];
+      // Valid next marker: APP0-APP15 (E0-EF), DQT (DB), SOF0 (C0), COM (FE)
+      const isValid = (third >= 0xE0 && third <= 0xEF) || third === 0xDB || third === 0xC0 || third === 0xFE;
+      if (isValid) {
+        // Walk segments to find the EOI. A robust walker respects segment lengths
+        // so we don't accidentally stop at an FFD9 inside compressed data.
+        const end = walkJpeg(buf, i);
+        if (end > i) {
+          out.push({ start: i, size: end - i });
+          i = end;
+          continue;
+        }
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+// Walk a JPEG segment-by-segment from SOI to find the EOI.
+// Returns the byte offset JUST AFTER the EOI, or -1 on malformation.
+function walkJpeg(buf, start) {
+  const len = buf.length;
+  let p = start + 2; // skip SOI (FFD8)
+  while (p < len - 1) {
+    if (buf[p] !== 0xFF) return -1;
+    // Skip any fill bytes (0xFF)
+    while (p < len - 1 && buf[p + 1] === 0xFF) p++;
+    const marker = buf[p + 1];
+
+    // Standalone markers (no length field)
+    if (marker === 0xD9) return p + 2; // EOI — done
+    if (marker === 0x00 || (marker >= 0xD0 && marker <= 0xD7)) { p += 2; continue; }
+
+    // Segment with length (big-endian uint16)
+    if (p + 3 >= len) return -1;
+    const segLen = (buf[p + 2] << 8) | buf[p + 3];
+    p += 2 + segLen;
+
+    // SOS: entropy-coded data follows until next non-RST marker
+    if (marker === 0xDA) {
+      while (p < len - 1) {
+        if (buf[p] === 0xFF) {
+          // skip fill bytes
+          while (p < len - 1 && buf[p + 1] === 0xFF) p++;
+          const m = buf[p + 1];
+          if (m !== 0x00 && !(m >= 0xD0 && m <= 0xD7)) break; // real marker
+        }
+        p++;
+      }
+    }
+  }
+  return -1;
+}
+
+return { decodeRaw };
+})();
+
 const __m_decode_registry_js = (() => {
 const decodeNative = __m_decode_native_js.decodeNative;
 const decodeHeic = __m_decode_heic_js.decodeHeic;
+const decodeTiff = __m_decode_tiff_js.decodeTiff;
+const decodeRaw = __m_decode_raw_js.decodeRaw;
 
 // Supported v1 input formats
 const SUPPORTED_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'image/avif', 'image/svg+xml', 'image/bmp',
   'image/heic', 'image/heif',
+  'image/tiff',
+  'image/x-raw',
 ]);
 
 const SUPPORTED_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg', 'bmp',
   'heic', 'heif',
+  'tif', 'tiff',
+  'cr2', 'nef', 'arw', 'dng', 'raf', 'orf',
 ]);
+
+const RAW_EXTS = new Set(['cr2', 'nef', 'arw', 'dng', 'raf', 'orf']);
 
 const EXT_TO_MIME = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
   webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
   svg: 'image/svg+xml', bmp: 'image/bmp',
   heic: 'image/heic', heif: 'image/heif',
+  tif: 'image/tiff', tiff: 'image/tiff',
+  cr2: 'image/x-raw', nef: 'image/x-raw', arw: 'image/x-raw',
+  dng: 'image/x-raw', raf: 'image/x-raw', orf: 'image/x-raw',
 };
 
 function isSupportedFile(file) {
@@ -1958,6 +2093,8 @@ function formatOf(file) {
     'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp',
     'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp',
     'image/heic': 'heic', 'image/heif': 'heif',
+    'image/tiff': 'tiff',
+    'image/x-raw': 'raw',
   };
   return map[mime] ?? 'unknown';
 }
@@ -1996,6 +2133,16 @@ async function decode(file) {
   // HEIC / HEIF: try native, then lazy-load libheif fallback
   if (mime === 'image/heic' || mime === 'image/heif') {
     return decodeHeic(blob);
+  }
+
+  // TIFF: lazy-load utif
+  if (mime === 'image/tiff') {
+    return decodeTiff(blob);
+  }
+
+  // RAW: extract embedded JPEG preview
+  if (mime === 'image/x-raw' || RAW_EXTS.has(extOf(file.name))) {
+    return decodeRaw(blob);
   }
 
   return decodeNative(blob);
@@ -2277,7 +2424,7 @@ async function openFileFSA() {
   if (!hasFSA) { openFileFallback(); return; }
   try {
     const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp','.heic','.heif'] } }],
+      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp','.heic','.heif','.tif','.tiff','.cr2','.nef','.arw','.dng','.raf','.orf'] } }],
       multiple: false
     });
     const file = await handle.getFile();
