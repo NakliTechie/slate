@@ -1834,23 +1834,98 @@ async function decodeViaImg(blob) {
 return { decodeNative };
 })();
 
+const __m_decode_heic_js = (() => {
+const emit = __m_core_events_js.emit;
+
+// libheif-js loaded lazily from esm.sh on first HEIC decode that needs the fallback.
+// The CDN URL is pinned to a specific version so behaviour is stable.
+const LIBHEIF_URL = 'https://esm.sh/libheif-js@1.18.1/wasm-bundle.js';
+
+let _libheifPromise = null;
+let _triedNative = false;
+let _nativeSupport = false;
+
+async function tryNative(blob) {
+  if (_triedNative && !_nativeSupport) return null;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    _triedNative = true;
+    _nativeSupport = true;
+    return bitmap;
+  } catch (err) {
+    _triedNative = true;
+    _nativeSupport = false;
+    return null;
+  }
+}
+
+async function getLibheif() {
+  if (_libheifPromise) return _libheifPromise;
+  emit('toast', { message: 'Loading HEIC decoder…', level: 'info', duration: 8000 });
+  _libheifPromise = import(LIBHEIF_URL)
+    .then(mod => {
+      const libheif = mod.default ?? mod;
+      // Some builds export a factory; others export the class directly.
+      if (typeof libheif === 'function') return libheif();
+      return libheif;
+    })
+    .catch(err => {
+      _libheifPromise = null; // allow retry
+      throw new Error('Could not load HEIC decoder — check your connection: ' + err.message);
+    });
+  return _libheifPromise;
+}
+
+async function decodeHeic(blob) {
+  // Try native decode first (Safari has it; newer Chrome builds may too)
+  const native = await tryNative(blob);
+  if (native) return native;
+
+  // Fallback: libheif-js via CDN
+  const libheif = await getLibheif();
+  const decoder = new libheif.HeifDecoder();
+  const buf = await blob.arrayBuffer();
+  const images = decoder.decode(buf);
+  if (!images || images.length === 0) throw new Error('No image found in HEIC');
+
+  const image = images[0];
+  const width = image.get_width();
+  const height = image.get_height();
+
+  const imageData = new ImageData(width, height);
+  await new Promise((resolve, reject) => {
+    image.display(imageData, (err) => err ? reject(err) : resolve());
+  });
+
+  const canvas = new OffscreenCanvas(width, height);
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+  return canvas.transferToImageBitmap();
+}
+
+return { decodeHeic };
+})();
+
 const __m_decode_registry_js = (() => {
 const decodeNative = __m_decode_native_js.decodeNative;
+const decodeHeic = __m_decode_heic_js.decodeHeic;
 
 // Supported v1 input formats
 const SUPPORTED_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'image/avif', 'image/svg+xml', 'image/bmp',
+  'image/heic', 'image/heif',
 ]);
 
 const SUPPORTED_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg', 'bmp',
+  'heic', 'heif',
 ]);
 
 const EXT_TO_MIME = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
   webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
   svg: 'image/svg+xml', bmp: 'image/bmp',
+  heic: 'image/heic', heif: 'image/heif',
 };
 
 function isSupportedFile(file) {
@@ -1876,6 +1951,7 @@ function formatOf(file) {
   const map = {
     'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp',
     'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp',
+    'image/heic': 'heic', 'image/heif': 'heif',
   };
   return map[mime] ?? 'unknown';
 }
@@ -1910,6 +1986,12 @@ async function decode(file) {
 
   // Ensure the blob has the correct MIME type
   const blob = file.type === mime ? file : file.slice(0, file.size, mime);
+
+  // HEIC / HEIF: try native, then lazy-load libheif fallback
+  if (mime === 'image/heic' || mime === 'image/heif') {
+    return decodeHeic(blob);
+  }
+
   return decodeNative(blob);
 }
 
@@ -2189,7 +2271,7 @@ async function openFileFSA() {
   if (!hasFSA) { openFileFallback(); return; }
   try {
     const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp'] } }],
+      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp','.heic','.heif'] } }],
       multiple: false
     });
     const file = await handle.getFile();
