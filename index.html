@@ -5817,15 +5817,21 @@ async function checkSession() {
 
   document.getElementById('session-resume').addEventListener('click', async () => {
     banner.remove();
+    // Register the replay listener BEFORE opening. openFromHandle emits
+    // 'image:loaded' during its await; if we subscribed after, we'd miss it
+    // and the ops would never replay.
+    if (saved.ops.length) {
+      once('image:loaded', async () => {
+        try { await replayOps(saved.ops); }
+        catch (err) { emit('error', { message: `Could not restore edits: ${err.message}` }); }
+      });
+    }
     try {
       if (saved.type === 'fsa') {
         await openFromHandle(saved.handle);
       } else {
         await openFromFile(saved.file);
       }
-      once('image:loaded', async () => {
-        if (saved.ops.length) await replayOps(saved.ops);
-      });
     } catch { /* error toast already shown */ }
   });
 
