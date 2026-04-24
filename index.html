@@ -3873,9 +3873,10 @@ function tools() {
       ${row('Redact', `${kbd('R')} — fills the selection with a solid black box`)}
       ${row('Blur', `${kbd('B')} — blurs the selection; drag the <strong>Blur</strong> slider in the bar to set strength (2–40 px)`)}
     `)}
-    ${section('Annotation tools', `
+    ${section('Annotation tools (layers)', `
       ${row('Text', `${kbd('Shift+T')} — click anywhere on the image to place a text label`)}
       ${row('Arrow', `${kbd('A')} — drag to draw an annotation arrow`)}
+      <p class="help-p">Text and arrows become <strong>editable layers</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust).</p>
     `)}
     ${section('Tips', `
       <p class="help-p">After drawing a selection you can nudge it with arrow keys (${kbd('Shift')}+arrow = 10 px). ${kbd('Ctrl+A')} selects the whole image. ${kbd('Ctrl+D')} deselects.</p>
