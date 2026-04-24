@@ -588,11 +588,11 @@
 
 .help-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--bg-2);
   flex-shrink: 0;
-  overflow-x: auto;
 }
 
 .help-tab-btn {
@@ -613,13 +613,14 @@
 .help-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-3) var(--space-4);
 }
 
 .help-section { margin-bottom: var(--space-4); }
 .help-section h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); margin: 0 0 var(--space-2); }
 
-.help-row { display: flex; gap: var(--space-3); padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--bg-2); align-items: baseline; }
+.help-row { display: flex; gap: var(--space-3); padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--bg-2); align-items: baseline; flex-wrap: wrap; }
 .help-row:last-child { border-bottom: none; }
 .help-label { flex-shrink: 0; width: 140px; color: var(--fg-1); }
 .help-desc { color: var(--fg-0); }
@@ -639,8 +640,8 @@
 }
 .help-footer-link:hover { text-decoration: underline; }
 
-.shortcut-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.shortcut-table td { padding: 4px 8px 4px 0; vertical-align: baseline; }
+.shortcut-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.shortcut-table td { padding: 4px 8px 4px 0; vertical-align: baseline; word-wrap: break-word; }
 .shortcut-table td:last-child { color: var(--fg-1); }
 
 .help-welcome { text-align: center; padding: var(--space-4) 0 var(--space-3); }
@@ -3121,16 +3122,8 @@ function welcome() {
         <div><strong>Adjust & Enhance</strong><br>Brightness, contrast, saturation, sharpen, rotate, flip, and resize.</div>
       </div>
       <div class="help-feature-item">
-        <span class="help-feature-icon">💾</span>
-        <div><strong>Save your way</strong><br>Download, overwrite the original, or sync to a workspace folder. PNG, JPEG, or WebP.</div>
-      </div>
-      <div class="help-feature-item">
         <span class="help-feature-icon">📁</span>
         <div><strong>Album mode</strong><br>Open a folder to browse images with arrow keys and thumbnails — like a lightweight viewer.</div>
-      </div>
-      <div class="help-feature-item">
-        <span class="help-feature-icon">🔒</span>
-        <div><strong>Private by design</strong><br>All processing happens locally. No server, no account, no telemetry.</div>
       </div>
     </div>
     <p class="help-welcome-hint">Use the tabs above to explore features, or press <kbd>?</kbd> any time to return here.</p>
