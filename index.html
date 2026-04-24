@@ -63,6 +63,23 @@
   z-index: 10;
 }
 
+#toolbar .toolbar-brand {
+  position: sticky;
+  top: calc(var(--space-2) * -1);
+  margin: calc(var(--space-2) * -1) 0 var(--space-2);
+  padding: var(--space-2) 0;
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--fg-0);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--bg-2);
+  z-index: 5;
+  user-select: none;
+}
+
 #toolbar .toolbar-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -691,6 +708,8 @@ kbd {
   #shell { flex-direction: column; }
 
   #right-sidebar { display: none; }
+
+  #toolbar .toolbar-brand { display: none; }
 
   #toolbar {
     order: 99; /* push to bottom of shell column */
@@ -3047,17 +3066,16 @@ function showHelp() {
       </button>
     </div>
     <div class="help-tabs" role="tablist">
-      ${['Welcome','Quick Start','Tools','Adjustments','Saving','Shortcuts'].map((t,i) =>
+      ${['Welcome','Quick Start','Tools','Saving','Shortcuts'].map((t,i) =>
         `<button class="help-tab-btn${i===0?' active':''}" role="tab" data-tab="${i}">${t}</button>`
       ).join('')}
     </div>
     <div class="help-body">
       ${panel(0, welcome())}
       ${panel(1, quickStart())}
-      ${panel(2, tools())}
-      ${panel(3, adjustments())}
-      ${panel(4, saving())}
-      ${panel(5, shortcuts())}
+      ${panel(2, tools() + adjustments())}
+      ${panel(3, saving())}
+      ${panel(4, shortcuts())}
     </div>
     <div class="help-footer">
       <a class="help-footer-link" href="guide/" target="_blank" rel="noopener">Open full guide &rarr;</a>
@@ -3316,6 +3334,7 @@ function initToolbar() {
   if (!toolbar) return;
 
   toolbar.innerHTML = `
+    <div class="toolbar-brand" aria-hidden="true">Slate</div>
     <div class="toolbar-group" aria-label="File">
       ${btn('tb-open', 'file', 'Open file (Ctrl+O)')}
       ${btn('tb-open-folder', 'folder', 'Open folder (Ctrl+Shift+O)')}
