@@ -1661,7 +1661,7 @@ kbd {
 
 
 <script type="module">
-const __m_core_history_js = (() => {
+const __m_core_history = (() => {
 const MAX_STEPS = 50;
 const SNAPSHOT_INTERVAL = 10;
 
@@ -1738,7 +1738,7 @@ class History {
 return { History };
 })();
 
-const __m_core_events_js = (() => {
+const __m_core_events = (() => {
 const _bus = new Map();
 
 function on(type, fn) {
@@ -1762,9 +1762,9 @@ function emit(type, data) {
 return { on, off, once, emit };
 })();
 
-const __m_core_state_js = (() => {
-const History = __m_core_history_js.History;
-const emit = __m_core_events_js.emit;
+const __m_core_state = (() => {
+const History = __m_core_history.History;
+const emit = __m_core_events.emit;
 
 const state = {
   session: {
@@ -1901,7 +1901,7 @@ function replaceWorking(canvas) {
 return { state, FLAGS, loadPrefs, savePrefs, setImage, commitOp, replaceWorking };
 })();
 
-const __m_decode_native_js = (() => {
+const __m_decode_native = (() => {
 // Browser-native decoder using createImageBitmap + Image element fallback for SVG
 
 async function decodeNative(blob) {
@@ -1958,14 +1958,13 @@ async function decodeViaImg(blob) {
 return { decodeNative };
 })();
 
-const __m_decode_heic_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_decode_heic = (() => {
+const emit = __m_core_events.emit;
 
-// libheif-js loaded lazily from esm.sh on first HEIC decode that needs the fallback.
-// The CDN URL is pinned to a specific version so behaviour is stable.
-// We accept any 1.x build — esm.sh sometimes 404s on a freshly published patch
-// version that hasn't been mirrored yet. Major-pin keeps the API stable.
-const LIBHEIF_URL = 'https://esm.sh/libheif-js@1/wasm-bundle.js';
+// libheif-js loaded lazily from esm.sh. Exact version pin per SECURITY.md.
+// To upgrade: fetch the new bundle, audit the JS bytes, update the version +
+// content hash in SECURITY.md, then update this constant.
+const LIBHEIF_URL = 'https://esm.sh/libheif-js@1.19.8/wasm-bundle.js';
 
 let _libheifPromise = null;
 let _triedNative = false;
@@ -2031,8 +2030,8 @@ async function decodeHeic(blob) {
 return { decodeHeic };
 })();
 
-const __m_decode_tiff_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_decode_tiff = (() => {
+const emit = __m_core_events.emit;
 
 // UTIF — pure-JS TIFF decoder (~50 KB). Lazy-loaded from esm.sh on first use.
 const UTIF_URL = 'https://esm.sh/utif@3.1.0';
@@ -2067,7 +2066,7 @@ async function decodeTiff(blob) {
 return { decodeTiff };
 })();
 
-const __m_decode_raw_js = (() => {
+const __m_decode_raw = (() => {
 // RAW decode via embedded JPEG preview extraction.
 // Most RAW formats (CR2, NEF, ARW, DNG, RAF, ORF) are TIFF-based containers that
 // embed a full-resolution JPEG preview. For a viewer/editor app, extracting that
@@ -2155,10 +2154,11 @@ function walkJpeg(buf, start) {
 return { decodeRaw };
 })();
 
-const __m_decode_jxl_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_decode_jxl = (() => {
+const emit = __m_core_events.emit;
 
-const URL = 'https://esm.sh/@jsquash/jxl@1/decode';
+// Exact version pin per SECURITY.md.
+const URL = 'https://esm.sh/@jsquash/jxl@1.3.0/decode';
 
 let _decodePromise = null;
 
@@ -2183,11 +2183,12 @@ async function decodeJxl(blob) {
 return { decodeJxl };
 })();
 
-const __m_decode_psd_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_decode_psd = (() => {
+const emit = __m_core_events.emit;
 
 // ag-psd returns a flattened canvas via its initialized canvas factory.
-const URL = 'https://esm.sh/ag-psd';
+// Exact version pin per SECURITY.md.
+const URL = 'https://esm.sh/ag-psd@30.1.1';
 
 let _libPromise = null;
 
@@ -2226,86 +2227,88 @@ async function decodePsd(blob) {
 return { decodePsd };
 })();
 
-const __m_decode_tga_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_vendor_tga_js = (() => {
+/* esm.sh - tga-js@1.1.1 */
+var m=class{_checkHeader(){let t=this.header;if(t.imageType===0)throw Error("No data");if(t.hasColorMap){if(t.colorMapLength>256||t.colorMapDepth!==24||t.colorMapType!==1)throw Error("Invalid colormap for indexed type")}else if(t.colorMapType)throw Error("Why does the image contain a palette ?");if(!t.width||!t.height)throw Error("Invalid image size");if(t.pixelDepth!==8&&t.pixelDepth!==16&&t.pixelDepth!==24&&t.pixelDepth!==32)throw Error('Invalid pixel size "'+t.pixelDepth+'"')}_decodeRLE(t,a,e,r){let n=new Uint8Array(r),p=new Uint8Array(e),l=0;for(;l<r;){let c=t[a++],g=1+(127&c);if(128&c){for(let s=0;s<e;++s)p[s]=t[a+s];a+=e;for(let s=0;s<g;++s)n.set(p,l),l+=e}else{g*=e;for(let s=0;s<g;++s)n[l+s]=t[a+s];l+=g,a+=g}}return n}_getImageData8bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h++){let d=a[h];t[4*(i+r*o)+3]=255,t[4*(i+r*o)+2]=e[3*d+0],t[4*(i+r*o)+1]=e[3*d+1],t[4*(i+r*o)+0]=e[3*d+2]}return t}_getImageData16bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h+=2){let d=a[h+0]|a[h+1]<<8;t[4*(i+r*o)+0]=(31744&d)>>7,t[4*(i+r*o)+1]=(992&d)>>2,t[4*(i+r*o)+2]=(31&d)>>3,t[4*(i+r*o)+3]=32768&d?0:255}return t}_getImageData24bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h+=3)t[4*(i+r*o)+3]=255,t[4*(i+r*o)+2]=a[h+0],t[4*(i+r*o)+1]=a[h+1],t[4*(i+r*o)+0]=a[h+2];return t}_getImageData32bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h+=4)t[4*(i+r*o)+2]=a[h+0],t[4*(i+r*o)+1]=a[h+1],t[4*(i+r*o)+0]=a[h+2],t[4*(i+r*o)+3]=a[h+3];return t}_getImageDataGrey8bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h++){let d=a[h];t[4*(i+r*o)+0]=d,t[4*(i+r*o)+1]=d,t[4*(i+r*o)+2]=d,t[4*(i+r*o)+3]=255}return t}_getImageDataGrey16bits(t,a,e,r,n,p,l,c,g,s){for(let h=0,o=n;o!==l;o+=p)for(let i=c;i!==s;i+=g,h+=2)t[4*(i+r*o)+0]=a[h+0],t[4*(i+r*o)+1]=a[h+0],t[4*(i+r*o)+2]=a[h+0],t[4*(i+r*o)+3]=a[h+1];return t}open(t,a){let e=new XMLHttpRequest;e.responseType="arraybuffer",e.open("GET",t,!0),e.onload=(()=>{e.status===200&&(this.load(new Uint8Array(e.response)),a&&a())}),e.send(null)}load(t){let a=0;if(t.length<18)throw Error("Not enough data to contain header");let e={idLength:t[a++],colorMapType:t[a++],imageType:t[a++],colorMapIndex:t[a++]|t[a++]<<8,colorMapLength:t[a++]|t[a++]<<8,colorMapDepth:t[a++],offsetX:t[a++]|t[a++]<<8,offsetY:t[a++]|t[a++]<<8,width:t[a++]|t[a++]<<8,height:t[a++]|t[a++]<<8,pixelDepth:t[a++],flags:t[a++]};if(e.hasEncoding=e.imageType===9||e.imageType===10||e.imageType===11,e.hasColorMap=e.imageType===9||e.imageType===1,e.isGreyColor=e.imageType===11||e.imageType===3,this.header=e,this._checkHeader(),(a+=e.idLength)>=t.length)throw Error("No data");if(e.hasColorMap){let l=e.colorMapLength*(e.colorMapDepth>>3);this.palette=t.subarray(a,a+l),a+=l}let r=e.pixelDepth>>3,n=e.width*e.height,p=n*r;e.hasEncoding?this.imageData=this._decodeRLE(t,a,r,p):this.imageData=t.subarray(a,a+(e.hasColorMap?n:p))}getImageData(t){let{width:a,height:e,flags:r,pixelDepth:n,isGreyColor:p}=this.header,l=(r&48)>>4,c,g,s,h,o,i,d;switch(t||(t=document?document.createElement("canvas").getContext("2d").createImageData(a,e):{width:a,height:e,data:new Uint8ClampedArray(a*e*4)}),l===2||l===3?(h=0,o=1,i=e):(h=e-1,o=-1,i=-1),l===2||l===0?(c=0,g=1,s=a):(c=a-1,g=-1,s=-1),n){case 8:d=p?this._getImageDataGrey8bits:this._getImageData8bits;break;case 16:d=p?this._getImageDataGrey16bits:this._getImageData16bits;break;case 24:d=this._getImageData24bits;break;case 32:d=this._getImageData32bits}return d.call(this,t.data,this.imageData,this.palette,a,h,o,i,c,g,s),t}getCanvas(){let{width:t,height:a}=this.header,e=document.createElement("canvas"),r=e.getContext("2d"),n=r.createImageData(t,a);return e.width=t,e.height=a,r.putImageData(this.getImageData(n),0,0),e}getDataURL(t){return this.getCanvas().toDataURL(t||"image/png")}};
+/*! Bundled license information:
 
-const URL = 'https://esm.sh/tga-js@1';
+tga-js/dist/esm/tga.js:
+  (**
+   * @license tga-js 1.1.1
+   * Copyright (c) 2013-2020 Vincent Thibault, Inc.
+   * License: MIT
+   *)
+*/
+//# sourceMappingURL=tga-js.mjs.map
+return { default: m };
+})();
 
-let _libPromise = null;
-
-async function getLib() {
-  if (_libPromise) return _libPromise;
-  emit('toast', { message: 'Loading TGA decoder…', level: 'info', duration: 6000 });
-  _libPromise = import(URL)
-    .then(mod => mod.default ?? mod)
-    .catch(err => { _libPromise = null; throw new Error('Could not load TGA decoder: ' + err.message); });
-  return _libPromise;
-}
+const __m_decode_tga = (() => {
+// tga-js is vendored locally — see src/vendor/tga-js.mjs and SECURITY.md.
+const TGA = __m_vendor_tga_js.default ?? __m_vendor_tga_js;
 
 async function decodeTga(blob) {
-  const TGA = await getLib();
   const buf = new Uint8Array(await blob.arrayBuffer());
-
-  // tga-js exposes either a class default export or a parse function. Handle both.
-  let imageData;
-  if (typeof TGA === 'function') {
-    const inst = new TGA();
-    inst.load(buf);
-    imageData = inst.getImageData();
-  } else if (TGA.parse) {
-    imageData = TGA.parse(buf);
-  } else {
-    throw new Error('Unexpected tga-js shape');
-  }
-  if (!imageData?.width || !imageData?.height) throw new Error('TGA decoded with empty dimensions');
-
-  const out = new OffscreenCanvas(imageData.width, imageData.height);
-  out.getContext('2d').putImageData(imageData, 0, 0);
+  const inst = new TGA();
+  inst.load(buf);
+  const id = inst.getImageData();
+  if (!id?.width || !id?.height) throw new Error('TGA decoded with empty dimensions');
+  const out = new OffscreenCanvas(id.width, id.height);
+  out.getContext('2d').putImageData(new ImageData(id.data, id.width, id.height), 0, 0);
   return out.transferToImageBitmap();
 }
 
 return { decodeTga };
 })();
 
-const __m_decode_dds_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_vendor_dds_parser = (() => {
+/* esm.sh - dds-parser@1.0.1 */
+var J=542327876,K=131072,Q=4,V=H("DXT1"),Z=H("DXT3"),$=H("DXT5"),t=H("ATI2"),w=31,W=0,O=1,p=2,X=3,I=4,Y=7,s=20,h=21;function vr(r){var a=new Int32Array(r,0,w);if(a[W]!==J)throw new Error("Invalid magic number in DDS header");if(!(a[s]&Q))throw new Error("Unsupported format, must contain a FourCC code");var v,e,A=a[h];switch(A){case V:v=8,e="dxt1";break;case Z:v=16,e="dxt3";break;case $:v=16,e="dxt5";break;case t:v=16,e="ati2";break;default:throw new Error("Unsupported FourCC code: "+b(A))}var C=a[p],D=1;C&K&&(D=Math.max(1,a[Y]));for(var f=a[I],n=a[X],x=a[O]+4,F=f,g=n,_=[],d,y=0;y<D;y++)d=Math.max(4,f)/4*Math.max(4,n)/4*v,_.push({offset:x,length:d,shape:{width:f,height:n}}),x+=d,f=Math.floor(f/2),n=Math.floor(n/2);return{shape:{width:F,height:g},images:_,format:e,flags:C}}function H(r){return r.charCodeAt(0)+(r.charCodeAt(1)<<8)+(r.charCodeAt(2)<<16)+(r.charCodeAt(3)<<24)}function b(r){return String.fromCharCode(r&255,r>>8&255,r>>16&255,r>>24&255)}function L(r,a){return((1<<a)-1)/((1<<r)-1)}var k=L(4,8),R=L(5,8),P=L(6,8),S=new Uint8Array(16),i=new Uint8Array(12),m=new Uint8Array(8),z=new Uint8Array(8),G=new Uint8Array(8);function u(r,a,v){var e=(a>>11&31)*R,A=(a>>5&63)*P,C=(a&31)*R,D=(v>>11&31)*R,f=(v>>5&63)*P,n=(v&31)*R;r[0]=e,r[1]=A,r[2]=C,r[3]=255,r[4]=D,r[5]=f,r[6]=n,r[7]=255,a>v?(r[8]=5*e+3*D>>3,r[9]=5*A+3*f>>3,r[10]=5*C+3*n>>3,r[11]=255,r[12]=5*D+3*e>>3,r[13]=5*f+3*A>>3,r[14]=5*n+3*C>>3,r[15]=255):(r[8]=e+D>>1,r[9]=A+f>>1,r[10]=C+n>>1,r[11]=255,r[12]=0,r[13]=0,r[14]=0,r[15]=0)}function j(r,a,v){var e=(a>>11&31)*R,A=(a>>5&63)*P,C=(a&31)*R,D=(v>>11&31)*R,f=(v>>5&63)*P,n=(v&31)*R;r[0]=e,r[1]=A,r[2]=C,r[3]=D,r[4]=f,r[5]=n,r[6]=5*e+3*D>>3,r[7]=5*A+3*f>>3,r[8]=5*C+3*n>>3,r[9]=5*D+3*e>>3,r[10]=5*f+3*A>>3,r[11]=5*n+3*C>>3}function c(r,a,v){r[0]=a,r[1]=v,a>v?(r[2]=54*a+9*v>>6,r[3]=45*a+18*v>>6,r[4]=36*a+27*v>>6,r[5]=27*a+36*v>>6,r[6]=18*a+45*v>>6,r[7]=9*a+54*v>>6):(r[2]=12*a+3*v>>4,r[3]=9*a+6*v>>4,r[4]=6*a+9*v>>4,r[5]=3*a+12*v>>4,r[6]=0,r[7]=255)}function N(r,a,v){r[0]=a,r[1]=v,a>v?(r[2]=(6*a+1*v)/7,r[3]=(5*a+2*v)/7,r[4]=(4*a+3*v)/7,r[5]=(3*a+4*v)/7,r[6]=(2*a+5*v)/7,r[7]=(1*a+6*v)/7):(r[2]=(4*a+1*v)/5,r[3]=(3*a+2*v)/5,r[4]=(2*a+3*v)/5,r[5]=(1*a+4*v)/5,r[6]=0,r[7]=1)}function l(r,a,v){for(var e=new Uint8Array(a*v*4),A=0,C=v/4;A<C;A++)for(var D=0,f=a/4;D<f;D++){var n=8*(A*f+D);u(S,r[n]+256*r[n+1],r[n+2]+256*r[n+3]);for(var x=A*16*a+D*16,F=r[n+4]|r[n+5]<<8|r[n+6]<<16|r[n+7]<<24,g=0;g<4;g++)for(var _=g*8,d=x+g*a*4,y=0;y<4;y++){var U=d+y*4,T=(F>>_+y*2&3)*4;e[U+0]=S[T+0],e[U+1]=S[T+1],e[U+2]=S[T+2],e[U+3]=S[T+3]}}return e}function o(r,a,v){for(var e=new Uint8Array(a*v*4),A=a*4,C=0,D=v/4;C<D;C++)for(var f=0,n=a/4;f<n;f++){var x=16*(C*n+f);j(i,r[x+8]+256*r[x+9],r[x+10]+256*r[x+11]);for(var F=C*16*a+f*16,g=0;g<4;g++){for(var _=r[x+g*2]+256*r[x+1+g*2],d=r[x+12+g],y=0;y<4;y++){var U=F+y*4,T=(d>>y*2&3)*3;e[U+0]=i[T+0],e[U+1]=i[T+1],e[U+2]=i[T+2],e[U+3]=(_>>y*4&15)*k}F+=A}}return e}function rr(r,a,v){for(var e=new Uint8Array(a*v*4),A=a*4,C=0,D=v/4;C<D;C++)for(var f=0,n=a/4;f<n;f++){var x=16*(C*n+f);c(m,r[x],r[x+1]),j(i,r[x+8]+256*r[x+9],r[x+10]+256*r[x+11]);for(var F=C*16*a+f*16,g=0;g<2;g++)for(var _=x+2+g*3,d=x+12+g*2,y=r[_]+256*(r[_+1]+256*r[_+2]),U=0;U<2;U++){for(var T=r[d+U],M=0;M<4;M++){var B=F+M*4,E=(T>>M*2&3)*3,q=y>>U*12+M*3&7;e[B+0]=i[E+0],e[B+1]=i[E+1],e[B+2]=i[E+2],e[B+3]=m[q]}F+=A}}return e}function ar(r,a,v){for(var e=new Uint8Array(a*v*4),A=a*2,C=0,D=v/4;C<D;C++)for(var f=0,n=a/4;f<n;f++){var x=16*(C*n+f);N(z,r[x],r[x+1]),N(G,r[x+8],r[x+9]);for(var F=C*8*a+f*8,g=0;g<2;g++)for(var _=x+g*3,d=r[_+2]+256*(r[_+3]+256*r[_+4]),y=r[_+10]+256*(r[_+11]+256*r[_+12]),U=0;U<2;U++){for(var T=U*4,M=0;M<4;M++){var B=F+M*2,E=3*(T+M);e[B*2+0]=z[d>>E&7],e[B*2+1]=G[y>>E&7]}F+=A}}return e}function er(r,a,v,e){if(a==="dxt1")return l(r,v,e);if(a==="dxt3")return o(r,v,e);if(a==="dxt5")return rr(r,v,e);if(a==="ati2")return ar(r,v,e);throw new Error("Unsupported format")}
+/*! Bundled license information:
 
-const URL = 'https://esm.sh/dds-parser';
+dds-parser/dist/es/dds-parser.js:
+  (*!
+      dds-parser v1.0.1
+  	https://github.com/4eb0da/dds-parser
+  	Released under the MIT License.
+  *)
+*/
+//# sourceMappingURL=dds-parser.mjs.map
+return { decodeDds: er, decodeDxt1: l, decodeDxt3: o, decodeDxt5: rr, decodeRgtc: ar, parseHeaders: vr };
+})();
 
-let _libPromise = null;
+const __m_decode_dds = (() => {
+// dds-parser is vendored locally — see src/vendor/dds-parser.mjs and SECURITY.md.
+const parseHeaders = __m_vendor_dds_parser.parseHeaders;
+const decodeDds = __m_vendor_dds_parser.decodeDds;
 
-async function getLib() {
-  if (_libPromise) return _libPromise;
-  emit('toast', { message: 'Loading DDS decoder…', level: 'info', duration: 6000 });
-  _libPromise = import(URL)
-    .then(mod => mod.default ?? mod)
-    .catch(err => { _libPromise = null; throw new Error('Could not load DDS decoder: ' + err.message); });
-  return _libPromise;
-}
-
-async function decodeDds(blob) {
-  const lib = await getLib();
+async function decodeDdsBlob(blob) {
   const buf = await blob.arrayBuffer();
-  const result = lib.decodeDds ? lib.decodeDds(buf) : lib(buf);
-  if (!result?.mipmaps?.length) throw new Error('DDS file has no mipmaps');
-  const top = result.mipmaps[0];
-  const out = new OffscreenCanvas(top.width, top.height);
-  out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(top.data), top.width, top.height), 0, 0);
+  const headers = parseHeaders(buf);
+  if (!headers?.images?.length) throw new Error('DDS file has no images');
+  const top = headers.images[0];
+  const bytes = new Uint8Array(buf, top.offset, top.length);
+  const rgba = decodeDds(bytes, headers.format, top.shape.width, top.shape.height);
+  const out = new OffscreenCanvas(top.shape.width, top.shape.height);
+  out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), top.shape.width, top.shape.height), 0, 0);
   return out.transferToImageBitmap();
 }
 
-return { decodeDds };
+// Keep the original symbol name so registry.js doesn't have to change.
+
+
+return { decodeDdsBlob, decodeDds: decodeDdsBlob };
 })();
 
-const __m_decode_registry_js = (() => {
-const decodeNative = __m_decode_native_js.decodeNative;
-const decodeHeic = __m_decode_heic_js.decodeHeic;
-const decodeTiff = __m_decode_tiff_js.decodeTiff;
-const decodeRaw = __m_decode_raw_js.decodeRaw;
-const decodeJxl = __m_decode_jxl_js.decodeJxl;
-const decodePsd = __m_decode_psd_js.decodePsd;
-const decodeTga = __m_decode_tga_js.decodeTga;
-const decodeDds = __m_decode_dds_js.decodeDds;
+const __m_decode_registry = (() => {
+const decodeNative = __m_decode_native.decodeNative;
+const decodeHeic = __m_decode_heic.decodeHeic;
+const decodeTiff = __m_decode_tiff.decodeTiff;
+const decodeRaw = __m_decode_raw.decodeRaw;
+const decodeJxl = __m_decode_jxl.decodeJxl;
+const decodePsd = __m_decode_psd.decodePsd;
+const decodeTga = __m_decode_tga.decodeTga;
+const decodeDds = __m_decode_dds.decodeDds;
 
 // Supported v1 input formats
 const SUPPORTED_TYPES = new Set([
@@ -2453,7 +2456,7 @@ async function decode(file) {
 return { isSupportedFile, extOf, mimeOf, formatOf, checkAvifSupport, decode };
 })();
 
-const __m_exif_js = (() => {
+const __m_exif = (() => {
 // Inline EXIF parser — JPEG APP1 + PNG eXIf. No external library.
 
 const TAGS = {
@@ -2708,14 +2711,14 @@ function stripJpegExif(buffer) {
 return { parseExif, formatExposureTime, formatRational, formatGPS, stripJpegExif };
 })();
 
-const __m_core_fs_js = (() => {
-const state = __m_core_state_js.state;
-const setImage = __m_core_state_js.setImage;
-const emit = __m_core_events_js.emit;
-const decode = __m_decode_registry_js.decode;
-const isSupportedFile = __m_decode_registry_js.isSupportedFile;
-const formatOf = __m_decode_registry_js.formatOf;
-const parseExif = __m_exif_js.parseExif;
+const __m_core_fs = (() => {
+const state = __m_core_state.state;
+const setImage = __m_core_state.setImage;
+const emit = __m_core_events.emit;
+const decode = __m_decode_registry.decode;
+const isSupportedFile = __m_decode_registry.isSupportedFile;
+const formatOf = __m_decode_registry.formatOf;
+const parseExif = __m_exif.parseExif;
 
 const hasFSA = 'showOpenFilePicker' in window;
 const hasDirPicker = 'showDirectoryPicker' in window;
@@ -3024,7 +3027,7 @@ async function saveSidecar(blob, ext) {
 return { hasFSA, hasDirPicker, openFileFSA, openFolderFSA, openFileFallback, openFromClipboard, handleDrop, openFromFile, openFromHandle, navigateTo, navigateNext, navigatePrev, navigateFirst, navigateLast, navigateSkip, saveDownload, saveOverwrite, saveSidecar };
 })();
 
-const __m_core_html_js = (() => {
+const __m_core_html = (() => {
 const MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 function esc(s) {
@@ -3034,7 +3037,7 @@ function esc(s) {
 return { esc };
 })();
 
-const __m_ops_annotate_js = (() => {
+const __m_ops_annotate = (() => {
 // Pure draw functions — paint onto any 2d context, no canvas creation.
 // The ctx is assumed to be positioned in image-space (caller handles zoom/pan).
 
@@ -3129,13 +3132,13 @@ async function applyPencil(canvas, params) {
 return { drawPencil, drawText, drawArrow, applyText, applyArrow, applyPencil };
 })();
 
-const __m_core_layers_js = (() => {
-const state = __m_core_state_js.state;
-const commitOp = __m_core_state_js.commitOp;
-const emit = __m_core_events_js.emit;
-const drawText = __m_ops_annotate_js.drawText;
-const drawArrow = __m_ops_annotate_js.drawArrow;
-const drawPencil = __m_ops_annotate_js.drawPencil;
+const __m_core_layers = (() => {
+const state = __m_core_state.state;
+const commitOp = __m_core_state.commitOp;
+const emit = __m_core_events.emit;
+const drawText = __m_ops_annotate.drawText;
+const drawArrow = __m_ops_annotate.drawArrow;
+const drawPencil = __m_ops_annotate.drawPencil;
 
 // IDs are derived from the current layer stack so they survive replay
 // deterministically: the largest id ever in use is preserved across undo/redo
@@ -3249,12 +3252,12 @@ function isLayerOp(op) {
 return { addLayer, removeLayer, toggleLayer, moveLayer, setLayers, clearLayers, drawLayer, flattenLayers, applyLayerOp, isLayerOp };
 })();
 
-const __m_ui_viewer_js = (() => {
-const state = __m_core_state_js.state;
-const emit = __m_core_events_js.emit;
-const on = __m_core_events_js.on;
-const esc = __m_core_html_js.esc;
-const drawLayer = __m_core_layers_js.drawLayer;
+const __m_ui_viewer = (() => {
+const state = __m_core_state.state;
+const emit = __m_core_events.emit;
+const on = __m_core_events.on;
+const esc = __m_core_html.esc;
+const drawLayer = __m_core_layers.drawLayer;
 
 const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 32;
@@ -3675,9 +3678,9 @@ function toggleFullscreen() {
 return { initViewer, fitToWindow, fitToWidth, fitToHeight, fit1to1, fitFill, applyFitMode, zoomTo, zoomStep, canvasToImage, imageToCanvas, toggleFullscreen, markDirty: scheduleRender };
 })();
 
-const __m_ui_rulers_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
+const __m_ui_rulers = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
 
 let rulerH, rulerV, rulerCorner;
 let rulerHCtx, rulerVCtx;
@@ -3870,12 +3873,12 @@ function drawVRuler() {
 return { initRulers, setRulersVisible };
 })();
 
-const __m_ui_thumbstrip_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const navigateTo = __m_core_fs_js.navigateTo;
-const decode = __m_decode_registry_js.decode;
+const __m_ui_thumbstrip = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const navigateTo = __m_core_fs.navigateTo;
+const decode = __m_decode_registry.decode;
 
 const THUMB_SIZE = 128;
 let bar;
@@ -4015,8 +4018,8 @@ function setActive(index) {
 return { initThumbstrip, toggleThumbstrip, isThumbstripVisible };
 })();
 
-const __m_ui_help_js = (() => {
-const on = __m_core_events_js.on;
+const __m_ui_help = (() => {
+const on = __m_core_events.on;
 
 const SEEN_KEY = 'slate.v1.help-seen';
 
@@ -4281,28 +4284,28 @@ function shortcuts() {
 return { initHelp, showHelp };
 })();
 
-const __m_ui_toolbar_js = (() => {
-const state = __m_core_state_js.state;
-const FLAGS = __m_core_state_js.FLAGS;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const openFileFSA = __m_core_fs_js.openFileFSA;
-const openFolderFSA = __m_core_fs_js.openFolderFSA;
-const openFileFallback = __m_core_fs_js.openFileFallback;
-const openFromClipboard = __m_core_fs_js.openFromClipboard;
-const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const fitToWindow = __m_ui_viewer_js.fitToWindow;
-const fitToWidth = __m_ui_viewer_js.fitToWidth;
-const fitToHeight = __m_ui_viewer_js.fitToHeight;
-const fit1to1 = __m_ui_viewer_js.fit1to1;
-const fitFill = __m_ui_viewer_js.fitFill;
-const zoomStep = __m_ui_viewer_js.zoomStep;
-const toggleFullscreen = __m_ui_viewer_js.toggleFullscreen;
-const showHelp = __m_ui_help_js.showHelp;
-const toggleThumbstrip = __m_ui_thumbstrip_js.toggleThumbstrip;
-const setRulersVisible = __m_ui_rulers_js.setRulersVisible;
-const savePrefs = __m_core_state_js.savePrefs;
-const esc = __m_core_html_js.esc;
+const __m_ui_toolbar = (() => {
+const state = __m_core_state.state;
+const FLAGS = __m_core_state.FLAGS;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const openFileFSA = __m_core_fs.openFileFSA;
+const openFolderFSA = __m_core_fs.openFolderFSA;
+const openFileFallback = __m_core_fs.openFileFallback;
+const openFromClipboard = __m_core_fs.openFromClipboard;
+const hasDirPicker = __m_core_fs.hasDirPicker;
+const fitToWindow = __m_ui_viewer.fitToWindow;
+const fitToWidth = __m_ui_viewer.fitToWidth;
+const fitToHeight = __m_ui_viewer.fitToHeight;
+const fit1to1 = __m_ui_viewer.fit1to1;
+const fitFill = __m_ui_viewer.fitFill;
+const zoomStep = __m_ui_viewer.zoomStep;
+const toggleFullscreen = __m_ui_viewer.toggleFullscreen;
+const showHelp = __m_ui_help.showHelp;
+const toggleThumbstrip = __m_ui_thumbstrip.toggleThumbstrip;
+const setRulersVisible = __m_ui_rulers.setRulersVisible;
+const savePrefs = __m_core_state.savePrefs;
+const esc = __m_core_html.esc;
 
 function icon(id, cls = '') {
   return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#icon-${id}"/></svg>`;
@@ -4539,12 +4542,12 @@ on('image:loaded', updateInfoPanel);
 return { initToolbar };
 })();
 
-const __m_ui_panels_js = (() => {
-const state = __m_core_state_js.state;
-const savePrefs = __m_core_state_js.savePrefs;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const markDirty = __m_ui_viewer_js.markDirty;
+const __m_ui_panels = (() => {
+const state = __m_core_state.state;
+const savePrefs = __m_core_state.savePrefs;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const markDirty = __m_ui_viewer.markDirty;
 
 let panel, fields = {}, readout;
 let dragging = false, dragOff = { x: 0, y: 0 };
@@ -4692,13 +4695,13 @@ function endDrag() {
 return { initPanels, showPanel };
 })();
 
-const __m_ui_selection_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const canvasToImage = __m_ui_viewer_js.canvasToImage;
-const imageToCanvas = __m_ui_viewer_js.imageToCanvas;
-const markDirty = __m_ui_viewer_js.markDirty;
+const __m_ui_selection = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const canvasToImage = __m_ui_viewer.canvasToImage;
+const imageToCanvas = __m_ui_viewer.imageToCanvas;
+const markDirty = __m_ui_viewer.markDirty;
 
 let _dragging = false;
 let _dragStart = { ix: 0, iy: 0 };
@@ -4961,9 +4964,9 @@ function nudgeSelection(dx, dy, resize = false) {
 return { initSelection, clearSelection, selectAll, nudgeSelection };
 })();
 
-const __m_ui_toast_js = (() => {
-const on = __m_core_events_js.on;
-const esc = __m_core_html_js.esc;
+const __m_ui_toast = (() => {
+const on = __m_core_events.on;
+const esc = __m_core_html.esc;
 
 const MAX_TOASTS = 3;
 let container;
@@ -5004,15 +5007,15 @@ function initToasts() {
 return { initToasts };
 })();
 
-const __m_ui_batch_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const formatOf = __m_decode_registry_js.formatOf;
-const isSupportedFile = __m_decode_registry_js.isSupportedFile;
-const parseExif = __m_exif_js.parseExif;
-const esc = __m_core_html_js.esc;
+const __m_ui_batch = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const hasDirPicker = __m_core_fs.hasDirPicker;
+const formatOf = __m_decode_registry.formatOf;
+const isSupportedFile = __m_decode_registry.isSupportedFile;
+const parseExif = __m_exif.parseExif;
+const esc = __m_core_html.esc;
 
 // Runtime state
 let _sources  = [];      // [{ name, size, file, handle? }]
@@ -5649,16 +5652,16 @@ function estimateOutSize(srcSize) {
 return { initBatch };
 })();
 
-const __m_ui_slideshow_js = (() => {
-const state = __m_core_state_js.state;
-const FLAGS = __m_core_state_js.FLAGS;
-const savePrefs = __m_core_state_js.savePrefs;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const navigateTo = __m_core_fs_js.navigateTo;
-const navigateNext = __m_core_fs_js.navigateNext;
-const navigatePrev = __m_core_fs_js.navigatePrev;
-const esc = __m_core_html_js.esc;
+const __m_ui_slideshow = (() => {
+const state = __m_core_state.state;
+const FLAGS = __m_core_state.FLAGS;
+const savePrefs = __m_core_state.savePrefs;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const navigateTo = __m_core_fs.navigateTo;
+const navigateNext = __m_core_fs.navigateNext;
+const navigatePrev = __m_core_fs.navigatePrev;
+const esc = __m_core_html.esc;
 
 const PREFS_KEY = 'slate.v1.slideshow';
 
@@ -5981,10 +5984,10 @@ function onFullscreenChange() {
 return { initSlideshow };
 })();
 
-const __m_ui_rightsidebar_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
+const __m_ui_rightsidebar = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
 
 const FAV_KEY    = 'slate.v1.fav';
 const RECENT_KEY = 'slate.v1.recent';
@@ -6126,12 +6129,12 @@ function saveRecent() {
 return { initRightSidebar };
 })();
 
-const __m_ui_contextbar_js = (() => {
-const state = __m_core_state_js.state;
-const savePrefs = __m_core_state_js.savePrefs;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const clearSelection = __m_ui_selection_js.clearSelection;
+const __m_ui_contextbar = (() => {
+const state = __m_core_state.state;
+const savePrefs = __m_core_state.savePrefs;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const clearSelection = __m_ui_selection.clearSelection;
 
 const COMMIT_TOOLS = { crop: 'Crop', redact: 'Redact', blur: 'Blur' };
 
@@ -6210,7 +6213,7 @@ function cancelOp() {
 return { initContextBar };
 })();
 
-const __m_ops_crop_js = (() => {
+const __m_ops_crop = (() => {
 async function apply(canvas, { x, y, w, h }) {
   const ox = Math.max(0, Math.round(x));
   const oy = Math.max(0, Math.round(y));
@@ -6224,7 +6227,7 @@ async function apply(canvas, { x, y, w, h }) {
 return { apply };
 })();
 
-const __m_ops_rotate_js = (() => {
+const __m_ops_rotate = (() => {
 async function apply(canvas, { deg }) {
   const rad = deg * Math.PI / 180;
   const W = canvas.width, H = canvas.height;
@@ -6243,7 +6246,7 @@ async function apply(canvas, { deg }) {
 return { apply };
 })();
 
-const __m_ops_flip_js = (() => {
+const __m_ops_flip = (() => {
 async function apply(canvas, { axis }) {
   const { width: W, height: H } = canvas;
   const out = new OffscreenCanvas(W, H);
@@ -6257,7 +6260,7 @@ async function apply(canvas, { axis }) {
 return { apply };
 })();
 
-const __m_ops_redact_js = (() => {
+const __m_ops_redact = (() => {
 async function apply(canvas, { x, y, w, h, fill = '#000000' }) {
   const out = new OffscreenCanvas(canvas.width, canvas.height);
   const ctx = out.getContext('2d');
@@ -6270,7 +6273,7 @@ async function apply(canvas, { x, y, w, h, fill = '#000000' }) {
 return { apply };
 })();
 
-const __m_ops_blur_js = (() => {
+const __m_ops_blur = (() => {
 async function apply(canvas, { x, y, w, h, strength = 10 }) {
   const rx = Math.round(x), ry = Math.round(y);
   const rw = Math.max(1, Math.round(w)), rh = Math.max(1, Math.round(h));
@@ -6300,7 +6303,7 @@ async function apply(canvas, { x, y, w, h, strength = 10 }) {
 return { apply };
 })();
 
-const __m_ops_resize_js = (() => {
+const __m_ops_resize = (() => {
 async function apply(canvas, { w, h }) {
   const ow = Math.max(1, Math.round(w));
   const oh = Math.max(1, Math.round(h));
@@ -6315,7 +6318,7 @@ async function apply(canvas, { w, h }) {
 return { apply };
 })();
 
-const __m_gpu_adjust_js = (() => {
+const __m_gpu_adjust = (() => {
 // WebGPU fast path for brightness / contrast / saturation adjustment.
 // Falls back silently — callers should catch and use the CPU path.
 
@@ -6473,9 +6476,9 @@ async function applyAdjust(canvas, { brightness = 0, contrast = 0, saturation = 
 return { isWebGPUAvailable, applyAdjust };
 })();
 
-const __m_ops_adjust_js = (() => {
-const isWebGPUAvailable = __m_gpu_adjust_js.isWebGPUAvailable;
-const applyAdjustGPU = __m_gpu_adjust_js.applyAdjust;
+const __m_ops_adjust = (() => {
+const isWebGPUAvailable = __m_gpu_adjust.isWebGPUAvailable;
+const applyAdjustGPU = __m_gpu_adjust.applyAdjust;
 
 // Use GPU path above this many pixels — CPU is usually faster below.
 const GPU_MIN_PIXELS = 1_000_000;
@@ -6542,7 +6545,7 @@ async function applyAdjustCPU(canvas, { brightness, contrast, saturation }) {
 return { apply };
 })();
 
-const __m_ops_sharpen_js = (() => {
+const __m_ops_sharpen = (() => {
 // amount: 0..5, typical 1.0
 async function apply(canvas, { amount = 1.0 }) {
   const { width: W, height: H } = canvas;
@@ -6575,7 +6578,7 @@ async function apply(canvas, { amount = 1.0 }) {
 return { apply };
 })();
 
-const __m_ops_straighten_js = (() => {
+const __m_ops_straighten = (() => {
 // deg: arbitrary angle; canvas expands to contain the rotated image
 async function apply(canvas, { deg }) {
   if (deg === 0) {
@@ -6600,30 +6603,30 @@ async function apply(canvas, { deg }) {
 return { apply };
 })();
 
-const __m_core_oprunner_js = (() => {
-const state = __m_core_state_js.state;
-const commitOp = __m_core_state_js.commitOp;
-const replaceWorking = __m_core_state_js.replaceWorking;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const addLayer = __m_core_layers_js.addLayer;
-const flattenLayers = __m_core_layers_js.flattenLayers;
-const clearLayers = __m_core_layers_js.clearLayers;
-const setLayers = __m_core_layers_js.setLayers;
-const applyLayerOp = __m_core_layers_js.applyLayerOp;
-const isLayerOp = __m_core_layers_js.isLayerOp;
+const __m_core_oprunner = (() => {
+const state = __m_core_state.state;
+const commitOp = __m_core_state.commitOp;
+const replaceWorking = __m_core_state.replaceWorking;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const addLayer = __m_core_layers.addLayer;
+const flattenLayers = __m_core_layers.flattenLayers;
+const clearLayers = __m_core_layers.clearLayers;
+const setLayers = __m_core_layers.setLayers;
+const applyLayerOp = __m_core_layers.applyLayerOp;
+const isLayerOp = __m_core_layers.isLayerOp;
 
-const cropOp = __m_ops_crop_js;
-const rotateOp = __m_ops_rotate_js;
-const flipOp = __m_ops_flip_js;
-const redactOp = __m_ops_redact_js;
-const blurOp = __m_ops_blur_js;
-const resizeOp = __m_ops_resize_js;
-const adjustOp = __m_ops_adjust_js;
-const sharpenOp = __m_ops_sharpen_js;
-const straightenOp = __m_ops_straighten_js;
-const applyText = __m_ops_annotate_js.applyText;
-const applyArrow = __m_ops_annotate_js.applyArrow;
+const cropOp = __m_ops_crop;
+const rotateOp = __m_ops_rotate;
+const flipOp = __m_ops_flip;
+const redactOp = __m_ops_redact;
+const blurOp = __m_ops_blur;
+const resizeOp = __m_ops_resize;
+const adjustOp = __m_ops_adjust;
+const sharpenOp = __m_ops_sharpen;
+const straightenOp = __m_ops_straighten;
+const applyText = __m_ops_annotate.applyText;
+const applyArrow = __m_ops_annotate.applyArrow;
 
 const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
@@ -6818,13 +6821,13 @@ async function replayOps(ops) {
 return { initOpRunner, replayOps };
 })();
 
-const __m_ui_modals_js = (() => {
-const state = __m_core_state_js.state;
-const savePrefs = __m_core_state_js.savePrefs;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const esc = __m_core_html_js.esc;
+const __m_ui_modals = (() => {
+const state = __m_core_state.state;
+const savePrefs = __m_core_state.savePrefs;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const hasDirPicker = __m_core_fs.hasDirPicker;
+const esc = __m_core_html.esc;
 
 function initModals() {
   on('modal:resize',    showResize);
@@ -7140,13 +7143,13 @@ function showExport() {
 return { initModals };
 })();
 
-const __m_ui_toolhandlers_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const canvasToImage = __m_ui_viewer_js.canvasToImage;
-const markDirty = __m_ui_viewer_js.markDirty;
-const esc = __m_core_html_js.esc;
+const __m_ui_toolhandlers = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const canvasToImage = __m_ui_viewer.canvasToImage;
+const markDirty = __m_ui_viewer.markDirty;
+const esc = __m_core_html.esc;
 
 // ── Arrow tool state ───────────────────────────────────────────────────────────
 let _arrowStart = null;
@@ -7371,12 +7374,12 @@ function showTextModal(ix, iy) {
 return { initToolHandlers };
 })();
 
-const __m_ui_gallery_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const esc = __m_core_html_js.esc;
+const __m_ui_gallery = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const hasDirPicker = __m_core_fs.hasDirPicker;
+const esc = __m_core_html.esc;
 
 const cfg = {
   mode: 'gallery',  // 'gallery' | 'sheet'
@@ -7760,7 +7763,7 @@ function tstamp() {
 return { initGallery };
 })();
 
-const __m_ops_jpeg_lossless_js = (() => {
+const __m_ops_jpeg_lossless = (() => {
 // Lossless JPEG rotate via EXIF orientation manipulation.
 // The pixel bytes are untouched — we only flip the orientation tag.
 // Works in any viewer that honours EXIF orientation (most do).
@@ -7884,12 +7887,12 @@ function insertOrientationInExif(buf, segStart, oldSegLen, _tiffStart, ori) {
 return { computeNewOrientation, rotateJpegLossless };
 })();
 
-const __m_ui_jpegrotate_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const emit = __m_core_events_js.emit;
-const rotateJpegLossless = __m_ops_jpeg_lossless_js.rotateJpegLossless;
-const esc = __m_core_html_js.esc;
+const __m_ui_jpegrotate = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const emit = __m_core_events.emit;
+const rotateJpegLossless = __m_ops_jpeg_lossless.rotateJpegLossless;
+const esc = __m_core_html.esc;
 
 function initJpegRotate() {
   on('modal:jpeg-rotate', showModal);
@@ -7990,13 +7993,13 @@ function tstamp() {
 return { initJpegRotate };
 })();
 
-const __m_ui_layerspanel_js = (() => {
-const state = __m_core_state_js.state;
-const on = __m_core_events_js.on;
-const removeLayer = __m_core_layers_js.removeLayer;
-const toggleLayer = __m_core_layers_js.toggleLayer;
-const moveLayer = __m_core_layers_js.moveLayer;
-const esc = __m_core_html_js.esc;
+const __m_ui_layerspanel = (() => {
+const state = __m_core_state.state;
+const on = __m_core_events.on;
+const removeLayer = __m_core_layers.removeLayer;
+const toggleLayer = __m_core_layers.toggleLayer;
+const moveLayer = __m_core_layers.moveLayer;
+const esc = __m_core_html.esc;
 
 let _panel = null;
 
@@ -8086,7 +8089,7 @@ function render() {
 return { initLayersPanel };
 })();
 
-const __m_core_session_js = (() => {
+const __m_core_session = (() => {
 const DB_NAME  = 'slate.v1';
 const DB_VER   = 1;
 const STORE    = 'sessions';
@@ -8140,7 +8143,7 @@ async function clearSession() {
 return { saveSession, loadSession, clearSession };
 })();
 
-const __m_encode_png_js = (() => {
+const __m_encode_png = (() => {
 async function encodePng(canvas) {
   const out = new OffscreenCanvas(canvas.width, canvas.height);
   out.getContext('2d').drawImage(canvas, 0, 0);
@@ -8150,7 +8153,7 @@ async function encodePng(canvas) {
 return { encodePng };
 })();
 
-const __m_encode_jpeg_js = (() => {
+const __m_encode_jpeg = (() => {
 async function encodeJpeg(canvas, quality = 0.9, exifRaw = null) {
   const out = new OffscreenCanvas(canvas.width, canvas.height);
   const ctx = out.getContext('2d');
@@ -8175,7 +8178,7 @@ async function encodeJpeg(canvas, quality = 0.9, exifRaw = null) {
 return { encodeJpeg };
 })();
 
-const __m_encode_webp_js = (() => {
+const __m_encode_webp = (() => {
 async function encodeWebp(canvas, quality = 0.9, lossless = false) {
   const out = new OffscreenCanvas(canvas.width, canvas.height);
   out.getContext('2d').drawImage(canvas, 0, 0);
@@ -8188,8 +8191,8 @@ async function encodeWebp(canvas, quality = 0.9, lossless = false) {
 return { encodeWebp };
 })();
 
-const __m_encode_tiff_js = (() => {
-const emit = __m_core_events_js.emit;
+const __m_encode_tiff = (() => {
+const emit = __m_core_events.emit;
 
 // Reuses the same utif build that decode/tiff.js uses.
 const URL = 'https://esm.sh/utif@3.1.0';
@@ -8217,71 +8220,71 @@ async function encodeTiff(canvas) {
 return { encodeTiff };
 })();
 
-const __m_app_js = (() => {
-const state = __m_core_state_js.state;
-const loadPrefs = __m_core_state_js.loadPrefs;
-const savePrefs = __m_core_state_js.savePrefs;
-const emit = __m_core_events_js.emit;
-const on = __m_core_events_js.on;
-const once = __m_core_events_js.once;
-const hasFSA = __m_core_fs_js.hasFSA;
-const hasDirPicker = __m_core_fs_js.hasDirPicker;
-const openFileFSA = __m_core_fs_js.openFileFSA;
-const openFileFallback = __m_core_fs_js.openFileFallback;
-const openFolderFSA = __m_core_fs_js.openFolderFSA;
-const openFromClipboard = __m_core_fs_js.openFromClipboard;
-const handleDrop = __m_core_fs_js.handleDrop;
-const navigateNext = __m_core_fs_js.navigateNext;
-const navigatePrev = __m_core_fs_js.navigatePrev;
-const navigateFirst = __m_core_fs_js.navigateFirst;
-const navigateLast = __m_core_fs_js.navigateLast;
-const navigateSkip = __m_core_fs_js.navigateSkip;
+const __m_app = (() => {
+const state = __m_core_state.state;
+const loadPrefs = __m_core_state.loadPrefs;
+const savePrefs = __m_core_state.savePrefs;
+const emit = __m_core_events.emit;
+const on = __m_core_events.on;
+const once = __m_core_events.once;
+const hasFSA = __m_core_fs.hasFSA;
+const hasDirPicker = __m_core_fs.hasDirPicker;
+const openFileFSA = __m_core_fs.openFileFSA;
+const openFileFallback = __m_core_fs.openFileFallback;
+const openFolderFSA = __m_core_fs.openFolderFSA;
+const openFromClipboard = __m_core_fs.openFromClipboard;
+const handleDrop = __m_core_fs.handleDrop;
+const navigateNext = __m_core_fs.navigateNext;
+const navigatePrev = __m_core_fs.navigatePrev;
+const navigateFirst = __m_core_fs.navigateFirst;
+const navigateLast = __m_core_fs.navigateLast;
+const navigateSkip = __m_core_fs.navigateSkip;
 
-const initViewer = __m_ui_viewer_js.initViewer;
-const fitToWindow = __m_ui_viewer_js.fitToWindow;
-const zoomStep = __m_ui_viewer_js.zoomStep;
-const zoomTo = __m_ui_viewer_js.zoomTo;
-const toggleFullscreen = __m_ui_viewer_js.toggleFullscreen;
-const initRulers = __m_ui_rulers_js.initRulers;
-const setRulersVisible = __m_ui_rulers_js.setRulersVisible;
-const initThumbstrip = __m_ui_thumbstrip_js.initThumbstrip;
-const toggleThumbstrip = __m_ui_thumbstrip_js.toggleThumbstrip;
-const initToolbar = __m_ui_toolbar_js.initToolbar;
-const initPanels = __m_ui_panels_js.initPanels;
-const showPanel = __m_ui_panels_js.showPanel;
-const initSelection = __m_ui_selection_js.initSelection;
-const clearSelection = __m_ui_selection_js.clearSelection;
-const selectAll = __m_ui_selection_js.selectAll;
-const nudgeSelection = __m_ui_selection_js.nudgeSelection;
-const initToasts = __m_ui_toast_js.initToasts;
-const initBatch = __m_ui_batch_js.initBatch;
-const initSlideshow = __m_ui_slideshow_js.initSlideshow;
-const initRightSidebar = __m_ui_rightsidebar_js.initRightSidebar;
-const initContextBar = __m_ui_contextbar_js.initContextBar;
-const initOpRunner = __m_core_oprunner_js.initOpRunner;
-const replayOps = __m_core_oprunner_js.replayOps;
-const initModals = __m_ui_modals_js.initModals;
-const initToolHandlers = __m_ui_toolhandlers_js.initToolHandlers;
-const initHelp = __m_ui_help_js.initHelp;
-const showHelp = __m_ui_help_js.showHelp;
-const initGallery = __m_ui_gallery_js.initGallery;
-const initJpegRotate = __m_ui_jpegrotate_js.initJpegRotate;
-const initLayersPanel = __m_ui_layerspanel_js.initLayersPanel;
-const saveSession = __m_core_session_js.saveSession;
-const loadSession = __m_core_session_js.loadSession;
-const clearSession = __m_core_session_js.clearSession;
-const openFromHandle = __m_core_fs_js.openFromHandle;
-const openFromFile = __m_core_fs_js.openFromFile;
-const esc = __m_core_html_js.esc;
-const flattenLayers = __m_core_layers_js.flattenLayers;
+const initViewer = __m_ui_viewer.initViewer;
+const fitToWindow = __m_ui_viewer.fitToWindow;
+const zoomStep = __m_ui_viewer.zoomStep;
+const zoomTo = __m_ui_viewer.zoomTo;
+const toggleFullscreen = __m_ui_viewer.toggleFullscreen;
+const initRulers = __m_ui_rulers.initRulers;
+const setRulersVisible = __m_ui_rulers.setRulersVisible;
+const initThumbstrip = __m_ui_thumbstrip.initThumbstrip;
+const toggleThumbstrip = __m_ui_thumbstrip.toggleThumbstrip;
+const initToolbar = __m_ui_toolbar.initToolbar;
+const initPanels = __m_ui_panels.initPanels;
+const showPanel = __m_ui_panels.showPanel;
+const initSelection = __m_ui_selection.initSelection;
+const clearSelection = __m_ui_selection.clearSelection;
+const selectAll = __m_ui_selection.selectAll;
+const nudgeSelection = __m_ui_selection.nudgeSelection;
+const initToasts = __m_ui_toast.initToasts;
+const initBatch = __m_ui_batch.initBatch;
+const initSlideshow = __m_ui_slideshow.initSlideshow;
+const initRightSidebar = __m_ui_rightsidebar.initRightSidebar;
+const initContextBar = __m_ui_contextbar.initContextBar;
+const initOpRunner = __m_core_oprunner.initOpRunner;
+const replayOps = __m_core_oprunner.replayOps;
+const initModals = __m_ui_modals.initModals;
+const initToolHandlers = __m_ui_toolhandlers.initToolHandlers;
+const initHelp = __m_ui_help.initHelp;
+const showHelp = __m_ui_help.showHelp;
+const initGallery = __m_ui_gallery.initGallery;
+const initJpegRotate = __m_ui_jpegrotate.initJpegRotate;
+const initLayersPanel = __m_ui_layerspanel.initLayersPanel;
+const saveSession = __m_core_session.saveSession;
+const loadSession = __m_core_session.loadSession;
+const clearSession = __m_core_session.clearSession;
+const openFromHandle = __m_core_fs.openFromHandle;
+const openFromFile = __m_core_fs.openFromFile;
+const esc = __m_core_html.esc;
+const flattenLayers = __m_core_layers.flattenLayers;
 
-const encodePng = __m_encode_png_js.encodePng;
-const encodeJpeg = __m_encode_jpeg_js.encodeJpeg;
-const encodeWebp = __m_encode_webp_js.encodeWebp;
-const encodeTiff = __m_encode_tiff_js.encodeTiff;
-const saveDownload = __m_core_fs_js.saveDownload;
-const saveOverwrite = __m_core_fs_js.saveOverwrite;
-const saveSidecar = __m_core_fs_js.saveSidecar;
+const encodePng = __m_encode_png.encodePng;
+const encodeJpeg = __m_encode_jpeg.encodeJpeg;
+const encodeWebp = __m_encode_webp.encodeWebp;
+const encodeTiff = __m_encode_tiff.encodeTiff;
+const saveDownload = __m_core_fs.saveDownload;
+const saveOverwrite = __m_core_fs.saveOverwrite;
+const saveSidecar = __m_core_fs.saveSidecar;
 
 function tstamp() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
