@@ -213,6 +213,24 @@
 #context-bar .ctx-slider-wrap input[type=range] { width: 100px; }
 #context-bar .ctx-slider-wrap output { min-width: 30px; text-align: right; color: var(--fg-2); font-size: 11px; }
 
+#context-bar .ctx-label { font-size: 11px; font-weight: 600; color: var(--fg-1); padding: 0 var(--space-1); }
+#context-bar .ctx-color { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-2); cursor: pointer; }
+#context-bar .ctx-color input[type=color] { width: 26px; height: 22px; border: 1px solid var(--bg-3); border-radius: 4px; padding: 0; background: transparent; cursor: pointer; }
+#context-bar .ctx-color-label { user-select: none; }
+#context-bar .ctx-check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-1); cursor: pointer; }
+#context-bar .ctx-modes { display: inline-flex; gap: 2px; }
+#context-bar .ctx-mode-btn {
+  background: transparent;
+  border: 1px solid var(--bg-3);
+  color: var(--fg-1);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#context-bar .ctx-mode-btn:hover { background: var(--bg-2); color: var(--fg-0); }
+#context-bar .ctx-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 /* ── Main area (right of toolbar) ─────────────────────────────────────────── */
 
 #main-area {
@@ -1587,6 +1605,25 @@ kbd {
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
     </symbol>
+    <!-- shape (rectangle outline used as the umbrella icon for shapes tool) -->
+    <symbol id="icon-shape" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="16" height="16" rx="2"/>
+    </symbol>
+    <!-- pixelate (3x3 mosaic) -->
+    <symbol id="icon-pixelate" viewBox="0 0 24 24">
+      <rect x="3"  y="3"  width="5" height="5"/>
+      <rect x="10" y="3"  width="5" height="5"/>
+      <rect x="17" y="3"  width="4" height="5"/>
+      <rect x="3"  y="10" width="5" height="5"/>
+      <rect x="17" y="10" width="4" height="5"/>
+      <rect x="3"  y="17" width="5" height="4"/>
+      <rect x="10" y="17" width="5" height="4"/>
+    </symbol>
+    <!-- eyedropper -->
+    <symbol id="icon-eyedropper" viewBox="0 0 24 24">
+      <path d="M11 5L6 19l-3 1 1-3 14-14a2.121 2.121 0 0 1 3 3l-3 3"/>
+      <path d="M11 5l4 4"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -1794,13 +1831,15 @@ const state = {
     aspectLock: null,        // null | 'free' | '1:1' | '16:9' | '4:3' | 'original' | 'custom'
     customAspect: { w: 1, h: 1 }
   },
-  activeTool: null,          // 'crop' | 'redact' | 'blur' | 'text' | 'arrow' | 'pencil' | null
+  activeTool: null,          // 'crop' | 'redact' | 'blur' | 'pixelate' | 'text' | 'arrow' | 'pencil' | 'shape' | 'eyedropper' | null
   toolSettings: {
     blurStrength: 10,
+    pixelateSize: 12,
     redactFill: '#000000',
     text: { content: '', font: 'sans-serif', size: 24, color: '#ffffff', bold: false, italic: false },
-    arrow: { color: '#ff0000', thickness: 3, headSize: 12 },
-    pencil: { color: '#ff0000', thickness: 4 }
+    arrow:  { color: '#ff0000', thickness: 3, headSize: 12 },
+    pencil: { color: '#ff0000', thickness: 4 },
+    shape:  { mode: 'rect', color: '#ff0000', thickness: 3, fill: false }
   },
   layers: [],                // [{ id, type, params, visible }]
   history: new History(),
@@ -3132,6 +3171,51 @@ async function applyPencil(canvas, params) {
 return { drawPencil, drawText, drawArrow, applyText, applyArrow, applyPencil };
 })();
 
+const __m_ops_shapes = (() => {
+// Shape annotations: rectangle outline, ellipse outline, straight line.
+// Each shape becomes a layer of type 'shape' with mode in params.
+
+function drawShape(ctx, params) {
+  const { mode = 'rect', x1, y1, x2, y2, color = '#ff0000', thickness = 3, fill = false } = params;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (mode === 'rect') {
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    if (fill) ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  } else if (mode === 'circle') {
+    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+    const rx = Math.abs(x2 - x1) / 2, ry = Math.abs(y2 - y1) / 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    if (fill) ctx.fill();
+    ctx.stroke();
+  } else if (mode === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+async function applyShape(canvas, params) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  const ctx = out.getContext('2d');
+  ctx.drawImage(canvas, 0, 0);
+  drawShape(ctx, params);
+  return out;
+}
+
+return { drawShape, applyShape };
+})();
+
 const __m_core_layers = (() => {
 const state = __m_core_state.state;
 const commitOp = __m_core_state.commitOp;
@@ -3139,6 +3223,7 @@ const emit = __m_core_events.emit;
 const drawText = __m_ops_annotate.drawText;
 const drawArrow = __m_ops_annotate.drawArrow;
 const drawPencil = __m_ops_annotate.drawPencil;
+const drawShape = __m_ops_shapes.drawShape;
 
 // IDs are derived from the current layer stack so they survive replay
 // deterministically: the largest id ever in use is preserved across undo/redo
@@ -3201,9 +3286,10 @@ function clearLayers() {
 // Render a single layer onto a ctx already positioned in image-space.
 function drawLayer(ctx, layer) {
   if (!layer.visible) return;
-  if (layer.type === 'text') drawText(ctx, layer.params);
+  if (layer.type === 'text')        drawText(ctx, layer.params);
   else if (layer.type === 'arrow')  drawArrow(ctx, layer.params);
   else if (layer.type === 'pencil') drawPencil(ctx, layer.params);
+  else if (layer.type === 'shape')  drawShape(ctx, layer.params);
 }
 
 // Flatten an arbitrary layer list onto a copy of the canvas.
@@ -3215,9 +3301,10 @@ function flattenLayers(canvas, layers = state.layers) {
   ctx.drawImage(canvas, 0, 0);
   for (const layer of layers) {
     if (!layer.visible) continue;
-    if (layer.type === 'text')   drawText(ctx, layer.params);
+    if (layer.type === 'text')        drawText(ctx, layer.params);
     else if (layer.type === 'arrow')  drawArrow(ctx, layer.params);
     else if (layer.type === 'pencil') drawPencil(ctx, layer.params);
+    else if (layer.type === 'shape')  drawShape(ctx, layer.params);
   }
   return out;
 }
@@ -4167,12 +4254,18 @@ function tools() {
       ${row('Crop', `${kbd('C')} — trims the image to the selection`)}
       ${row('Redact', `${kbd('R')} — fills the selection with a solid black box`)}
       ${row('Blur', `${kbd('B')} — blurs the selection; drag the <strong>Blur</strong> slider in the bar to set strength (2–40 px)`)}
+      ${row('Pixelate', `${kbd('X')} — mosaics the selection into average-coloured blocks; drag the <strong>Pixel size</strong> slider in the bar (2–60 px)`)}
     `)}
     ${section('Annotation tools (layers)', `
       ${row('Text', `${kbd('Shift+T')} — click anywhere on the image to place a text label`)}
       ${row('Arrow', `${kbd('A')} — drag to draw an annotation arrow`)}
       ${row('Freehand', `${kbd('P')} — drag to draw a smoothed pencil stroke`)}
-      <p class="help-p">Text, arrows and pencil strokes become <strong>editable layers</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust).</p>
+      ${row('Shapes', `${kbd('S')} — drag to draw a rectangle, oval, or line. Mode picker + colour + thickness + fill toggle in the bar`)}
+      <p class="help-p">Text, arrows, pencil strokes and shapes become <strong>editable layers</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust).</p>
+      <p class="help-p">When any drawing tool is active, the floating bar shows that tool's <strong>brush settings</strong> — colour, thickness, and tool-specific options — so you can adjust before drawing or between strokes.</p>
+    `)}
+    ${section('Colour picker', `
+      ${row('Eyedropper', `${kbd('I')} — click any pixel on the image to copy its colour. The hex value goes to your clipboard and is applied as the colour for the pencil, arrow, shape and text tools. The eyedropper deactivates after one pick.`)}
     `)}
     ${section('Tips', `
       <p class="help-p">After drawing a selection you can nudge it with arrow keys (${kbd('Shift')}+arrow = 10 px). ${kbd('Ctrl+A')} selects the whole image. ${kbd('Ctrl+D')} deselects.</p>
@@ -4247,8 +4340,11 @@ function shortcuts() {
       ['C', 'Crop'],
       ['R', 'Redact'],
       ['B', 'Blur'],
+      ['X', 'Pixelate'],
       ['A', 'Arrow'],
       ['P', 'Freehand'],
+      ['S', 'Shapes'],
+      ['I', 'Eyedropper'],
       ['Shift+T', 'Text'],
     ]],
     ['View', [
@@ -4338,6 +4434,9 @@ function initToolbar() {
       ${btn('tb-blur', 'blur', 'Blur (B)', 'aria-pressed="false"')}
       ${btn('tb-pencil', 'pencil', 'Freehand (P)', 'aria-pressed="false"')}
       ${btn('tb-arrow', 'arrow', 'Arrow tool (A)', 'aria-pressed="false"')}
+      ${btn('tb-shape', 'shape', 'Shapes (S)', 'aria-pressed="false"')}
+      ${btn('tb-pixelate', 'pixelate', 'Pixelate (X)', 'aria-pressed="false"')}
+      ${btn('tb-eyedropper', 'eyedropper', 'Pick colour (I)', 'aria-pressed="false"')}
       ${btn('tb-rotate-cw', 'rotate-cw', 'Rotate 90° CW')}
       ${btn('tb-rotate-ccw', 'rotate-ccw', 'Rotate 90° CCW')}
       ${btn('tb-flip-h', 'flip-h', 'Flip horizontal')}
@@ -4375,7 +4474,7 @@ function initToolbar() {
   bindButton('tb-redo', () => emit('history:redo', null));
 
   // Tool buttons
-  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil'];
+  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil', 'shape', 'pixelate', 'eyedropper'];
   for (const tool of tools) {
     bindButton(`tb-${tool}`, () => setActiveTool(tool === state.activeTool ? null : tool));
   }
@@ -4456,9 +4555,9 @@ function bindButton(id, handler) {
 }
 
 function setToolsEnabled(enabled) {
-  const ids = ['tb-save','tb-crop','tb-redact','tb-blur','tb-rotate-cw','tb-rotate-ccw',
-    'tb-flip-h','tb-flip-v','tb-straighten','tb-adjust','tb-sharpen','tb-text','tb-arrow',
-    'tb-resize','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
+  const ids = ['tb-save','tb-crop','tb-redact','tb-blur','tb-pixelate','tb-rotate-cw','tb-rotate-ccw',
+    'tb-flip-h','tb-flip-v','tb-straighten','tb-adjust','tb-sharpen','tb-text','tb-arrow','tb-pencil',
+    'tb-shape','tb-eyedropper','tb-resize','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el) el.disabled = !enabled;
@@ -4467,7 +4566,7 @@ function setToolsEnabled(enabled) {
 
 function setActiveTool(tool) {
   state.activeTool = tool;
-  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil'];
+  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil', 'shape', 'pixelate', 'eyedropper'];
   for (const t of tools) {
     document.getElementById(`tb-${t}`)?.setAttribute('aria-pressed', String(t === tool));
   }
@@ -4737,7 +4836,7 @@ function selectAll() {
 // ── Drag handlers ─────────────────────────────────────────────────────────────
 
 function onDown({ x, y, imagePos }) {
-  if (!['crop', 'redact', 'blur', null].includes(state.activeTool)) return;
+  if (!['crop', 'redact', 'blur', 'pixelate', null].includes(state.activeTool)) return;
   if (state.activeTool === 'text' || state.activeTool === 'arrow') return;
 
   const { selection } = state;
@@ -6001,9 +6100,12 @@ const TOOL_META = {
   crop:       { icon: 'crop',       label: 'Crop' },
   redact:     { icon: 'redact',     label: 'Redact' },
   blur:       { icon: 'blur',       label: 'Blur' },
+  pixelate:   { icon: 'pixelate',   label: 'Pixelate' },
   text:       { icon: 'text',       label: 'Text' },
   arrow:      { icon: 'arrow',      label: 'Arrow' },
   pencil:     { icon: 'pencil',     label: 'Freehand' },
+  shape:      { icon: 'shape',      label: 'Shape' },
+  eyedropper: { icon: 'eyedropper', label: 'Eyedropper' },
 };
 
 function initRightSidebar() {
@@ -6135,15 +6237,18 @@ const savePrefs = __m_core_state.savePrefs;
 const on = __m_core_events.on;
 const emit = __m_core_events.emit;
 const clearSelection = __m_ui_selection.clearSelection;
+const esc = __m_core_html.esc;
 
-const COMMIT_TOOLS = { crop: 'Crop', redact: 'Redact', blur: 'Blur' };
+// Tools that need a selection rectangle then commit via the bar
+const COMMIT_TOOLS = { crop: 'Crop', redact: 'Redact', blur: 'Blur', pixelate: 'Pixelate' };
+// Tools that show their settings inline whenever active (no commit button)
+const SETTINGS_TOOLS = new Set(['pencil', 'arrow', 'shape']);
 
 let bar;
 
 function initContextBar() {
   bar = document.getElementById('context-bar');
   if (!bar) return;
-
   on('tool:changed', updateBar);
   on('selection:changed', updateBar);
   on('image:loaded', () => bar.classList.add('hidden'));
@@ -6152,27 +6257,34 @@ function initContextBar() {
 function updateBar() {
   const tool = state.activeTool;
   const hasSelection = !!state.selection.shape;
+
+  if (COMMIT_TOOLS[tool] && hasSelection) {
+    renderCommit(tool);
+  } else if (SETTINGS_TOOLS.has(tool)) {
+    renderSettings(tool);
+  } else {
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
+  }
+}
+
+// ── Commit-mode bar (selection-based ops) ────────────────────────────────────
+
+function renderCommit(tool) {
   const label = COMMIT_TOOLS[tool];
 
-  if (!label || !hasSelection) {
-    bar.classList.add('hidden');
-    return;
+  let strengthSlider = '';
+  if (tool === 'blur') {
+    strengthSlider = sliderHTML('blur', 'Blur', 2, 40, 1, state.toolSettings.blurStrength, 'px');
+  } else if (tool === 'pixelate') {
+    strengthSlider = sliderHTML('pixsize', 'Pixel size', 2, 60, 1, state.toolSettings.pixelateSize, 'px');
   }
 
-  const blurSlider = tool === 'blur' ? `
-    <div class="ctx-slider-wrap">
-      <span>Blur</span>
-      <input type="range" id="ctx-blur-strength" min="2" max="40" step="1" value="${state.toolSettings.blurStrength}">
-      <output id="ctx-blur-out">${state.toolSettings.blurStrength}px</output>
-    </div>
-    <div class="ctx-divider"></div>
-  ` : '';
-
   bar.innerHTML = `
-    ${blurSlider}
+    ${strengthSlider}${strengthSlider ? '<div class="ctx-divider"></div>' : ''}
     <button class="btn btn-primary" id="ctx-apply">
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-check"/></svg>
-      ${label}
+      ${esc(label)}
     </button>
     <button class="btn" id="ctx-cancel">
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-x"/></svg>
@@ -6181,33 +6293,121 @@ function updateBar() {
     <div class="ctx-divider"></div>
     <span class="ctx-hint">Enter to apply · Esc to cancel</span>
   `;
-
   bar.classList.remove('hidden');
 
-  const blurInp = bar.querySelector('#ctx-blur-strength');
-  if (blurInp) {
-    const blurOut = bar.querySelector('#ctx-blur-out');
-    blurInp.addEventListener('input', () => {
-      state.toolSettings.blurStrength = +blurInp.value;
-      blurOut.textContent = blurInp.value + 'px';
-      savePrefs();
-    });
-  }
-
+  bindSlider('blur',    'blurStrength', 'px');
+  bindSlider('pixsize', 'pixelateSize', 'px');
   bar.querySelector('#ctx-apply').addEventListener('click', applyOp);
   bar.querySelector('#ctx-cancel').addEventListener('click', cancelOp);
 }
 
+// ── Settings-mode bar (drawing tools) ─────────────────────────────────────────
+
+function renderSettings(tool) {
+  let body = '';
+  if (tool === 'pencil') {
+    const s = state.toolSettings.pencil;
+    body = `
+      ${labelHTML('Pencil')}
+      ${colorHTML('pencil-color', s.color)}
+      ${sliderHTML('pencil-th', 'Size', 1, 30, 1, s.thickness, 'px')}
+    `;
+  } else if (tool === 'arrow') {
+    const s = state.toolSettings.arrow;
+    body = `
+      ${labelHTML('Arrow')}
+      ${colorHTML('arrow-color', s.color)}
+      ${sliderHTML('arrow-th', 'Size', 1, 20, 1, s.thickness, 'px')}
+      ${sliderHTML('arrow-head', 'Head', 6, 40, 1, s.headSize, 'px')}
+    `;
+  } else if (tool === 'shape') {
+    const s = state.toolSettings.shape;
+    body = `
+      ${shapeModeHTML(s.mode)}
+      ${colorHTML('shape-color', s.color)}
+      ${sliderHTML('shape-th', 'Size', 1, 30, 1, s.thickness, 'px')}
+      <label class="ctx-check"><input type="checkbox" id="shape-fill"${s.fill ? ' checked' : ''}> Fill</label>
+    `;
+  }
+
+  bar.innerHTML = body;
+  bar.classList.remove('hidden');
+
+  // Wire common controls
+  if (tool === 'pencil') {
+    bindColor('pencil-color', state.toolSettings.pencil, 'color');
+    bindSlider('pencil-th',  'pencil', 'px', 'thickness');
+  } else if (tool === 'arrow') {
+    bindColor('arrow-color', state.toolSettings.arrow, 'color');
+    bindSlider('arrow-th',   'arrow', 'px', 'thickness');
+    bindSlider('arrow-head', 'arrow', 'px', 'headSize');
+  } else if (tool === 'shape') {
+    bar.querySelectorAll('[data-shape-mode]').forEach(b => b.addEventListener('click', () => {
+      state.toolSettings.shape.mode = b.dataset.shapeMode;
+      bar.querySelectorAll('[data-shape-mode]').forEach(x => x.classList.toggle('active', x === b));
+    }));
+    bindColor('shape-color', state.toolSettings.shape, 'color');
+    bindSlider('shape-th',   'shape', 'px', 'thickness');
+    bar.querySelector('#shape-fill')?.addEventListener('change', (e) => { state.toolSettings.shape.fill = e.target.checked; });
+  }
+}
+
+// ── HTML helpers ─────────────────────────────────────────────────────────────
+
+function labelHTML(text) {
+  return `<span class="ctx-label">${esc(text)}</span><div class="ctx-divider"></div>`;
+}
+function colorHTML(id, value) {
+  return `<label class="ctx-color"><input type="color" id="${id}" value="${esc(value)}"><span class="ctx-color-label">colour</span></label>`;
+}
+function sliderHTML(id, label, min, max, step, value, unit) {
+  return `<div class="ctx-slider-wrap">
+    <span>${esc(label)}</span>
+    <input type="range" id="ctx-${id}" min="${min}" max="${max}" step="${step}" value="${value}">
+    <output id="ctx-${id}-out">${value}${unit}</output>
+  </div>`;
+}
+function shapeModeHTML(current) {
+  const modes = [['rect','▭ Rect'],['circle','○ Oval'],['line','╱ Line']];
+  return `<div class="ctx-modes">
+    ${modes.map(([v, l]) => `<button class="ctx-mode-btn${v===current?' active':''}" data-shape-mode="${v}">${l}</button>`).join('')}
+  </div><div class="ctx-divider"></div>`;
+}
+
+// ── Wire helpers ─────────────────────────────────────────────────────────────
+
+// For commit-mode sliders that store a top-level toolSettings field
+function bindSlider(idStem, settingsKey, unit = 'px', subKey = null) {
+  const inp = bar.querySelector('#ctx-' + idStem);
+  const out = bar.querySelector('#ctx-' + idStem + '-out');
+  if (!inp) return;
+  inp.addEventListener('input', () => {
+    if (subKey) state.toolSettings[settingsKey][subKey] = +inp.value;
+    else state.toolSettings[settingsKey] = +inp.value;
+    out.textContent = inp.value + unit;
+    savePrefs();
+  });
+}
+
+function bindColor(idStem, settingsObj, key) {
+  const inp = bar.querySelector('#' + idStem);
+  if (!inp) return;
+  inp.addEventListener('input', () => { settingsObj[key] = inp.value; savePrefs(); });
+}
+
+// ── Commit / Cancel ──────────────────────────────────────────────────────────
+
 function applyOp() {
   const tool = state.activeTool;
-  if (tool === 'crop') emit('op:crop', null);
-  else if (tool === 'redact') emit('op:redact', null);
-  else if (tool === 'blur') emit('op:blur', null);
+  if (tool === 'crop')     emit('op:crop',     null);
+  else if (tool === 'redact')   emit('op:redact',   null);
+  else if (tool === 'blur')     emit('op:blur',     null);
+  else if (tool === 'pixelate') emit('op:pixelate', null);
 }
 
 function cancelOp() {
   clearSelection();
-  emit('tool:activate', { tool: state.activeTool }); // toggle active tool off
+  emit('tool:activate', { tool: state.activeTool });
 }
 
 return { initContextBar };
@@ -6297,6 +6497,58 @@ async function apply(canvas, { x, y, w, h, strength = 10 }) {
   ctx.drawImage(tmp, rx - pad, ry - pad);
   ctx.restore();
 
+  return out;
+}
+
+return { apply };
+})();
+
+const __m_ops_pixelate = (() => {
+// Pixelate a rectangular region by averaging colour in size×size blocks.
+// Different visual signature from blur — useful for hiding faces / text where
+// "this is intentionally hidden" should read clearly.
+
+async function apply(canvas, { x, y, w, h, size = 12 }) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  const ctx = out.getContext('2d');
+  ctx.drawImage(canvas, 0, 0);
+
+  const rx = Math.max(0, Math.round(x));
+  const ry = Math.max(0, Math.round(y));
+  const rw = Math.min(canvas.width  - rx, Math.round(w));
+  const rh = Math.min(canvas.height - ry, Math.round(h));
+  if (rw <= 0 || rh <= 0) return out;
+
+  const block = Math.max(2, Math.round(size));
+  const id = ctx.getImageData(rx, ry, rw, rh);
+  const d  = id.data;
+
+  for (let by = 0; by < rh; by += block) {
+    for (let bx = 0; bx < rw; bx += block) {
+      const bw = Math.min(block, rw - bx);
+      const bh = Math.min(block, rh - by);
+
+      // Average channel values across the block
+      let r = 0, g = 0, bb = 0, a = 0, n = 0;
+      for (let py = 0; py < bh; py++) {
+        for (let px = 0; px < bw; px++) {
+          const i = ((by + py) * rw + (bx + px)) * 4;
+          r += d[i]; g += d[i + 1]; bb += d[i + 2]; a += d[i + 3];
+          n++;
+        }
+      }
+      r = r / n | 0; g = g / n | 0; bb = bb / n | 0; a = a / n | 0;
+
+      // Fill the block with the averaged colour
+      for (let py = 0; py < bh; py++) {
+        for (let px = 0; px < bw; px++) {
+          const i = ((by + py) * rw + (bx + px)) * 4;
+          d[i] = r; d[i + 1] = g; d[i + 2] = bb; d[i + 3] = a;
+        }
+      }
+    }
+  }
+  ctx.putImageData(id, rx, ry);
   return out;
 }
 
@@ -6621,6 +6873,7 @@ const rotateOp = __m_ops_rotate;
 const flipOp = __m_ops_flip;
 const redactOp = __m_ops_redact;
 const blurOp = __m_ops_blur;
+const pixelateOp = __m_ops_pixelate;
 const resizeOp = __m_ops_resize;
 const adjustOp = __m_ops_adjust;
 const sharpenOp = __m_ops_sharpen;
@@ -6630,7 +6883,7 @@ const applyArrow = __m_ops_annotate.applyArrow;
 
 const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
-  redact: redactOp, blur: blurOp, resize: resizeOp,
+  redact: redactOp, blur: blurOp, pixelate: pixelateOp, resize: resizeOp,
   adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp,
 };
 
@@ -6706,6 +6959,40 @@ function initOpRunner() {
   on('op:annotate:pencil', async (params) => {
     if (!state.image.working) return;
     addLayer('pencil', params);
+  });
+
+  on('op:annotate:shape', async (params) => {
+    if (!state.image.working) return;
+    addLayer('shape', params);
+  });
+
+  on('op:pixelate', async () => {
+    const { selection, toolSettings } = state;
+    if (!selection.shape || !state.image.working) return;
+    await runOp('pixelate', {
+      x: selection.x, y: selection.y, w: selection.w, h: selection.h,
+      size: toolSettings.pixelateSize
+    });
+    emit('selection:clear', null);
+    emit('tool:activate', { tool: state.activeTool });
+  });
+
+  on('op:eyedropper', ({ imagePos }) => {
+    if (!state.image.working) return;
+    const ctx = state.image.working.getContext('2d');
+    const x = Math.max(0, Math.min(state.image.width  - 1, Math.round(imagePos.x)));
+    const y = Math.max(0, Math.min(state.image.height - 1, Math.round(imagePos.y)));
+    const data = ctx.getImageData(x, y, 1, 1).data;
+    const hex = '#' + [data[0], data[1], data[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    // Apply to all annotation tools' colour settings + clipboard
+    state.toolSettings.pencil.color = hex;
+    state.toolSettings.arrow.color  = hex;
+    state.toolSettings.shape.color  = hex;
+    state.toolSettings.text.color   = hex;
+    navigator.clipboard?.writeText(hex).catch(() => {});
+    emit('toast', { message: `Picked ${hex} (copied to clipboard)`, level: 'ok', duration: 2200 });
+    // Auto-deactivate eyedropper — toolbar listens for tool:activate to toggle aria-pressed
+    emit('tool:activate', { tool: 'eyedropper' });
   });
 
   on('history:undo', undoOp);
@@ -7159,12 +7446,17 @@ let _arrowCurrent = null;
 let _pencilPoints = null;     // null when idle, [{x,y}, …] while drawing
 const PENCIL_MIN_DIST = 1.5;  // image-px between successive samples
 
+// ── Shape tool state ──────────────────────────────────────────────────────────
+let _shapeStart = null;
+let _shapeCurrent = null;
+
 function initToolHandlers() {
   on('canvas:mousedown', onDown);
   on('canvas:mousemove', onMove);
   on('canvas:mouseup',   onUp);
   on('render:overlay',   drawArrowPreview);
   on('render:overlay',   drawPencilPreview);
+  on('render:overlay',   drawShapePreview);
   on('tool:changed',     onToolChanged);
 }
 
@@ -7172,6 +7464,8 @@ function onToolChanged() {
   _arrowStart = null;
   _arrowCurrent = null;
   _pencilPoints = null;
+  _shapeStart = null;
+  _shapeCurrent = null;
 }
 
 // ── Mouse routing ──────────────────────────────────────────────────────────────
@@ -7186,6 +7480,11 @@ function onDown({ imagePos }) {
     _arrowCurrent = { ...imagePos };
   } else if (state.activeTool === 'pencil') {
     _pencilPoints = [{ x: imagePos.x, y: imagePos.y }];
+  } else if (state.activeTool === 'shape') {
+    _shapeStart   = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
+    _shapeCurrent = { ...imagePos };
+  } else if (state.activeTool === 'eyedropper') {
+    emit('op:eyedropper', { imagePos });
   }
 }
 
@@ -7201,6 +7500,9 @@ function onMove({ imagePos }) {
       _pencilPoints.push({ x: imagePos.x, y: imagePos.y });
       markDirty();
     }
+  } else if (state.activeTool === 'shape' && _shapeStart) {
+    _shapeCurrent = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
+    markDirty();
   }
 }
 
@@ -7226,6 +7528,19 @@ function onUp({ imagePos }) {
       emit('op:annotate:pencil', { points, color: pencil.color, thickness: pencil.thickness });
     }
     _pencilPoints = null;
+    markDirty();
+  } else if (state.activeTool === 'shape' && _shapeStart) {
+    const x2 = Math.round(imagePos.x), y2 = Math.round(imagePos.y);
+    const dx = x2 - _shapeStart.x, dy = y2 - _shapeStart.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      const { shape } = state.toolSettings;
+      emit('op:annotate:shape', {
+        mode: shape.mode, x1: _shapeStart.x, y1: _shapeStart.y, x2, y2,
+        color: shape.color, thickness: shape.thickness, fill: shape.fill
+      });
+    }
+    _shapeStart = null;
+    _shapeCurrent = null;
     markDirty();
   }
 }
@@ -7297,6 +7612,44 @@ function drawPencilPreview({ ctx, zoom, pan }) {
     ctx.lineTo(last.x, last.y);
   }
   ctx.stroke();
+  ctx.restore();
+}
+
+// ── Shape live preview ─────────────────────────────────────────────────────────
+
+function drawShapePreview({ ctx, zoom, pan }) {
+  if (state.activeTool !== 'shape' || !_shapeStart || !_shapeCurrent) return;
+  const { shape } = state.toolSettings;
+  const toC = (ix, iy) => ({ x: ix * zoom + pan.x, y: iy * zoom + pan.y });
+  const a = toC(_shapeStart.x, _shapeStart.y);
+  const b = toC(_shapeCurrent.x, _shapeCurrent.y);
+
+  ctx.save();
+  ctx.strokeStyle = shape.color;
+  ctx.fillStyle   = shape.color;
+  ctx.lineWidth   = shape.thickness * zoom;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.globalAlpha = 0.85;
+
+  if (shape.mode === 'rect') {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+    if (shape.fill) ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  } else if (shape.mode === 'circle') {
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    if (shape.fill) ctx.fill();
+    ctx.stroke();
+  } else if (shape.mode === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -8029,6 +8382,10 @@ function layerLabel(l) {
     const n = l.params.points?.length ?? 0;
     return `Freehand · ${n} pt`;
   }
+  if (l.type === 'shape') {
+    const m = l.params.mode ?? 'rect';
+    return m === 'rect' ? 'Rectangle' : m === 'circle' ? 'Oval' : m === 'line' ? 'Line' : 'Shape';
+  }
   return l.type;
 }
 
@@ -8036,6 +8393,10 @@ function layerGlyph(l) {
   if (l.type === 'text')   return 'T';
   if (l.type === 'arrow')  return '↗';
   if (l.type === 'pencil') return '✎';
+  if (l.type === 'shape') {
+    const m = l.params.mode ?? 'rect';
+    return m === 'rect' ? '▭' : m === 'circle' ? '○' : m === 'line' ? '╱' : '◆';
+  }
   return '◆';
 }
 
@@ -8375,7 +8736,7 @@ async function boot() {
     showPanel(tool === 'crop');
     const canvas = document.getElementById('main-canvas');
     if (canvas) {
-      const cursors = { crop: 'crosshair', redact: 'crosshair', blur: 'crosshair', text: 'text', arrow: 'crosshair', pencil: 'crosshair' };
+      const cursors = { crop: 'crosshair', redact: 'crosshair', blur: 'crosshair', pixelate: 'crosshair', text: 'text', arrow: 'crosshair', pencil: 'crosshair', shape: 'crosshair', eyedropper: 'copy' };
       canvas.style.cursor = tool ? (cursors[tool] ?? 'default') : '';
     }
   });
@@ -8511,6 +8872,9 @@ function setupKeyboard() {
     if (e.key === 'b' || e.key === 'B') { emit('tool:activate', { tool: 'blur' }); return; }
     if (e.key === 'a' || e.key === 'A') { emit('tool:activate', { tool: 'arrow' }); return; }
     if (e.key === 'p' || e.key === 'P') { emit('tool:activate', { tool: 'pencil' }); return; }
+    if (e.key === 's' || e.key === 'S') { emit('tool:activate', { tool: 'shape' }); return; }
+    if (e.key === 'x' || e.key === 'X') { emit('tool:activate', { tool: 'pixelate' }); return; }
+    if (e.key === 'i' || e.key === 'I') { emit('tool:activate', { tool: 'eyedropper' }); return; }
 
     // F — fullscreen
     if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); return; }
@@ -8526,9 +8890,10 @@ function setupKeyboard() {
     // Enter — commit active selection tool
     if (e.key === 'Enter' && state.selection.shape) {
       const t = state.activeTool;
-      if (t === 'crop')   { emit('op:crop',   null); return; }
-      if (t === 'redact') { emit('op:redact', null); return; }
-      if (t === 'blur')   { emit('op:blur',   null); return; }
+      if (t === 'crop')     { emit('op:crop',     null); return; }
+      if (t === 'redact')   { emit('op:redact',   null); return; }
+      if (t === 'blur')     { emit('op:blur',     null); return; }
+      if (t === 'pixelate') { emit('op:pixelate', null); return; }
     }
 
     // Navigation
