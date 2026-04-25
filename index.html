@@ -2153,11 +2153,157 @@ function walkJpeg(buf, start) {
 return { decodeRaw };
 })();
 
+const __m_decode_jxl_js = (() => {
+const emit = __m_core_events_js.emit;
+
+const URL = 'https://esm.sh/@jsquash/jxl@1/decode';
+
+let _decodePromise = null;
+
+async function getDecoder() {
+  if (_decodePromise) return _decodePromise;
+  emit('toast', { message: 'Loading JPEG-XL decoder…', level: 'info', duration: 6000 });
+  _decodePromise = import(URL)
+    .then(mod => mod.default ?? mod.decode ?? mod)
+    .catch(err => { _decodePromise = null; throw new Error('Could not load JPEG-XL decoder: ' + err.message); });
+  return _decodePromise;
+}
+
+async function decodeJxl(blob) {
+  const decode = await getDecoder();
+  const buf = await blob.arrayBuffer();
+  const imageData = await decode(buf);
+  const canvas = new OffscreenCanvas(imageData.width, imageData.height);
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+  return canvas.transferToImageBitmap();
+}
+
+return { decodeJxl };
+})();
+
+const __m_decode_psd_js = (() => {
+const emit = __m_core_events_js.emit;
+
+// ag-psd returns a flattened canvas via its initialized canvas factory.
+const URL = 'https://esm.sh/ag-psd';
+
+let _libPromise = null;
+
+async function getLib() {
+  if (_libPromise) return _libPromise;
+  emit('toast', { message: 'Loading PSD decoder…', level: 'info', duration: 8000 });
+  _libPromise = import(URL)
+    .then(mod => {
+      const lib = mod.default ?? mod;
+      // ag-psd needs to be told how to make a canvas in non-DOM contexts;
+      // in a browser main thread it picks up `document` automatically.
+      if (lib.initializeCanvas && typeof OffscreenCanvas !== 'undefined') {
+        lib.initializeCanvas(
+          (w, h) => new OffscreenCanvas(w, h),
+          (img) => { const c = new OffscreenCanvas(img.width, img.height); c.getContext('2d').drawImage(img, 0, 0); return c; }
+        );
+      }
+      return lib;
+    })
+    .catch(err => { _libPromise = null; throw new Error('Could not load PSD decoder: ' + err.message); });
+  return _libPromise;
+}
+
+async function decodePsd(blob) {
+  const lib = await getLib();
+  const buf = await blob.arrayBuffer();
+  const psd = lib.readPsd(buf, { skipLayerImageData: true, skipThumbnail: true });
+  if (!psd?.canvas) throw new Error('PSD has no rendered composite — file may be empty or unsupported');
+  const W = psd.width ?? psd.canvas.width;
+  const H = psd.height ?? psd.canvas.height;
+  const out = new OffscreenCanvas(W, H);
+  out.getContext('2d').drawImage(psd.canvas, 0, 0);
+  return out.transferToImageBitmap();
+}
+
+return { decodePsd };
+})();
+
+const __m_decode_tga_js = (() => {
+const emit = __m_core_events_js.emit;
+
+const URL = 'https://esm.sh/tga-js@1.1.2';
+
+let _libPromise = null;
+
+async function getLib() {
+  if (_libPromise) return _libPromise;
+  emit('toast', { message: 'Loading TGA decoder…', level: 'info', duration: 6000 });
+  _libPromise = import(URL)
+    .then(mod => mod.default ?? mod)
+    .catch(err => { _libPromise = null; throw new Error('Could not load TGA decoder: ' + err.message); });
+  return _libPromise;
+}
+
+async function decodeTga(blob) {
+  const TGA = await getLib();
+  const buf = new Uint8Array(await blob.arrayBuffer());
+
+  // tga-js exposes either a class default export or a parse function. Handle both.
+  let imageData;
+  if (typeof TGA === 'function') {
+    const inst = new TGA();
+    inst.load(buf);
+    imageData = inst.getImageData();
+  } else if (TGA.parse) {
+    imageData = TGA.parse(buf);
+  } else {
+    throw new Error('Unexpected tga-js shape');
+  }
+  if (!imageData?.width || !imageData?.height) throw new Error('TGA decoded with empty dimensions');
+
+  const out = new OffscreenCanvas(imageData.width, imageData.height);
+  out.getContext('2d').putImageData(imageData, 0, 0);
+  return out.transferToImageBitmap();
+}
+
+return { decodeTga };
+})();
+
+const __m_decode_dds_js = (() => {
+const emit = __m_core_events_js.emit;
+
+const URL = 'https://esm.sh/dds-parser';
+
+let _libPromise = null;
+
+async function getLib() {
+  if (_libPromise) return _libPromise;
+  emit('toast', { message: 'Loading DDS decoder…', level: 'info', duration: 6000 });
+  _libPromise = import(URL)
+    .then(mod => mod.default ?? mod)
+    .catch(err => { _libPromise = null; throw new Error('Could not load DDS decoder: ' + err.message); });
+  return _libPromise;
+}
+
+async function decodeDds(blob) {
+  const lib = await getLib();
+  const buf = await blob.arrayBuffer();
+  const result = lib.decodeDds ? lib.decodeDds(buf) : lib(buf);
+  if (!result?.mipmaps?.length) throw new Error('DDS file has no mipmaps');
+  const top = result.mipmaps[0];
+  const out = new OffscreenCanvas(top.width, top.height);
+  out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(top.data), top.width, top.height), 0, 0);
+  return out.transferToImageBitmap();
+}
+
+return { decodeDds };
+})();
+
 const __m_decode_registry_js = (() => {
 const decodeNative = __m_decode_native_js.decodeNative;
 const decodeHeic = __m_decode_heic_js.decodeHeic;
 const decodeTiff = __m_decode_tiff_js.decodeTiff;
 const decodeRaw = __m_decode_raw_js.decodeRaw;
+const decodeJxl = __m_decode_jxl_js.decodeJxl;
+const decodePsd = __m_decode_psd_js.decodePsd;
+const decodeTga = __m_decode_tga_js.decodeTga;
+const decodeDds = __m_decode_dds_js.decodeDds;
 
 // Supported v1 input formats
 const SUPPORTED_TYPES = new Set([
@@ -2166,6 +2312,10 @@ const SUPPORTED_TYPES = new Set([
   'image/heic', 'image/heif',
   'image/tiff',
   'image/x-raw',
+  'image/jxl',
+  'image/vnd.adobe.photoshop',
+  'image/x-targa', 'image/x-tga',
+  'image/vnd.ms-dds',
 ]);
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -2173,6 +2323,10 @@ const SUPPORTED_EXTENSIONS = new Set([
   'heic', 'heif',
   'tif', 'tiff',
   'cr2', 'nef', 'arw', 'dng', 'raf', 'orf',
+  'jxl',
+  'psd',
+  'tga', 'tpic',
+  'dds',
 ]);
 
 const RAW_EXTS = new Set(['cr2', 'nef', 'arw', 'dng', 'raf', 'orf']);
@@ -2185,6 +2339,10 @@ const EXT_TO_MIME = {
   tif: 'image/tiff', tiff: 'image/tiff',
   cr2: 'image/x-raw', nef: 'image/x-raw', arw: 'image/x-raw',
   dng: 'image/x-raw', raf: 'image/x-raw', orf: 'image/x-raw',
+  jxl: 'image/jxl',
+  psd: 'image/vnd.adobe.photoshop',
+  tga: 'image/x-targa', tpic: 'image/x-targa',
+  dds: 'image/vnd.ms-dds',
 };
 
 function isSupportedFile(file) {
@@ -2213,6 +2371,10 @@ function formatOf(file) {
     'image/heic': 'heic', 'image/heif': 'heif',
     'image/tiff': 'tiff',
     'image/x-raw': 'raw',
+    'image/jxl': 'jxl',
+    'image/vnd.adobe.photoshop': 'psd',
+    'image/x-targa': 'tga', 'image/x-tga': 'tga',
+    'image/vnd.ms-dds': 'dds',
   };
   return map[mime] ?? 'unknown';
 }
@@ -2261,6 +2423,26 @@ async function decode(file) {
   // RAW: extract embedded JPEG preview
   if (mime === 'image/x-raw' || RAW_EXTS.has(extOf(file.name))) {
     return decodeRaw(blob);
+  }
+
+  // JPEG-XL
+  if (mime === 'image/jxl' || extOf(file.name) === 'jxl') {
+    return decodeJxl(blob);
+  }
+
+  // PSD
+  if (mime === 'image/vnd.adobe.photoshop' || extOf(file.name) === 'psd') {
+    return decodePsd(blob);
+  }
+
+  // TGA
+  if (mime === 'image/x-targa' || mime === 'image/x-tga' || extOf(file.name) === 'tga' || extOf(file.name) === 'tpic') {
+    return decodeTga(blob);
+  }
+
+  // DDS
+  if (mime === 'image/vnd.ms-dds' || extOf(file.name) === 'dds') {
+    return decodeDds(blob);
   }
 
   return decodeNative(blob);
@@ -2542,7 +2724,7 @@ async function openFileFSA() {
   if (!hasFSA) { openFileFallback(); return; }
   try {
     const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp','.heic','.heif','.tif','.tiff','.cr2','.nef','.arw','.dng','.raf','.orf'] } }],
+      types: [{ description: 'Images', accept: { 'image/*': ['.jpg','.jpeg','.png','.webp','.gif','.avif','.svg','.bmp','.heic','.heif','.tif','.tiff','.cr2','.nef','.arw','.dng','.raf','.orf','.jxl','.psd','.tga','.tpic','.dds'] } }],
       multiple: false
     });
     const file = await handle.getFile();
