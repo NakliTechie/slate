@@ -7025,7 +7025,7 @@ function showExport() {
 
   const dlg = getOrCreate('modal-export');
 
-  const fmts = ['png', 'jpeg', 'webp'];
+  const fmts = ['png', 'jpeg', 'webp', 'tiff'];
   const formatRows = fmts.map(f => `
     <label class="export-fmt-option">
       <input type="radio" name="exp-fmt" value="${f}"${exp.format === f ? ' checked' : ''}>
@@ -7071,7 +7071,7 @@ function showExport() {
         <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">JPEG only — PNG/WebP always stripped</span>
       </div>
       <p class="modal-info" id="exp-filename-preview">
-        ${image.width} × ${image.height} px — <em>${esc(baseName)}-<span id="exp-ts">yymmddhhmmss</span>.${exp.format === 'jpeg' ? 'jpg' : exp.format}</em>
+        ${image.width} × ${image.height} px — <em>${esc(baseName)}-<span id="exp-ts">yymmddhhmmss</span>.${exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format}</em>
       </p>
     </div>
     <div class="modal-footer">
@@ -7086,13 +7086,14 @@ function showExport() {
   // Quality row only shown for lossy formats
   function updateQualityRow() {
     const fmt = dlg.querySelector('input[name="exp-fmt"]:checked')?.value ?? 'png';
-    dlg.querySelector('#exp-quality-row').style.display = fmt === 'png' ? 'none' : '';
+    // Quality slider is only meaningful for lossy formats
+    dlg.querySelector('#exp-quality-row').style.display = (fmt === 'png' || fmt === 'tiff') ? 'none' : '';
     updateFilenamePreview();
   }
 
   function updateFilenamePreview() {
     const fmt = dlg.querySelector('input[name="exp-fmt"]:checked')?.value ?? 'png';
-    const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+    const ext = fmt === 'jpeg' ? 'jpg' : fmt === 'tiff' ? 'tif' : fmt;
     dlg.querySelector('#exp-filename-preview').innerHTML =
       `${image.width} × ${image.height} px — <em>${esc(baseName)}-<span id="exp-ts">yymmddhhmmss</span>.${ext}</em>`;
   }
@@ -8185,6 +8186,35 @@ async function encodeWebp(canvas, quality = 0.9, lossless = false) {
 return { encodeWebp };
 })();
 
+const __m_encode_tiff_js = (() => {
+const emit = __m_core_events_js.emit;
+
+// Reuses the same utif build that decode/tiff.js uses.
+const URL = 'https://esm.sh/utif@3.1.0';
+
+let _utifPromise = null;
+
+async function getUtif() {
+  if (_utifPromise) return _utifPromise;
+  emit('toast', { message: 'Loading TIFF encoder…', level: 'info', duration: 6000 });
+  _utifPromise = import(URL)
+    .then(mod => mod.default ?? mod)
+    .catch(err => { _utifPromise = null; throw new Error('Could not load TIFF encoder: ' + err.message); });
+  return _utifPromise;
+}
+
+async function encodeTiff(canvas) {
+  const UTIF = await getUtif();
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // utif.encodeImage(rgba, width, height) -> ArrayBuffer with a single-IFD TIFF
+  const buf = UTIF.encodeImage(imageData.data, imageData.width, imageData.height);
+  return new Blob([buf], { type: 'image/tiff' });
+}
+
+return { encodeTiff };
+})();
+
 const __m_app_js = (() => {
 const state = __m_core_state_js.state;
 const loadPrefs = __m_core_state_js.loadPrefs;
@@ -8246,6 +8276,7 @@ const flattenLayers = __m_core_layers_js.flattenLayers;
 const encodePng = __m_encode_png_js.encodePng;
 const encodeJpeg = __m_encode_jpeg_js.encodeJpeg;
 const encodeWebp = __m_encode_webp_js.encodeWebp;
+const encodeTiff = __m_encode_tiff_js.encodeTiff;
 const saveDownload = __m_core_fs_js.saveDownload;
 const saveOverwrite = __m_core_fs_js.saveOverwrite;
 const saveSidecar = __m_core_fs_js.saveSidecar;
@@ -8579,13 +8610,14 @@ async function doSave(showDialog = false) {
   try {
     if (exp.format === 'png') blob = await encodePng(flat);
     else if (exp.format === 'jpeg') blob = await encodeJpeg(flat, exp.quality, exifRaw);
+    else if (exp.format === 'tiff') blob = await encodeTiff(flat);
     else blob = await encodeWebp(flat, exp.quality);
   } catch (err) {
     emit('error', { message: `Save failed: ${err.message}` });
     return;
   }
 
-  const ext = exp.format === 'jpeg' ? 'jpg' : exp.format;
+  const ext = exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format;
   const filename = `${baseName}-${tstamp()}.${ext}`;
 
   try {
