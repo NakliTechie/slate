@@ -231,6 +231,20 @@
 #context-bar .ctx-mode-btn:hover { background: var(--bg-2); color: var(--fg-0); }
 #context-bar .ctx-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Recent-colour swatches — used in the context bar AND the text modal */
+.ctx-swatches { display: inline-flex; gap: 3px; align-items: center; }
+.ctx-swatch {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--bg-3);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 80ms ease;
+  flex-shrink: 0;
+}
+.ctx-swatch:hover { transform: scale(1.18); border-color: var(--fg-1); }
+.ctx-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ── Main area (right of toolbar) ─────────────────────────────────────────── */
 
 #main-area {
@@ -4265,7 +4279,8 @@ function tools() {
       <p class="help-p">When any drawing tool is active, the floating bar shows that tool's <strong>brush settings</strong> — colour, thickness, and tool-specific options — so you can adjust before drawing or between strokes.</p>
     `)}
     ${section('Colour picker', `
-      ${row('Eyedropper', `${kbd('I')} — click any pixel on the image to copy its colour. The hex value goes to your clipboard and is applied as the colour for the pencil, arrow, shape and text tools. The eyedropper deactivates after one pick.`)}
+      ${row('Eyedropper', `${kbd('I')} — click any pixel on the image to copy its colour. The hex value goes to your clipboard and applies as the colour for pencil, arrow, shape, and text. After picking, the eyedropper switches back to whichever drawing tool you came from.`)}
+      <p class="help-p">Each colour you use is remembered as a small <strong>recent-swatch</strong> shown next to every colour picker (drawing tools' floating bar and the text modal). The list holds the last 8 colours, persists across reloads, and clicking a swatch sets the active tool's colour instantly.</p>
     `)}
     ${section('Tips', `
       <p class="help-p">After drawing a selection you can nudge it with arrow keys (${kbd('Shift')}+arrow = 10 px). ${kbd('Ctrl+A')} selects the whole image. ${kbd('Ctrl+D')} deselects.</p>
@@ -6231,6 +6246,43 @@ function saveRecent() {
 return { initRightSidebar };
 })();
 
+const __m_core_colors = (() => {
+// Recently used colours — shared across every tool that has a colour setting.
+// Persisted to localStorage so the swatches survive reloads.
+
+const KEY = 'slate.v1.recent-colors';
+const MAX = 8;
+let _list = null;
+
+function load() {
+  if (_list !== null) return;
+  try {
+    const raw = localStorage.getItem(KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    _list = Array.isArray(arr)
+      ? arr.filter(c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)).slice(0, MAX)
+      : [];
+  } catch { _list = []; }
+}
+
+function getRecentColors() {
+  load();
+  return _list.slice();
+}
+
+function pushRecentColor(hex) {
+  if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+  const norm = hex.toLowerCase();
+  load();
+  const out = _list.filter(c => c !== norm);
+  out.unshift(norm);
+  _list = out.slice(0, MAX);
+  try { localStorage.setItem(KEY, JSON.stringify(_list)); } catch {}
+}
+
+return { getRecentColors, pushRecentColor };
+})();
+
 const __m_ui_contextbar = (() => {
 const state = __m_core_state.state;
 const savePrefs = __m_core_state.savePrefs;
@@ -6238,6 +6290,8 @@ const on = __m_core_events.on;
 const emit = __m_core_events.emit;
 const clearSelection = __m_ui_selection.clearSelection;
 const esc = __m_core_html.esc;
+const getRecentColors = __m_core_colors.getRecentColors;
+const pushRecentColor = __m_core_colors.pushRecentColor;
 
 // Tools that need a selection rectangle then commit via the bar
 const COMMIT_TOOLS = { crop: 'Crop', redact: 'Redact', blur: 'Blur', pixelate: 'Pixelate' };
@@ -6358,7 +6412,13 @@ function labelHTML(text) {
   return `<span class="ctx-label">${esc(text)}</span><div class="ctx-divider"></div>`;
 }
 function colorHTML(id, value) {
-  return `<label class="ctx-color"><input type="color" id="${id}" value="${esc(value)}"><span class="ctx-color-label">colour</span></label>`;
+  const recent = getRecentColors();
+  const swatches = recent.length
+    ? `<div class="ctx-swatches" data-target="${id}">${recent.map(c =>
+        `<button class="ctx-swatch" type="button" data-swatch="${c}" style="background:${c}" title="${c}" aria-label="Use ${c}"></button>`
+      ).join('')}</div>`
+    : '';
+  return `<label class="ctx-color"><input type="color" id="${id}" value="${esc(value)}"><span class="ctx-color-label">colour</span></label>${swatches}`;
 }
 function sliderHTML(id, label, min, max, step, value, unit) {
   return `<div class="ctx-slider-wrap">
@@ -6392,7 +6452,24 @@ function bindSlider(idStem, settingsKey, unit = 'px', subKey = null) {
 function bindColor(idStem, settingsObj, key) {
   const inp = bar.querySelector('#' + idStem);
   if (!inp) return;
-  inp.addEventListener('input', () => { settingsObj[key] = inp.value; savePrefs(); });
+  inp.addEventListener('change', () => {
+    settingsObj[key] = inp.value;
+    pushRecentColor(inp.value);
+    savePrefs();
+    updateBar();          // re-render so the new colour appears in the swatch row
+  });
+  // Wire any swatches associated with this picker
+  const wrap = bar.querySelector(`.ctx-swatches[data-target="${idStem}"]`);
+  wrap?.querySelectorAll('[data-swatch]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hex = btn.dataset.swatch;
+      settingsObj[key] = hex;
+      inp.value = hex;
+      pushRecentColor(hex);
+      savePrefs();
+      updateBar();
+    });
+  });
 }
 
 // ── Commit / Cancel ──────────────────────────────────────────────────────────
@@ -6867,6 +6944,7 @@ const clearLayers = __m_core_layers.clearLayers;
 const setLayers = __m_core_layers.setLayers;
 const applyLayerOp = __m_core_layers.applyLayerOp;
 const isLayerOp = __m_core_layers.isLayerOp;
+const pushRecentColor = __m_core_colors.pushRecentColor;
 
 const cropOp = __m_ops_crop;
 const rotateOp = __m_ops_rotate;
@@ -6990,14 +7068,31 @@ function initOpRunner() {
     state.toolSettings.shape.color  = hex;
     state.toolSettings.text.color   = hex;
     navigator.clipboard?.writeText(hex).catch(() => {});
+    pushRecentColor(hex);
     emit('toast', { message: `Picked ${hex} (copied to clipboard)`, level: 'ok', duration: 2200 });
-    // Auto-deactivate eyedropper — toolbar listens for tool:activate to toggle aria-pressed
-    emit('tool:activate', { tool: 'eyedropper' });
+    // After picking: return to the drawing tool the user came from. Falls back
+    // to toggling eyedropper off if there was none.
+    if (_toolBeforeEyedropper && _toolBeforeEyedropper !== 'eyedropper') {
+      // tool:activate is a toggle — switching from eyedropper to prev requires
+      // first clearing the active tool, then activating prev so its aria-pressed
+      // state flips. Direct activation works because state.activeTool is currently
+      // 'eyedropper', not the target tool.
+      emit('tool:activate', { tool: _toolBeforeEyedropper });
+    } else {
+      emit('tool:activate', { tool: 'eyedropper' });
+    }
+  });
+
+  // Remember the last drawing tool so eyedropper can return to it after picking.
+  on('tool:changed', ({ tool }) => {
+    if (tool && tool !== 'eyedropper') _toolBeforeEyedropper = tool;
   });
 
   on('history:undo', undoOp);
   on('history:redo', redoOp);
 }
+
+let _toolBeforeEyedropper = null;
 
 // Live-path apply: flatten any visible layers, run the op, commit.
 // Replay/walker reproduces this exact sequence.
@@ -7437,6 +7532,8 @@ const emit = __m_core_events.emit;
 const canvasToImage = __m_ui_viewer.canvasToImage;
 const markDirty = __m_ui_viewer.markDirty;
 const esc = __m_core_html.esc;
+const getRecentColors = __m_core_colors.getRecentColors;
+const pushRecentColor = __m_core_colors.pushRecentColor;
 
 // ── Arrow tool state ───────────────────────────────────────────────────────────
 let _arrowStart = null;
@@ -7687,6 +7784,11 @@ function showTextModal(ix, iy) {
       <div class="modal-field-row">
         <label for="txt-color">Color</label>
         <input type="color" id="txt-color" value="${ts.color}">
+        <div class="ctx-swatches" id="txt-swatches" style="margin-left:8px">
+          ${getRecentColors().map(c =>
+            `<button class="ctx-swatch" type="button" data-swatch="${c}" style="background:${c}" title="${c}" aria-label="Use ${c}"></button>`
+          ).join('')}
+        </div>
       </div>
       <div class="modal-field-row">
         <label><input type="checkbox" id="txt-bold"${ts.bold ? ' checked' : ''}> Bold</label>
@@ -7702,6 +7804,11 @@ function showTextModal(ix, iy) {
     </div>
   `;
 
+  // Wire swatches: click sets the color picker
+  dlg.querySelector('#txt-swatches')?.querySelectorAll('[data-swatch]').forEach(b => {
+    b.addEventListener('click', () => { dlg.querySelector('#txt-color').value = b.dataset.swatch; });
+  });
+
   dlg.querySelector('[data-cancel]').addEventListener('click', () => dlg.close());
   dlg.querySelector('[data-apply]').addEventListener('click', () => {
     const content = dlg.querySelector('#txt-content').value.trim();
@@ -7715,6 +7822,7 @@ function showTextModal(ix, iy) {
     // Persist settings
     ts.content = content; ts.font = font; ts.size = size;
     ts.color = color; ts.bold = bold; ts.italic = italic;
+    pushRecentColor(color);
 
     emit('op:annotate:text', { x: ix, y: iy + size, content, font, size, color, bold, italic });
     dlg.close();
