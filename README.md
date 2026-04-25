@@ -1,8 +1,11 @@
 # Slate
 
-IrfanView for the browser. No install. No upload. Any OS.
+IrfanView for the browser. A complete image editor in a single HTML file.
 
-📖 **Guide & screenshots →** [slate.naklitechie.com/guide/](https://slate.naklitechie.com/guide/)
+**No install. No upload. Nothing leaves your device.**
+
+▶️ **Try it →** [slate.naklitechie.com](https://slate.naklitechie.com/)
+&nbsp;&nbsp; 📖 **Guide →** [slate.naklitechie.com/guide/](https://slate.naklitechie.com/guide/)
 
 ---
 
@@ -67,6 +70,28 @@ A handful of niche format decoders (HEIC, JPEG-XL, PSD, TIFF) lazy-load the firs
 It's one HTML file. Save `index.html` to disk, open it in a browser. That's it. No build step, no dev server needed.
 
 For development of the source modules (under `src/`, gitignored), use any static server like `python3 -m http.server` and run `node build/inline.mjs` to rebuild the single-file output.
+
+## What it isn't
+
+- A cloud editor — there's no server, nothing syncs anywhere, nothing uploads
+- A Photoshop replacement — no curves, masks, layer groups, blend modes (yet)
+- A multi-file project tool — Slate edits one image at a time; folder operations (slideshow, batch, gallery) work across many but each transform is per-file
+- A backup service — your edits live in IndexedDB until you save; nothing protects you from clearing browser data
+
+## Credits
+
+Slate uses these libraries, lazy-loaded only when you open the matching format:
+
+| Library | Purpose | Status |
+|---|---|---|
+| [`utif`](https://www.npmjs.com/package/utif) | TIFF read + write | exact-pinned on esm.sh |
+| [`libheif-js`](https://www.npmjs.com/package/libheif-js) | HEIC / HEIF fallback (Safari has native) | exact-pinned on esm.sh |
+| [`@jsquash/jxl`](https://www.npmjs.com/package/@jsquash/jxl) | JPEG-XL decode | exact-pinned on esm.sh |
+| [`ag-psd`](https://www.npmjs.com/package/ag-psd) | Photoshop decode | exact-pinned on esm.sh |
+| [`tga-js`](https://www.npmjs.com/package/tga-js) | Targa decode | vendored, hashed in SECURITY.md |
+| [`dds-parser`](https://www.npmjs.com/package/dds-parser) | DirectDraw Surface decode | vendored, hashed in SECURITY.md |
+
+Everything else is vanilla browser APIs — Canvas 2D, OffscreenCanvas, FileSystemAccess, IndexedDB, Web Workers, WebGPU.
 
 ## Other projects
 
