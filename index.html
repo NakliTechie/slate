@@ -1582,6 +1582,11 @@ kbd {
     <symbol id="icon-help" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
     </symbol>
+    <!-- pencil -->
+    <symbol id="icon-pencil" viewBox="0 0 24 24">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -1789,12 +1794,13 @@ const state = {
     aspectLock: null,        // null | 'free' | '1:1' | '16:9' | '4:3' | 'original' | 'custom'
     customAspect: { w: 1, h: 1 }
   },
-  activeTool: null,          // 'crop' | 'redact' | 'blur' | 'text' | 'arrow' | null
+  activeTool: null,          // 'crop' | 'redact' | 'blur' | 'text' | 'arrow' | 'pencil' | null
   toolSettings: {
     blurStrength: 10,
     redactFill: '#000000',
     text: { content: '', font: 'sans-serif', size: 24, color: '#ffffff', bold: false, italic: false },
-    arrow: { color: '#ff0000', thickness: 3, headSize: 12 }
+    arrow: { color: '#ff0000', thickness: 3, headSize: 12 },
+    pencil: { color: '#ff0000', thickness: 4 }
   },
   layers: [],                // [{ id, type, params, visible }]
   history: new History(),
@@ -2848,6 +2854,32 @@ const __m_ops_annotate_js = (() => {
 // Pure draw functions — paint onto any 2d context, no canvas creation.
 // The ctx is assumed to be positioned in image-space (caller handles zoom/pan).
 
+function drawPencil(ctx, { points, color = '#ff0000', thickness = 4 }) {
+  if (!points || points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  if (points.length === 2) {
+    ctx.lineTo(points[1].x, points[1].y);
+  } else {
+    // Quadratic-Bezier smoothing through midpoints of consecutive segments
+    for (let i = 1; i < points.length - 1; i++) {
+      const xMid = (points[i].x + points[i + 1].x) / 2;
+      const yMid = (points[i].y + points[i + 1].y) / 2;
+      ctx.quadraticCurveTo(points[i].x, points[i].y, xMid, yMid);
+    }
+    const last = points[points.length - 1];
+    ctx.lineTo(last.x, last.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawText(ctx, { x, y, content, font = 'sans-serif', size = 24, color = '#ffffff', bold = false, italic = false }) {
   ctx.save();
   ctx.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${size}px "${font}"`;
@@ -2902,7 +2934,15 @@ async function applyArrow(canvas, params) {
   return out;
 }
 
-return { drawText, drawArrow, applyText, applyArrow };
+async function applyPencil(canvas, params) {
+  const out = new OffscreenCanvas(canvas.width, canvas.height);
+  const ctx = out.getContext('2d');
+  ctx.drawImage(canvas, 0, 0);
+  drawPencil(ctx, params);
+  return out;
+}
+
+return { drawPencil, drawText, drawArrow, applyText, applyArrow, applyPencil };
 })();
 
 const __m_core_layers_js = (() => {
@@ -2911,6 +2951,7 @@ const commitOp = __m_core_state_js.commitOp;
 const emit = __m_core_events_js.emit;
 const drawText = __m_ops_annotate_js.drawText;
 const drawArrow = __m_ops_annotate_js.drawArrow;
+const drawPencil = __m_ops_annotate_js.drawPencil;
 
 // IDs are derived from the current layer stack so they survive replay
 // deterministically: the largest id ever in use is preserved across undo/redo
@@ -2974,7 +3015,8 @@ function clearLayers() {
 function drawLayer(ctx, layer) {
   if (!layer.visible) return;
   if (layer.type === 'text') drawText(ctx, layer.params);
-  else if (layer.type === 'arrow') drawArrow(ctx, layer.params);
+  else if (layer.type === 'arrow')  drawArrow(ctx, layer.params);
+  else if (layer.type === 'pencil') drawPencil(ctx, layer.params);
 }
 
 // Flatten an arbitrary layer list onto a copy of the canvas.
@@ -2986,8 +3028,9 @@ function flattenLayers(canvas, layers = state.layers) {
   ctx.drawImage(canvas, 0, 0);
   for (const layer of layers) {
     if (!layer.visible) continue;
-    if (layer.type === 'text')  drawText(ctx, layer.params);
-    else if (layer.type === 'arrow') drawArrow(ctx, layer.params);
+    if (layer.type === 'text')   drawText(ctx, layer.params);
+    else if (layer.type === 'arrow')  drawArrow(ctx, layer.params);
+    else if (layer.type === 'pencil') drawPencil(ctx, layer.params);
   }
   return out;
 }
@@ -3941,7 +3984,8 @@ function tools() {
     ${section('Annotation tools (layers)', `
       ${row('Text', `${kbd('Shift+T')} — click anywhere on the image to place a text label`)}
       ${row('Arrow', `${kbd('A')} — drag to draw an annotation arrow`)}
-      <p class="help-p">Text and arrows become <strong>editable layers</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust).</p>
+      ${row('Freehand', `${kbd('P')} — drag to draw a smoothed pencil stroke`)}
+      <p class="help-p">Text, arrows and pencil strokes become <strong>editable layers</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust).</p>
     `)}
     ${section('Tips', `
       <p class="help-p">After drawing a selection you can nudge it with arrow keys (${kbd('Shift')}+arrow = 10 px). ${kbd('Ctrl+A')} selects the whole image. ${kbd('Ctrl+D')} deselects.</p>
@@ -4017,6 +4061,7 @@ function shortcuts() {
       ['R', 'Redact'],
       ['B', 'Blur'],
       ['A', 'Arrow'],
+      ['P', 'Freehand'],
       ['Shift+T', 'Text'],
     ]],
     ['View', [
@@ -4104,6 +4149,7 @@ function initToolbar() {
       ${btn('tb-text', 'text', 'Text tool (Shift+T)', 'aria-pressed="false"')}
       ${btn('tb-redact', 'redact', 'Redact (R)', 'aria-pressed="false"')}
       ${btn('tb-blur', 'blur', 'Blur (B)', 'aria-pressed="false"')}
+      ${btn('tb-pencil', 'pencil', 'Freehand (P)', 'aria-pressed="false"')}
       ${btn('tb-rotate-cw', 'rotate-cw', 'Rotate 90° CW')}
       ${btn('tb-rotate-ccw', 'rotate-ccw', 'Rotate 90° CCW')}
       ${btn('tb-flip-h', 'flip-h', 'Flip horizontal')}
@@ -4142,7 +4188,7 @@ function initToolbar() {
   bindButton('tb-redo', () => emit('history:redo', null));
 
   // Tool buttons
-  const tools = ['crop', 'redact', 'blur', 'text', 'arrow'];
+  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil'];
   for (const tool of tools) {
     bindButton(`tb-${tool}`, () => setActiveTool(tool === state.activeTool ? null : tool));
   }
@@ -4234,7 +4280,7 @@ function setToolsEnabled(enabled) {
 
 function setActiveTool(tool) {
   state.activeTool = tool;
-  const tools = ['crop', 'redact', 'blur', 'text', 'arrow'];
+  const tools = ['crop', 'redact', 'blur', 'text', 'arrow', 'pencil'];
   for (const t of tools) {
     document.getElementById(`tb-${t}`)?.setAttribute('aria-pressed', String(t === tool));
   }
@@ -5770,6 +5816,7 @@ const TOOL_META = {
   blur:       { icon: 'blur',       label: 'Blur' },
   text:       { icon: 'text',       label: 'Text' },
   arrow:      { icon: 'arrow',      label: 'Arrow' },
+  pencil:     { icon: 'pencil',     label: 'Freehand' },
 };
 
 function initRightSidebar() {
@@ -6469,6 +6516,11 @@ function initOpRunner() {
     addLayer('arrow', params);
   });
 
+  on('op:annotate:pencil', async (params) => {
+    if (!state.image.working) return;
+    addLayer('pencil', params);
+  });
+
   on('history:undo', undoOp);
   on('history:redo', redoOp);
 }
@@ -6915,17 +6967,23 @@ const esc = __m_core_html_js.esc;
 let _arrowStart = null;
 let _arrowCurrent = null;
 
+// ── Pencil tool state ──────────────────────────────────────────────────────────
+let _pencilPoints = null;     // null when idle, [{x,y}, …] while drawing
+const PENCIL_MIN_DIST = 1.5;  // image-px between successive samples
+
 function initToolHandlers() {
   on('canvas:mousedown', onDown);
   on('canvas:mousemove', onMove);
   on('canvas:mouseup',   onUp);
   on('render:overlay',   drawArrowPreview);
+  on('render:overlay',   drawPencilPreview);
   on('tool:changed',     onToolChanged);
 }
 
 function onToolChanged() {
   _arrowStart = null;
   _arrowCurrent = null;
+  _pencilPoints = null;
 }
 
 // ── Mouse routing ──────────────────────────────────────────────────────────────
@@ -6938,6 +6996,8 @@ function onDown({ imagePos }) {
   } else if (state.activeTool === 'arrow') {
     _arrowStart = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
     _arrowCurrent = { ...imagePos };
+  } else if (state.activeTool === 'pencil') {
+    _pencilPoints = [{ x: imagePos.x, y: imagePos.y }];
   }
 }
 
@@ -6945,6 +7005,14 @@ function onMove({ imagePos }) {
   if (state.activeTool === 'arrow' && _arrowStart) {
     _arrowCurrent = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
     markDirty();
+  } else if (state.activeTool === 'pencil' && _pencilPoints) {
+    const last = _pencilPoints[_pencilPoints.length - 1];
+    const dx = imagePos.x - last.x;
+    const dy = imagePos.y - last.y;
+    if (dx * dx + dy * dy >= PENCIL_MIN_DIST * PENCIL_MIN_DIST) {
+      _pencilPoints.push({ x: imagePos.x, y: imagePos.y });
+      markDirty();
+    }
   }
 }
 
@@ -6961,6 +7029,15 @@ function onUp({ imagePos }) {
     }
     _arrowStart = null;
     _arrowCurrent = null;
+    markDirty();
+  } else if (state.activeTool === 'pencil' && _pencilPoints) {
+    if (_pencilPoints.length >= 2) {
+      const { pencil } = state.toolSettings;
+      // Round points to .1 px to keep payload size sane on long strokes
+      const points = _pencilPoints.map(p => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 }));
+      emit('op:annotate:pencil', { points, color: pencil.color, thickness: pencil.thickness });
+    }
+    _pencilPoints = null;
     markDirty();
   }
 }
@@ -6999,6 +7076,39 @@ function drawArrowPreview({ ctx, zoom, pan }) {
   ctx.closePath();
   ctx.fill();
 
+  ctx.restore();
+}
+
+// ── Pencil live preview ────────────────────────────────────────────────────────
+
+function drawPencilPreview({ ctx, zoom, pan }) {
+  if (state.activeTool !== 'pencil' || !_pencilPoints || _pencilPoints.length < 2) return;
+  const { pencil } = state.toolSettings;
+  const toC = (ix, iy) => ({ x: ix * zoom + pan.x, y: iy * zoom + pan.y });
+
+  ctx.save();
+  ctx.strokeStyle = pencil.color;
+  ctx.lineWidth = pencil.thickness * zoom;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.92;
+
+  ctx.beginPath();
+  const first = toC(_pencilPoints[0].x, _pencilPoints[0].y);
+  ctx.moveTo(first.x, first.y);
+  if (_pencilPoints.length === 2) {
+    const p = toC(_pencilPoints[1].x, _pencilPoints[1].y);
+    ctx.lineTo(p.x, p.y);
+  } else {
+    for (let i = 1; i < _pencilPoints.length - 1; i++) {
+      const p  = toC(_pencilPoints[i].x, _pencilPoints[i].y);
+      const pn = toC(_pencilPoints[i + 1].x, _pencilPoints[i + 1].y);
+      ctx.quadraticCurveTo(p.x, p.y, (p.x + pn.x) / 2, (p.y + pn.y) / 2);
+    }
+    const last = toC(_pencilPoints[_pencilPoints.length - 1].x, _pencilPoints[_pencilPoints.length - 1].y);
+    ctx.lineTo(last.x, last.y);
+  }
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -7726,13 +7836,18 @@ function layerLabel(l) {
     const content = (l.params.content ?? '').slice(0, 24);
     return content || 'Text';
   }
-  if (l.type === 'arrow') return 'Arrow';
+  if (l.type === 'arrow')  return 'Arrow';
+  if (l.type === 'pencil') {
+    const n = l.params.points?.length ?? 0;
+    return `Freehand · ${n} pt`;
+  }
   return l.type;
 }
 
 function layerGlyph(l) {
-  if (l.type === 'text')  return 'T';
-  if (l.type === 'arrow') return '↗';
+  if (l.type === 'text')   return 'T';
+  if (l.type === 'arrow')  return '↗';
+  if (l.type === 'pencil') return '✎';
   return '◆';
 }
 
@@ -8042,7 +8157,7 @@ async function boot() {
     showPanel(tool === 'crop');
     const canvas = document.getElementById('main-canvas');
     if (canvas) {
-      const cursors = { crop: 'crosshair', redact: 'crosshair', blur: 'crosshair', text: 'text', arrow: 'crosshair' };
+      const cursors = { crop: 'crosshair', redact: 'crosshair', blur: 'crosshair', text: 'text', arrow: 'crosshair', pencil: 'crosshair' };
       canvas.style.cursor = tool ? (cursors[tool] ?? 'default') : '';
     }
   });
@@ -8177,6 +8292,7 @@ function setupKeyboard() {
     if (e.key === 'r' || e.key === 'R') { emit('tool:activate', { tool: 'redact' }); return; }
     if (e.key === 'b' || e.key === 'B') { emit('tool:activate', { tool: 'blur' }); return; }
     if (e.key === 'a' || e.key === 'A') { emit('tool:activate', { tool: 'arrow' }); return; }
+    if (e.key === 'p' || e.key === 'P') { emit('tool:activate', { tool: 'pencil' }); return; }
 
     // F — fullscreen
     if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); return; }
