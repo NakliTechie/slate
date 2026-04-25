@@ -1963,7 +1963,9 @@ const emit = __m_core_events_js.emit;
 
 // libheif-js loaded lazily from esm.sh on first HEIC decode that needs the fallback.
 // The CDN URL is pinned to a specific version so behaviour is stable.
-const LIBHEIF_URL = 'https://esm.sh/libheif-js@1.18.1/wasm-bundle.js';
+// We accept any 1.x build — esm.sh sometimes 404s on a freshly published patch
+// version that hasn't been mirrored yet. Major-pin keeps the API stable.
+const LIBHEIF_URL = 'https://esm.sh/libheif-js@1/wasm-bundle.js';
 
 let _libheifPromise = null;
 let _triedNative = false;
@@ -2227,7 +2229,7 @@ return { decodePsd };
 const __m_decode_tga_js = (() => {
 const emit = __m_core_events_js.emit;
 
-const URL = 'https://esm.sh/tga-js@1.1.2';
+const URL = 'https://esm.sh/tga-js@1';
 
 let _libPromise = null;
 
