@@ -235,10 +235,11 @@
     <div class="toc-label">On this page</div>
     <ol>
       <li><a href="#opening">Opening images</a></li>
-      <li><a href="#tools">Selection tools — Crop, Redact, Blur</a></li>
-      <li><a href="#annotate">Annotation — Text and Arrow</a></li>
+      <li><a href="#tools">Selection tools — Crop, Redact, Blur, Pixelate</a></li>
+      <li><a href="#annotate">Annotation — Text, Arrow, Freehand, Shapes</a></li>
       <li><a href="#adjust">Adjustments and transforms</a></li>
       <li><a href="#saving">Saving your work</a></li>
+      <li><a href="#formats">Format support</a></li>
       <li><a href="#privacy">Privacy, EXIF, and GPS</a></li>
       <li><a href="#shortcuts">Keyboard shortcuts</a></li>
     </ol>
@@ -270,13 +271,14 @@
     <div class="caption">The workspace folder nudge. Click <em>Choose Folder</em> once — Slate remembers it for the session.</div>
   </div>
 
-  <h2 id="tools">Selection tools — Crop, Redact, Blur</h2>
-  <p>The three selection tools all work the same way: draw a rectangle on the canvas, adjust it, then apply. Hold <kbd>Shift</kbd> while dragging to lock to a square. Nudge with arrow keys (<kbd>Shift</kbd> + arrow for 10 px).</p>
+  <h2 id="tools">Selection tools — Crop, Redact, Blur, Pixelate</h2>
+  <p>Selection tools all work the same way: draw a rectangle on the canvas, adjust it, then apply. Hold <kbd>Shift</kbd> while dragging to lock to a square. Nudge with arrow keys (<kbd>Shift</kbd> + arrow for 10 px).</p>
 
   <ul>
     <li><kbd>C</kbd> <strong>Crop</strong> — trims the image to the selection.</li>
     <li><kbd>R</kbd> <strong>Redact</strong> — fills the selection with a solid black box. Great for hiding sensitive info in screenshots.</li>
     <li><kbd>B</kbd> <strong>Blur</strong> — blurs the selection. A strength slider appears in the context bar (2–40 px).</li>
+    <li><kbd>X</kbd> <strong>Pixelate</strong> — mosaics the selection into average-coloured blocks (2–60 px). Different visual signature from blur — useful when "this is intentionally hidden" should read clearly.</li>
   </ul>
 
   <p>Commit with <kbd>Enter</kbd> or the floating <em>Apply</em> button. Cancel with <kbd>Esc</kbd>.</p>
@@ -316,15 +318,21 @@
     <strong>Tip:</strong> after drawing a selection you can fine-tune exact coordinates in the small numeric panel that appears alongside the canvas.
   </div>
 
-  <h2 id="annotate">Annotation — Text and Arrow</h2>
-  <p>Two annotation tools for marking up images:</p>
+  <h2 id="annotate">Annotation — Text, Arrow, Freehand, Shapes</h2>
+  <p>Each annotation lives as an <strong>editable layer</strong>. A floating Layers panel at the top-right of the canvas lists every layer with move-up/down, show/hide and delete controls. Layers flatten into the image automatically on Save or when you apply a transform (crop, rotate, flip, resize, sharpen, adjust). Undo and redo work across both layer changes <em>and</em> destructive transforms — pre-flatten layer state is recovered correctly.</p>
 
   <ul>
-    <li><kbd>Shift+T</kbd> <strong>Text</strong> — click anywhere on the image. A small dialog opens where you pick font, size, colour, bold, italic. The text is rendered onto the image.</li>
-    <li><kbd>A</kbd> <strong>Arrow</strong> — drag on the canvas to draw an arrow. Live preview while dragging; commits when you release the mouse.</li>
+    <li><kbd>Shift+T</kbd> <strong>Text</strong> — click anywhere on the image. A small dialog opens where you pick content, font, size, colour, bold, italic.</li>
+    <li><kbd>A</kbd> <strong>Arrow</strong> — drag on the canvas to draw an arrow. Live preview while dragging; commits on release.</li>
+    <li><kbd>P</kbd> <strong>Freehand</strong> — drag to draw a smoothed pencil stroke. Quadratic-Bezier interpolation between sample points keeps the trace clean even from a noisy mouse.</li>
+    <li><kbd>S</kbd> <strong>Shapes</strong> — drag to draw a rectangle, oval, or line. The mode picker, colour, thickness, and a fill toggle live in the floating bar so you can switch shape style without leaving the tool.</li>
   </ul>
 
-  <p>Both annotations become part of the image bitmap — they're not separate layers. If you want to move or edit them later, use <kbd>Ctrl+Z</kbd> to undo.</p>
+  <h3>Brush settings + recent colours</h3>
+  <p>Whenever a drawing tool (pencil, arrow, shape) is active, the floating bar shows that tool's settings — colour picker, thickness slider, and tool-specific extras. Each colour you use is remembered as a small <strong>recent-swatch</strong> shown next to every colour picker (drawing tools' bar and the text modal). The list keeps the last 8 colours and persists across reloads; click any swatch to apply that colour instantly.</p>
+
+  <h3>Eyedropper — pick colour from the canvas</h3>
+  <p><kbd>I</kbd> activates the eyedropper. Click any pixel on the image to capture its colour. The hex value goes to your clipboard and is applied to all four annotation tools' colour settings (pencil, arrow, shape, text). The eyedropper then returns to whichever drawing tool you came from, so the new colour appears in the bar immediately and you can keep working without re-clicking the tool.</p>
 
   <h2 id="adjust">Adjustments and transforms</h2>
   <p>Non-selection operations that affect the whole image:</p>
@@ -428,6 +436,18 @@
   <h3>Session restore</h3>
   <p>Slate remembers your last open file and edits. If you refresh the page or come back later, it offers to resume where you left off. The original file contents are stored locally in IndexedDB — never uploaded.</p>
 
+  <h2 id="formats">Format support</h2>
+
+  <p><strong>Read</strong>: JPG, PNG, WebP, GIF (first frame), AVIF, SVG, BMP — natively. <strong>HEIC / HEIF</strong> via Safari's built-in decoder when available, falling back to a tiny WASM library lazy-loaded the first time you open one. <strong>TIFF, JPEG-XL, PSD</strong> via the same lazy-load pattern. <strong>TGA</strong> and <strong>DDS</strong> are bundled into the page (the libraries are small enough). <strong>RAW</strong> files (CR2, NEF, ARW, DNG, RAF, ORF) are read by extracting the embedded full-resolution JPEG preview that every TIFF-based RAW container carries — no full sensor demosaicing, but enough to view, crop, and re-export.</p>
+
+  <p><strong>Write</strong>: PNG, JPEG, WebP, TIFF. Tools → Lossless JPEG rotate also writes JPEGs that have only their EXIF orientation tag flipped — pixel bytes untouched, zero quality loss.</p>
+
+  <p>The first time you open a format that needs a CDN-loaded decoder, you'll see a "Loading X decoder…" toast for a moment. After that, the browser caches it.</p>
+
+  <div class="callout">
+    <strong>Supply-chain note:</strong> the tiny libraries (TGA, DDS) are vendored — every byte is hashed in the repo's <a href="https://github.com/NakliTechie/slate/blob/main/SECURITY.md">SECURITY.md</a>. The bigger ones (HEIC, JPEG-XL, PSD, TIFF) are exact-version-pinned on esm.sh, so a malicious upstream patch can't reach you without a code change.
+  </div>
+
   <h2 id="privacy">Privacy, EXIF, and GPS</h2>
   <p>Slate runs entirely in your browser. No network connection is needed after the page loads — the HTML file has no external dependencies.</p>
 
@@ -486,8 +506,9 @@
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Export dialog</td><td><kbd>Ctrl+Shift+S</kbd></td></tr>
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Undo / Redo</td><td><kbd>Ctrl+Z</kbd> · <kbd>Ctrl+Shift+Z</kbd></td></tr>
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Fit to window</td><td><kbd>Ctrl+0</kbd> or double-click</td></tr>
-      <tr><td style="padding:6px 12px 6px 0; color:#71717a">Crop / Redact / Blur</td><td><kbd>C</kbd> · <kbd>R</kbd> · <kbd>B</kbd></td></tr>
-      <tr><td style="padding:6px 12px 6px 0; color:#71717a">Text / Arrow</td><td><kbd>Shift+T</kbd> · <kbd>A</kbd></td></tr>
+      <tr><td style="padding:6px 12px 6px 0; color:#71717a">Crop / Redact / Blur / Pixelate</td><td><kbd>C</kbd> · <kbd>R</kbd> · <kbd>B</kbd> · <kbd>X</kbd></td></tr>
+      <tr><td style="padding:6px 12px 6px 0; color:#71717a">Text / Arrow / Freehand / Shapes</td><td><kbd>Shift+T</kbd> · <kbd>A</kbd> · <kbd>P</kbd> · <kbd>S</kbd></td></tr>
+      <tr><td style="padding:6px 12px 6px 0; color:#71717a">Eyedropper</td><td><kbd>I</kbd></td></tr>
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Prev / next image</td><td><kbd>←</kbd> · <kbd>→</kbd></td></tr>
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Fullscreen</td><td><kbd>F</kbd></td></tr>
       <tr><td style="padding:6px 12px 6px 0; color:#71717a">Help</td><td><kbd>?</kbd></td></tr>

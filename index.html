@@ -231,6 +231,44 @@
 #context-bar .ctx-mode-btn:hover { background: var(--bg-2); color: var(--fg-0); }
 #context-bar .ctx-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Footer pill — anchored to the bottom of the empty-state */
+
+.footer-pill {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  padding: 6px 18px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.footer-pill a {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.footer-pill a:hover { opacity: 0.7; }
+
+/* Right-sidebar bottom guide-link */
+
+#right-sidebar .rs-foot-link {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: var(--fg-2);
+  text-decoration: none;
+  font-size: 14px;
+}
+#right-sidebar .rs-foot-link:hover { background: var(--bg-2); color: var(--fg-0); }
+
 /* Recent-colour swatches — used in the context bar AND the text modal */
 .ctx-swatches { display: inline-flex; gap: 3px; align-items: center; }
 .ctx-swatch {
@@ -6147,8 +6185,10 @@ function render() {
   const hasFavs = favouriteTools.length > 0;
   const hasRecent = recentTools.length > 0;
 
+  const guideFooter = `<a class="rs-foot-link" href="guide/" target="_blank" rel="noopener" title="Open full guide" aria-label="Open full guide">📖</a>`;
+
   if (!hasFavs && !hasRecent) {
-    sidebar.innerHTML = `<div class="rs-empty-hint">Use a tool to see it here</div>`;
+    sidebar.innerHTML = `<div class="rs-empty-hint">Use a tool to see it here</div>${guideFooter}`;
     return;
   }
 
@@ -6166,6 +6206,7 @@ function render() {
     html += `</div>`;
   }
 
+  html += guideFooter;
   sidebar.innerHTML = html;
 
   sidebar.querySelectorAll('[data-rs-tool]').forEach(btn => {
@@ -8891,6 +8932,11 @@ function setupEmptyState() {
       </div>
       <p class="dropzone-hint">Or drop an image anywhere on this page</p>
       ${!hasFSA ? '<p class="dropzone-hint" style="color:var(--warn)">Firefox / Safari: folder write-back unavailable. Download only.</p>' : ''}
+    </div>
+    <div class="footer-pill">
+      <a href="guide/" target="_blank" rel="noopener">📖 Guide</a>
+      <a href="https://naklitechie.github.io/">⬅ More Projects</a>
+      <a href="https://github.com/NakliTechie/slate" target="_blank" rel="noopener">⌨ Source</a>
     </div>
   `;
 
