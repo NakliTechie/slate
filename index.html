@@ -1687,10 +1687,10 @@ class History {
     return this._pointer;
   }
 
-  saveSnapshot(pointer, imageData, width, height) {
+  saveSnapshot(pointer, imageData, width, height, layers = []) {
     if (pointer % SNAPSHOT_INTERVAL !== 0) return;
     this._snaps = this._snaps.filter(s => s.pointer !== pointer);
-    this._snaps.push({ pointer, imageData, width, height });
+    this._snaps.push({ pointer, imageData, width, height, layers });
   }
 
   // Returns { pointer, imageData, width, height } of the nearest snapshot at or before targetPointer,
@@ -1875,10 +1875,11 @@ function setImage(bitmap, format, exif = null) {
 function commitOp(op, params) {
   const pointer = state.history.push(op, params);
 
-  // Save snapshot every SNAPSHOT_INTERVAL steps
+  // Save snapshot every SNAPSHOT_INTERVAL steps. Capture both image and layers.
   const ctx = state.image.working.getContext('2d');
   const imageData = ctx.getImageData(0, 0, state.image.width, state.image.height);
-  state.history.saveSnapshot(pointer, imageData, state.image.width, state.image.height);
+  const snapshotLayers = state.layers.map(l => ({ id: l.id, type: l.type, params: { ...l.params }, visible: l.visible }));
+  state.history.saveSnapshot(pointer, imageData, state.image.width, state.image.height, snapshotLayers);
 
   emit('history:changed', { canUndo: state.history.canUndo(), canRedo: state.history.canRedo() });
 }
@@ -2906,36 +2907,43 @@ return { drawText, drawArrow, applyText, applyArrow };
 
 const __m_core_layers_js = (() => {
 const state = __m_core_state_js.state;
+const commitOp = __m_core_state_js.commitOp;
 const emit = __m_core_events_js.emit;
 const drawText = __m_ops_annotate_js.drawText;
 const drawArrow = __m_ops_annotate_js.drawArrow;
 
-let _idCounter = 0;
+// IDs are derived from the current layer stack so they survive replay
+// deterministically: the largest id ever in use is preserved across undo/redo
+// because the layer:add op carries its id in its params.
+function nextId() {
+  return state.layers.reduce((m, l) => Math.max(m, l.id), 0) + 1;
+}
 
 function addLayer(type, params) {
-  const layer = { id: ++_idCounter, type, params, visible: true };
-  state.layers.push(layer);
+  const id = nextId();
+  const visible = true;
+  state.layers.push({ id, type, params: { ...params }, visible });
   emit('layers:changed', state.layers);
   emit('image:changed', null);
-  return layer;
+  commitOp('layer:add', { id, type, params: { ...params }, visible });
+  return id;
 }
 
 function removeLayer(id) {
-  const before = state.layers.length;
+  if (!state.layers.some(l => l.id === id)) return;
   state.layers = state.layers.filter(l => l.id !== id);
-  if (state.layers.length !== before) {
-    emit('layers:changed', state.layers);
-    emit('image:changed', null);
-  }
+  emit('layers:changed', state.layers);
+  emit('image:changed', null);
+  commitOp('layer:remove', { id });
 }
 
 function toggleLayer(id) {
   const l = state.layers.find(l => l.id === id);
-  if (l) {
-    l.visible = !l.visible;
-    emit('layers:changed', state.layers);
-    emit('image:changed', null);
-  }
+  if (!l) return;
+  l.visible = !l.visible;
+  emit('layers:changed', state.layers);
+  emit('image:changed', null);
+  commitOp('layer:toggle', { id });
 }
 
 function moveLayer(id, direction) {
@@ -2946,8 +2954,16 @@ function moveLayer(id, direction) {
   [state.layers[i], state.layers[j]] = [state.layers[j], state.layers[i]];
   emit('layers:changed', state.layers);
   emit('image:changed', null);
+  commitOp('layer:move', { id, direction });
 }
 
+// Used by replay (no history commit) — bulk replace the layer stack.
+function setLayers(layers) {
+  state.layers = layers.map(l => ({ id: l.id, type: l.type, params: { ...l.params }, visible: l.visible }));
+  emit('layers:changed', state.layers);
+}
+
+// Live-path: clear without committing. Used by runOp post-flatten.
 function clearLayers() {
   if (state.layers.length === 0) return;
   state.layers = [];
@@ -2961,14 +2977,14 @@ function drawLayer(ctx, layer) {
   else if (layer.type === 'arrow') drawArrow(ctx, layer.params);
 }
 
-// Flatten all visible layers into a new canvas based on the input canvas.
-// Used before destructive ops and on save.
-function flattenLayers(canvas) {
-  if (!state.layers.length) return canvas;
+// Flatten an arbitrary layer list onto a copy of the canvas.
+// Defaults to the current state.layers when no list is provided.
+function flattenLayers(canvas, layers = state.layers) {
+  if (!layers.length) return canvas;
   const out = new OffscreenCanvas(canvas.width, canvas.height);
   const ctx = out.getContext('2d');
   ctx.drawImage(canvas, 0, 0);
-  for (const layer of state.layers) {
+  for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.type === 'text')  drawText(ctx, layer.params);
     else if (layer.type === 'arrow') drawArrow(ctx, layer.params);
@@ -2976,7 +2992,34 @@ function flattenLayers(canvas) {
   return out;
 }
 
-return { addLayer, removeLayer, toggleLayer, moveLayer, clearLayers, drawLayer, flattenLayers };
+// Apply a single layer op to a layer stack. Used by the replay walker.
+function applyLayerOp(layers, op, params) {
+  if (op === 'layer:add') {
+    return [...layers, { id: params.id, type: params.type, params: { ...params.params }, visible: params.visible !== false }];
+  }
+  if (op === 'layer:remove') {
+    return layers.filter(l => l.id !== params.id);
+  }
+  if (op === 'layer:toggle') {
+    return layers.map(l => l.id === params.id ? { ...l, visible: !l.visible } : l);
+  }
+  if (op === 'layer:move') {
+    const i = layers.findIndex(l => l.id === params.id);
+    if (i < 0) return layers;
+    const j = i + params.direction;
+    if (j < 0 || j >= layers.length) return layers;
+    const out = [...layers];
+    [out[i], out[j]] = [out[j], out[i]];
+    return out;
+  }
+  return layers;
+}
+
+function isLayerOp(op) {
+  return op === 'layer:add' || op === 'layer:remove' || op === 'layer:toggle' || op === 'layer:move';
+}
+
+return { addLayer, removeLayer, toggleLayer, moveLayer, setLayers, clearLayers, drawLayer, flattenLayers, applyLayerOp, isLayerOp };
 })();
 
 const __m_ui_viewer_js = (() => {
@@ -6335,6 +6378,9 @@ const emit = __m_core_events_js.emit;
 const addLayer = __m_core_layers_js.addLayer;
 const flattenLayers = __m_core_layers_js.flattenLayers;
 const clearLayers = __m_core_layers_js.clearLayers;
+const setLayers = __m_core_layers_js.setLayers;
+const applyLayerOp = __m_core_layers_js.applyLayerOp;
+const isLayerOp = __m_core_layers_js.isLayerOp;
 
 const cropOp = __m_ops_crop_js;
 const rotateOp = __m_ops_rotate_js;
@@ -6427,11 +6473,11 @@ function initOpRunner() {
   on('history:redo', redoOp);
 }
 
+// Live-path apply: flatten any visible layers, run the op, commit.
+// Replay/walker reproduces this exact sequence.
 async function runOp(name, params) {
   const mod = OPS[name];
   if (!mod) { console.warn('Unknown op:', name); return; }
-  // Destructive ops flatten any live layers into the working canvas first so
-  // the op sees the layers' pixels and the layer stack is cleared post-op.
   const base = flattenLayers(state.image.working);
   if (base !== state.image.working) {
     replaceWorking(base);
@@ -6458,53 +6504,78 @@ async function redoOp() {
   emit('fit:window', null);
 }
 
+// Walker shared by undo/redo replay and session-restore replay.
+// Mutates a (canvas, layers) pair by walking ops in order. Image ops flatten
+// the current layer stack into the canvas before running, mirroring runOp.
+async function walkOps(canvas, layers, ops) {
+  let curCanvas = canvas;
+  let curLayers = layers;
+  for (const { op, params } of ops) {
+    if (isLayerOp(op)) {
+      curLayers = applyLayerOp(curLayers, op, params);
+      continue;
+    }
+    if (curLayers.length > 0) {
+      curCanvas = flattenLayers(curCanvas, curLayers);
+      curLayers = [];
+    }
+    const name = op.replace('annotate:', '');
+    const mod = OPS[name] ?? OPS[op];
+    if (mod) {
+      curCanvas = await mod.apply(curCanvas, params);
+    } else if (op === 'annotate:text') {
+      // Legacy ops written by older sessions before layers existed
+      curCanvas = await applyText(curCanvas, params);
+    } else if (op === 'annotate:arrow') {
+      curCanvas = await applyArrow(curCanvas, params);
+    }
+  }
+  return { canvas: curCanvas, layers: curLayers };
+}
+
 async function applyToPointer(targetPointer) {
   const { snap, ops } = state.history.getReplayPlan(targetPointer);
 
   let canvas;
+  let layers;
   if (snap) {
     canvas = new OffscreenCanvas(snap.width, snap.height);
     canvas.getContext('2d').putImageData(snap.imageData, 0, 0);
+    layers = (snap.layers ?? []).map(l => ({ id: l.id, type: l.type, params: { ...l.params }, visible: l.visible }));
   } else {
     canvas = new OffscreenCanvas(state.image.original.width, state.image.original.height);
     canvas.getContext('2d').drawImage(state.image.original, 0, 0);
+    layers = [];
   }
 
-  for (const { op, params } of ops) {
-    const name = op.replace('annotate:', '');
-    const mod = OPS[name] ?? OPS[op];
-    if (mod) {
-      canvas = await mod.apply(canvas, params);
-    } else if (op === 'annotate:text') {
-      canvas = await applyText(canvas, params);
-    } else if (op === 'annotate:arrow') {
-      canvas = await applyArrow(canvas, params);
-    }
-  }
-
-  replaceWorking(canvas);
+  const result = await walkOps(canvas, layers, ops);
+  setLayers(result.layers);
+  replaceWorking(result.canvas);
 }
 
-// Replay a serialised ops array (used for session restore after page reload)
+// Replay a serialised ops array (session restore after page reload).
+// Walks the ops to reconstruct canvas+layers, then re-pushes the same ops to
+// history so undo/redo work as before the reload.
 async function replayOps(ops) {
   if (!state.image.working || !ops?.length) return;
 
   let canvas = new OffscreenCanvas(state.image.original.width, state.image.original.height);
   canvas.getContext('2d').drawImage(state.image.original, 0, 0);
 
-  for (const { op, params } of ops) {
-    const mod = OPS[op];
-    if (mod) {
-      canvas = await mod.apply(canvas, params);
-    } else if (op === 'annotate:text') {
-      canvas = await applyText(canvas, params);
-    } else if (op === 'annotate:arrow') {
-      canvas = await applyArrow(canvas, params);
-    }
-    replaceWorking(canvas);
-    commitOp(op, params);
-  }
+  const result = await walkOps(canvas, [], ops);
+  setLayers(result.layers);
+  replaceWorking(result.canvas);
 
+  // Re-populate history so undo can step back through the replayed ops.
+  // We push directly (not commitOp) to avoid the per-op snapshot work; one
+  // final snapshot at the current pointer is enough to bootstrap further undos.
+  for (const { op, params } of ops) state.history.push(op, params);
+  const ctx = state.image.working.getContext('2d');
+  const finalImage = ctx.getImageData(0, 0, state.image.width, state.image.height);
+  const finalLayers = state.layers.map(l => ({ id: l.id, type: l.type, params: { ...l.params }, visible: l.visible }));
+  state.history.saveSnapshot(state.history.pointer, finalImage, state.image.width, state.image.height, finalLayers);
+
+  emit('history:changed', { canUndo: state.history.canUndo(), canRedo: state.history.canRedo() });
   emit('fit:window', null);
 }
 
