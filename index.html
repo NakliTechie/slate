@@ -579,7 +579,7 @@
 
 .help-dialog {
   width: min(640px, 94vw);
-  max-height: min(720px, 90vh);
+  max-height: min(720px, 90dvh, 90vh);
   padding: 0;
   border: 1px solid var(--bg-3);
   border-radius: var(--radius-md);
@@ -594,6 +594,28 @@
 .help-dialog:not([open]) { display: none; }
 
 .help-dialog::backdrop { background: rgba(0,0,0,0.6); }
+
+@media (max-width: 600px) {
+  .help-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+  .help-tabs {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-1) var(--space-2);
+  }
+  .help-tab-btn { flex-shrink: 0; }
+  .help-header  { padding: var(--space-2) var(--space-3); }
+  .help-body    { padding: var(--space-2) var(--space-3); }
+  .help-footer  { padding: var(--space-2) var(--space-3); }
+}
 
 .help-header {
   display: flex;
