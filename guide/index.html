@@ -239,6 +239,7 @@
       <li><a href="#annotate">Annotation — Text, Arrow, Freehand, Shapes</a></li>
       <li><a href="#adjust">Adjustments and transforms</a></li>
       <li><a href="#saving">Saving your work</a></li>
+      <li><a href="#folder-tools">Folder tools — Slideshow, Batch, Gallery, Lossless rotate</a></li>
       <li><a href="#formats">Format support</a></li>
       <li><a href="#privacy">Privacy, EXIF, and GPS</a></li>
       <li><a href="#shortcuts">Keyboard shortcuts</a></li>
@@ -341,7 +342,7 @@
     <li><strong>Rotate</strong> 90° CW or CCW</li>
     <li><strong>Flip</strong> horizontal or vertical</li>
     <li><strong>Straighten</strong> — fine rotation (−45° to +45°); canvas expands to prevent cropping</li>
-    <li><strong>Brightness / Contrast / Saturation</strong> — three sliders in one dialog</li>
+    <li><strong>Brightness / Contrast / Saturation</strong> — three sliders in one dialog. On capable browsers (WebGPU available, image larger than 1 megapixel) a compute-shader path runs the pixel transform on the GPU — about 5× faster than the JS pixel loop on a 12 MP image. Falls back transparently to CPU if WebGPU isn't available.</li>
     <li><strong>Sharpen</strong> — unsharp-mask from 0.1× to 5×</li>
     <li><strong>Resize</strong> — set exact output dimensions with optional aspect lock</li>
   </ul>
@@ -434,7 +435,41 @@
   <p>Saved files are timestamped with <code>yymmddhhmmss</code>, e.g. <code>photo-260424143005.jpg</code>. This means successive saves always get unique names and you can trace each file back to its vintage.</p>
 
   <h3>Session restore</h3>
-  <p>Slate remembers your last open file and edits. If you refresh the page or come back later, it offers to resume where you left off. The original file contents are stored locally in IndexedDB — never uploaded.</p>
+  <p>Slate remembers your last open file and edits. If you refresh the page or come back later, it offers to resume where you left off. The original file contents are stored locally in IndexedDB — never uploaded. Layers (text, arrows, pencil, shapes) also survive a reload — the resume dialog brings back both the image and the editable layer stack you had.</p>
+
+  <h2 id="folder-tools">Folder tools — Slideshow, Batch, Gallery, Lossless rotate</h2>
+
+  <p>The four buttons at the bottom of the toolbar (above Help) operate on a folder of images, not a single open file. They light up once you've opened a folder via <kbd>Ctrl+Shift+O</kbd> or set a workspace folder.</p>
+
+  <h3>Slideshow</h3>
+  <p>Plays the current album as a fullscreen slideshow.</p>
+  <ul>
+    <li><strong>Interval</strong>: 2 / 3 / 5 / 10 / 30 seconds (default 5s)</li>
+    <li><strong>Transition</strong>: none / fade / slide</li>
+    <li><strong>Shuffle</strong>: random order with the current image pinned first so you don't lose your place</li>
+    <li><strong>Loop at end</strong>: optional</li>
+    <li>Controls: <kbd>Space</kbd> pauses, arrows navigate, <kbd>Esc</kbd> exits. A small HUD with file name and position appears on mouse move.</li>
+  </ul>
+
+  <h3>Batch operations</h3>
+  <p>Apply one or more transforms to every image in a folder. Tools → Batch.</p>
+  <ul>
+    <li><strong>Source</strong>: current album, or pick a different folder</li>
+    <li><strong>Operations</strong> (combinable, applied in order): convert (PNG / JPEG / WebP, with quality + EXIF strip toggle), resize (px or %, lock-aspect), rotate (90° / 180°), flip (H / V), rename via a template (<code>{original}</code>, <code>{index}</code>, <code>{counter:04}</code>, <code>{date}</code>, <code>{camera}</code>, <code>{w}</code>, <code>{h}</code>)</li>
+    <li><strong>Destination</strong>: new <code>batch-output/</code> subfolder, a different folder, or overwrite-in-place (with confirmation)</li>
+    <li><strong>Dry run</strong>: see the first 20 from / to filenames + estimated sizes + warnings (e.g. missing EXIF dates) before committing</li>
+    <li><strong>Execute</strong>: parallel processing across a Web Worker pool sized to your CPU. Live progress bar, cancel button, summary report on completion.</li>
+  </ul>
+
+  <h3>Contact sheet / Gallery export</h3>
+  <p>Tools → Contact sheet / gallery turns the current album into one of two artifacts:</p>
+  <ul>
+    <li><strong>Gallery page (HTML)</strong> — a single <code>gallery.html</code> file with thumbnails as data URLs, click-to-zoom lightbox with arrow-key navigation. Self-contained — share it, host it, open offline. Optional embed of the full-size images so the gallery page travels with the originals.</li>
+    <li><strong>Contact sheet (image)</strong> — one PNG or JPEG with thumbnails laid out in a grid. Configurable columns, thumb size, optional file-name labels, background colour with auto-readable label colour.</li>
+  </ul>
+
+  <h3>Lossless JPEG rotate</h3>
+  <p>Tools → Lossless JPEG rotate. For a JPEG file open in Slate, this rotates the file by 90° / 180° / 90° CCW <em>without re-encoding</em> — only the EXIF orientation tag is flipped. The pixel bytes stay untouched, so quality loss is exactly zero. Any modern viewer (browser, photo app, OS thumbnail) honours the orientation tag and renders the image rotated.</p>
 
   <h2 id="formats">Format support</h2>
 
