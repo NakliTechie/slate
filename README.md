@@ -93,6 +93,12 @@ Slate uses these libraries, lazy-loaded only when you open the matching format:
 
 Everything else is vanilla browser APIs — Canvas 2D, OffscreenCanvas, FileSystemAccess, IndexedDB, Web Workers, WebGPU.
 
+## Palette
+
+Coloured with **`iran-10 · شب یلدا SHAB-E YALDA`** — Persian winter solstice, 7000 years pre-Zoroastrian; the night of staying awake till dawn with Hafez and pomegranate. Aubergine body, saffron ink, royal-blue active accent, pomegranate alerts. Both dark (default) and light (warm parchment companion) themes retuned.
+
+Palette pulled from [**Rangrez**](https://github.com/NakliTechie/rangrez), the global colour-palette library that backs all NakliTechie projects.
+
 ## Other projects
 
 [More browser-native, local-first apps at naklitechie.github.io →](https://naklitechie.github.io/)
