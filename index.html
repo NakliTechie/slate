@@ -1248,104 +1248,103 @@ kbd {
   --ease:       cubic-bezier(0.25, 0, 0.25, 1);
 }
 
-/* Rangrez · iran-10 · شب یلدا SHAB-E YALDA — winter solstice, stay awake till dawn */
 /* ── Dark theme (default) ───────────────────────────────────────────────── */
 
 :root, [data-theme="dark"] {
-  --bg-0: #14080c;            /* BODY */
-  --bg-1: #1e0e14;            /* PANEL */
-  --bg-2: #281620;
-  --bg-3: #3a2030;
+  --bg-0: #111113;
+  --bg-1: #18181b;
+  --bg-2: #27272a;
+  --bg-3: #3f3f46;
 
-  --fg-0: #f0c870;            /* INK — saffron */
-  --fg-1: #b89858;
-  --fg-2: #6a5a30;
+  --fg-0: #fafafa;
+  --fg-1: #a1a1aa;
+  --fg-2: #71717a;
 
-  --accent:          #4a6ac8; /* ACT — royal blue */
-  --accent-hover:    #3550a8;
-  --accent-contrast: #14080c;
+  --accent:          #3b82f6;
+  --accent-hover:    #2563eb;
+  --accent-contrast: #ffffff;
 
-  --danger: #d83828;          /* BRAND — pomegranate */
-  --warn:   #d8a868;
-  --ok:     #7a9a3a;
+  --danger: #ef4444;
+  --warn:   #f59e0b;
+  --ok:     #22c55e;
 
-  --selection:        rgba(74, 106, 200, 0.35);
-  --selection-border: #4a6ac8;
-  --selection-handle: #f0c870;
+  --selection:        rgba(59, 130, 246, 0.35);
+  --selection-border: #3b82f6;
+  --selection-handle: #ffffff;
 
-  --ruler-bg:    #1e0e14;
-  --ruler-tick:  #6a5a30;
-  --ruler-label: #b89858;
+  --ruler-bg:    #18181b;
+  --ruler-tick:  #52525b;
+  --ruler-label: #71717a;
 
-  --thumb-bg:       #1e0e14;
-  --thumb-border:   #3a2030;
-  --thumb-active:   #4a6ac8;
+  --thumb-bg:       #18181b;
+  --thumb-border:   #3f3f46;
+  --thumb-active:   #3b82f6;
 
-  --overlay-backdrop: rgba(0,0,0,0.65);
+  --overlay-backdrop: rgba(0,0,0,0.6);
 }
 
-/* ── Light theme — SHAB-E YALDA daybreak (warm parchment companion) ─────── */
+/* ── Light theme ─────────────────────────────────────────────────────────── */
 
 [data-theme="light"] {
-  --bg-0: #fdf6e8;            /* warm parchment */
-  --bg-1: #f4ecd4;
-  --bg-2: #e8dcc0;
-  --bg-3: #d4c4a4;
+  --bg-0: #ffffff;
+  --bg-1: #f4f4f5;
+  --bg-2: #e4e4e7;
+  --bg-3: #d4d4d8;
 
-  --fg-0: #2a1808;            /* persian ink */
-  --fg-1: #5a3a18;
-  --fg-2: #8a6a3a;
+  --fg-0: #09090b;
+  --fg-1: #52525b;
+  --fg-2: #a1a1aa;
 
-  --accent:          #4a6ac8;
-  --accent-hover:    #3550a8;
-  --accent-contrast: #fdf6e8;
+  --accent:          #2563eb;
+  --accent-hover:    #1d4ed8;
+  --accent-contrast: #ffffff;
 
-  --danger: #b8281a;
-  --warn:   #c08018;
-  --ok:     #5a7a2a;
+  --danger: #dc2626;
+  --warn:   #d97706;
+  --ok:     #16a34a;
 
-  --selection:        rgba(74, 106, 200, 0.22);
-  --selection-border: #4a6ac8;
-  --selection-handle: #2a1808;
+  --selection:        rgba(37, 99, 235, 0.25);
+  --selection-border: #2563eb;
+  --selection-handle: #1d4ed8;
 
-  --ruler-bg:    #f4ecd4;
-  --ruler-tick:  #b89858;
-  --ruler-label: #8a6a3a;
+  --ruler-bg:    #f4f4f5;
+  --ruler-tick:  #a1a1aa;
+  --ruler-label: #71717a;
 
-  --thumb-bg:       #f4ecd4;
-  --thumb-border:   #d4c4a4;
-  --thumb-active:   #4a6ac8;
+  --thumb-bg:       #f4f4f5;
+  --thumb-border:   #d4d4d8;
+  --thumb-active:   #2563eb;
 
-  --overlay-backdrop: rgba(42,24,8,0.4);
+  --overlay-backdrop: rgba(0,0,0,0.4);
 }
 
 /* ── System preference auto-switch ──────────────────────────────────────── */
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg-0: #fdf6e8;
-    --bg-1: #f4ecd4;
-    --bg-2: #e8dcc0;
-    --bg-3: #d4c4a4;
-    --fg-0: #2a1808;
-    --fg-1: #5a3a18;
-    --fg-2: #8a6a3a;
-    --accent: #4a6ac8;
-    --accent-hover: #3550a8;
-    --accent-contrast: #fdf6e8;
-    --danger: #b8281a;
-    --warn: #c08018;
-    --ok: #5a7a2a;
-    --selection: rgba(74, 106, 200, 0.22);
-    --selection-border: #4a6ac8;
-    --selection-handle: #2a1808;
-    --ruler-bg: #f4ecd4;
-    --ruler-tick: #b89858;
-    --ruler-label: #8a6a3a;
-    --thumb-bg: #f4ecd4;
-    --thumb-border: #d4c4a4;
-    --thumb-active: #4a6ac8;
-    --overlay-backdrop: rgba(42,24,8,0.4);
+    --bg-0: #ffffff;
+    --bg-1: #f4f4f5;
+    --bg-2: #e4e4e7;
+    --bg-3: #d4d4d8;
+    --fg-0: #09090b;
+    --fg-1: #52525b;
+    --fg-2: #a1a1aa;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-contrast: #ffffff;
+    --danger: #dc2626;
+    --warn: #d97706;
+    --ok: #16a34a;
+    --selection: rgba(37, 99, 235, 0.25);
+    --selection-border: #2563eb;
+    --selection-handle: #1d4ed8;
+    --ruler-bg: #f4f4f5;
+    --ruler-tick: #a1a1aa;
+    --ruler-label: #71717a;
+    --thumb-bg: #f4f4f5;
+    --thumb-border: #d4d4d8;
+    --thumb-active: #2563eb;
+    --overlay-backdrop: rgba(0,0,0,0.4);
   }
 }
 
@@ -1855,6 +1854,7 @@ return { on, off, once, emit };
 const __m_core_state = (() => {
 const History = __m_core_history.History;
 const emit = __m_core_events.emit;
+const on = __m_core_events.on;
 
 const state = {
   session: {
@@ -1924,6 +1924,10 @@ function loadPrefs() {
     if (p.stripExif != null) state.export.stripExif = p.stripExif;
     if (p.numericPanelPos) state._numericPanelPos = p.numericPanelPos;
     if (p.blurStrength != null) state.toolSettings.blurStrength = p.blurStrength;
+    if (typeof p.activeTool === 'string') {
+      const valid = ['crop', 'redact', 'blur', 'pixelate', 'text', 'arrow', 'pencil', 'shape'];
+      if (valid.includes(p.activeTool)) state.activeTool = p.activeTool;
+    }
   } catch {}
 }
 
@@ -1938,11 +1942,14 @@ function savePrefs() {
       exportFormat: state.export.format,
       stripExif: state.export.stripExif,
       numericPanelPos: state._numericPanelPos,
-      blurStrength: state.toolSettings.blurStrength
+      blurStrength: state.toolSettings.blurStrength,
+      activeTool: state.activeTool && state.activeTool !== 'eyedropper' ? state.activeTool : null
     };
     localStorage.setItem(PREFS_KEY, JSON.stringify(p));
   } catch {}
 }
+
+on('tool:changed', () => savePrefs());
 
 // Called after a new image is decoded and ready to display
 function setImage(bitmap, format, exif = null) {
@@ -1962,7 +1969,6 @@ function setImage(bitmap, format, exif = null) {
   state.image.exif = exif;
 
   state.selection = { shape: null, x: 0, y: 0, w: 0, h: 0, aspectLock: null, customAspect: { w: 1, h: 1 } };
-  state.activeTool = null;
   state.layers = [];
   state.history.clear();
 
@@ -4600,6 +4606,8 @@ function initToolbar() {
   });
 
   on('save:complete', () => updateDirtyDot(false));
+
+  if (state.activeTool) setActiveTool(state.activeTool);
 }
 
 function bindButton(id, handler) {
