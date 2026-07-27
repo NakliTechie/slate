@@ -11,6 +11,25 @@
 /* ui/layout.css */
 /* ── App root ──────────────────────────────────────────────────────────────── */
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-3) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -9364,10 +9383,19 @@ function showWorkspaceNudge() {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
+function notifyNakliOSReady() {
+  if (window.parent === window) return;
+  try { window.parent.postMessage({ type: 'naklios:ready' }, '*'); } catch (_) {}
+}
+
+function start() {
+  void boot().then(notifyNakliOSReady);
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot);
+  document.addEventListener('DOMContentLoaded', start);
 } else {
-  boot();
+  start();
 }
 
 return {  };
