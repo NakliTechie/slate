@@ -2818,8 +2818,17 @@ const isSupportedFile = __m_decode_registry.isSupportedFile;
 const formatOf = __m_decode_registry.formatOf;
 const parseExif = __m_exif.parseExif;
 
-const hasFSA = 'showOpenFilePicker' in window;
-const hasDirPicker = 'showDirectoryPicker' in window;
+// Native File System Access pickers cannot be invoked by a cross-origin
+// iframe. Slate is embeddable in shells such as NakliOS, so only advertise
+// those paths when this document is top-level or shares the top-level origin.
+const canUseNativePickers = (() => {
+  if (window.self === window.top) return true;
+  try { return window.top.location.origin === window.location.origin; }
+  catch (_) { return false; }
+})();
+
+const hasFSA = canUseNativePickers && 'showOpenFilePicker' in window;
+const hasDirPicker = canUseNativePickers && 'showDirectoryPicker' in window;
 
 // ── Open paths ────────────────────────────────────────────────────────────────
 
@@ -2838,13 +2847,33 @@ async function openFileFSA() {
 }
 
 async function openFolderFSA() {
-  if (!hasDirPicker) return;
+  if (!hasDirPicker) { openFolderFallback(); return; }
   try {
     const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
     await loadFolder(dirHandle);
   } catch (err) {
     if (err.name !== 'AbortError') emit('error', { message: `Could not open folder: ${err.message}` });
   }
+}
+
+function openFolderFallback() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.webkitdirectory = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files ?? [])
+      .filter(isSupportedFile)
+      .sort((a, b) =>
+        (a.webkitRelativePath || a.name).localeCompare(
+          b.webkitRelativePath || b.name,
+          undefined,
+          { numeric: true },
+        ));
+    if (files.length) await loadFileList(files, 'picker');
+  };
+  input.click();
 }
 
 function openFileFallback() {
@@ -3122,7 +3151,7 @@ async function saveSidecar(blob, ext) {
   return name;
 }
 
-return { hasFSA, hasDirPicker, openFileFSA, openFolderFSA, openFileFallback, openFromClipboard, handleDrop, openFromFile, openFromHandle, navigateTo, navigateNext, navigatePrev, navigateFirst, navigateLast, navigateSkip, saveDownload, saveOverwrite, saveSidecar };
+return { hasFSA, hasDirPicker, openFileFSA, openFolderFSA, openFolderFallback, openFileFallback, openFromClipboard, handleDrop, openFromFile, openFromHandle, navigateTo, navigateNext, navigatePrev, navigateFirst, navigateLast, navigateSkip, saveDownload, saveOverwrite, saveSidecar };
 })();
 
 const __m_core_html = (() => {
@@ -4449,7 +4478,6 @@ const openFileFSA = __m_core_fs.openFileFSA;
 const openFolderFSA = __m_core_fs.openFolderFSA;
 const openFileFallback = __m_core_fs.openFileFallback;
 const openFromClipboard = __m_core_fs.openFromClipboard;
-const hasDirPicker = __m_core_fs.hasDirPicker;
 const fitToWindow = __m_ui_viewer.fitToWindow;
 const fitToWidth = __m_ui_viewer.fitToWidth;
 const fitToHeight = __m_ui_viewer.fitToHeight;
@@ -4526,7 +4554,7 @@ function initToolbar() {
   `;
 
   bindButton('tb-open', () => openFileFSA());
-  bindButton('tb-open-folder', () => { if (hasDirPicker) openFolderFSA(); });
+  bindButton('tb-open-folder', () => openFolderFSA());
   bindButton('tb-paste', () => openFromClipboard());
   bindButton('tb-save', () => emit('modal:export', null));
 
@@ -4580,12 +4608,6 @@ function initToolbar() {
     if (icon) icon.setAttribute('href', `#icon-${next === 'light' ? 'moon' : 'sun'}`);
     savePrefs();
   });
-
-  // Disable folder button if no FSA
-  if (!hasDirPicker) {
-    const folderBtn = document.getElementById('tb-open-folder');
-    if (folderBtn) { folderBtn.disabled = true; folderBtn.title += ' (not supported in this browser)'; }
-  }
 
   on('tool:activate', ({ tool }) => setActiveTool(tool === state.activeTool ? null : tool));
 
@@ -8930,7 +8952,7 @@ function setupEmptyState() {
           <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-file"/></svg>
           Open File
         </button>
-        <button class="btn" id="dz-open-folder" ${!hasDirPicker ? 'disabled title="Not supported in this browser"' : ''}>
+        <button class="btn" id="dz-open-folder">
           <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-folder"/></svg>
           Open Folder
         </button>
@@ -8940,7 +8962,7 @@ function setupEmptyState() {
         </button>
       </div>
       <p class="dropzone-hint">Or drop an image anywhere on this page</p>
-      ${!hasFSA ? '<p class="dropzone-hint" style="color:var(--warn)">Firefox / Safari: folder write-back unavailable. Download only.</p>' : ''}
+      ${!hasFSA ? '<p class="dropzone-hint" style="color:var(--warn)">Compatibility mode: folder write-back unavailable. Download only.</p>' : ''}
     </div>
     <div class="footer-pill">
       <a href="guide/" target="_blank" rel="noopener">📖 Guide</a>
@@ -8964,7 +8986,7 @@ function showFallbackBanner() {
   banner.setAttribute('role', 'status');
   banner.innerHTML = `
     <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-info"/></svg>
-    <span>Running in compatibility mode — folder open and overwrite save are unavailable in this browser.</span>
+    <span>Running in compatibility mode — files and folders use the browser picker; overwrite save is unavailable.</span>
     <button class="banner-close" aria-label="Dismiss">
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-x"/></svg>
     </button>
