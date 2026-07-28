@@ -5514,7 +5514,11 @@ function showDryRunResults(dlg, rows, warnings) {
 
 async function doRun(dlg) {
   if (!validateOpsEnabled(dlg)) return;
-  if (_destMode === 'overwrite' && !await confirm('Overwrite all source files? This cannot be undone.')) return;
+  if (_destMode === 'overwrite' && !await confirmAction({
+    title: 'Overwrite source files?',
+    message: 'Every selected original will be replaced. This cannot be undone.',
+    confirmLabel: 'Overwrite files',
+  })) return;
 
   _cancelled = false;
 
@@ -5831,8 +5835,34 @@ function validateOpsEnabled(dlg) {
   return true;
 }
 
-async function confirm(msg) {
-  return window.confirm(msg);
+function confirmAction({ title, message, confirmLabel = 'Continue' }) {
+  let dlg = document.getElementById('dialog-confirm-action');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'dialog-confirm-action';
+    dlg.setAttribute('aria-labelledby', 'dialog-confirm-action-title');
+    dlg.setAttribute('aria-describedby', 'dialog-confirm-action-message');
+    dlg.innerHTML = `
+      <form method="dialog">
+        <div class="modal-header">
+          <h2 id="dialog-confirm-action-title"></h2>
+        </div>
+        <p class="modal-info" id="dialog-confirm-action-message"></p>
+        <div class="modal-footer">
+          <button class="btn" value="cancel" autofocus>Cancel</button>
+          <button class="btn btn-primary" id="dialog-confirm-action-ok" value="confirm"></button>
+        </div>
+      </form>`;
+    document.body.appendChild(dlg);
+  }
+  dlg.querySelector('#dialog-confirm-action-title').textContent = title;
+  dlg.querySelector('#dialog-confirm-action-message').textContent = message;
+  dlg.querySelector('#dialog-confirm-action-ok').textContent = confirmLabel;
+  dlg.returnValue = '';
+  return new Promise(resolve => {
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'confirm'), { once: true });
+    dlg.showModal();
+  });
 }
 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
