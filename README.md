@@ -11,6 +11,8 @@ IrfanView for the browser. A complete image editor in a single HTML file.
 
 ## Features
 
+Current release: **Slate v2.0.0**.
+
 ### Editor
 
 - **Selection tools:** crop, redact (solid black box), blur, pixelate
@@ -50,6 +52,7 @@ IrfanView for the browser. A complete image editor in a single HTML file.
 - Session restore — reload the page, click Resume, your image and edits come back
 - Undo / redo 50 steps with periodic snapshots
 - 5-tab Help modal (`?` key)
+- Accessible six-step first-run tour, replayable from Help
 
 ## Privacy & supply chain
 
@@ -76,6 +79,7 @@ For development of the source modules (under `src/`, gitignored), use any static
 - A cloud editor — there's no server, nothing syncs anywhere, nothing uploads
 - A Photoshop replacement — no curves, masks, layer groups, blend modes (yet)
 - A multi-file project tool — Slate edits one image at a time; folder operations (slideshow, batch, gallery) work across many but each transform is per-file
+- An animation timeline — animated GIF/WebP/APNG frame editing is intentionally out of scope; GIF opens as its first frame
 - A backup service — your edits live in IndexedDB until you save; nothing protects you from clearing browser data
 
 ## Credits

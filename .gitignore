@@ -6,6 +6,8 @@
 !.gitignore
 !guide/
 !guide/**
+!scripts/
+!scripts/test-slate-v2.mjs
 
 # wrangler files
 .wrangler

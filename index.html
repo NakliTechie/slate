@@ -271,6 +271,7 @@
   white-space: nowrap;
 }
 .footer-pill a:hover { opacity: 0.7; }
+.footer-pill #app-version { color: var(--fg-2); white-space: nowrap; }
 
 /* Right-sidebar bottom guide-link */
 
@@ -788,6 +789,67 @@
 .help-feature-item div { color: var(--fg-1); }
 
 .help-welcome-hint { text-align: center; font-size: 11px; color: var(--fg-2); margin: 0; }
+
+/* ── First-run tour ─────────────────────────────────────────────────────── */
+
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  pointer-events: auto;
+}
+
+.tour-spotlight {
+  position: fixed;
+  z-index: 4001;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 0 0 9999px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  transition:
+    top var(--dur-panel) var(--ease),
+    left var(--dur-panel) var(--ease),
+    width var(--dur-panel) var(--ease),
+    height var(--dur-panel) var(--ease);
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 4002;
+  width: min(360px, calc(100vw - 24px));
+  padding: var(--space-4);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  color: var(--fg-0);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+}
+
+.tour-progress {
+  margin: 0 0 var(--space-2);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tour-card h2 { margin: 0 0 var(--space-2); font-size: 18px; }
+.tour-card p { margin: 0; color: var(--fg-1); font-size: 13px; line-height: 1.6; }
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.tour-skip { margin-right: auto; color: var(--fg-1); }
+
+@media (max-width: 520px) {
+  .tour-card { padding: var(--space-3); }
+  .tour-actions { flex-wrap: wrap; }
+}
 
 kbd {
   display: inline-block;
@@ -4212,17 +4274,234 @@ function setActive(index) {
 return { initThumbstrip, toggleThumbstrip, isThumbstripVisible };
 })();
 
+const __m_ui_tour = (() => {
+const TOUR_KEY = 'slate.v2.tour-complete';
+
+const STEPS = [
+  {
+    target: '.dropzone-actions',
+    title: 'Start with an image',
+    body: 'Open one file, browse a folder, paste a screenshot, or simply drop an image anywhere. Your pixels stay in this browser.',
+  },
+  {
+    target: '#toolbar',
+    title: 'Everything is one click away',
+    body: 'File, edit, drawing, transform, view, and batch commands live in the top toolbar. Hover a control to see its keyboard shortcut.',
+  },
+  {
+    target: '#tb-crop',
+    title: 'Select, then apply',
+    body: 'Crop, redact, blur, and pixelate all begin by drawing a region. Press Enter to apply the pending edit or Escape to cancel it.',
+  },
+  {
+    target: '#right-sidebar',
+    title: 'Slate learns your tools',
+    body: 'Recently used and favourite tools collect here. Right-click or long-press a recent tool to keep it close.',
+  },
+  {
+    target: '#tb-save',
+    title: 'Save on your terms',
+    body: 'Ctrl+S uses the best available destination: your chosen workspace folder, the original file, or a private browser download.',
+  },
+  {
+    target: '#tb-help',
+    title: 'Help is always here',
+    body: 'Press ? for the full guide, shortcuts, and saving details. You can replay this tour from Help whenever you like.',
+  },
+];
+
+let layer = null;
+let stepIndex = 0;
+let previousFocus = null;
+let activeSteps = STEPS;
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function currentTarget() {
+  return document.querySelector(activeSteps[stepIndex].target)
+    || document.getElementById('toolbar')
+    || document.body;
+}
+
+function targetIsVisible(step) {
+  const target = document.querySelector(step.target);
+  if (!target) return false;
+  const rect = target.getBoundingClientRect();
+  const style = getComputedStyle(target);
+  return rect.width > 0 && rect.height > 0 &&
+    style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function positionTour() {
+  if (!layer) return;
+  const target = currentTarget();
+  target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const rect = target.getBoundingClientRect();
+  const pad = 6;
+  const spot = layer.querySelector('.tour-spotlight');
+  spot.style.top = Math.max(4, rect.top - pad) + 'px';
+  spot.style.left = Math.max(4, rect.left - pad) + 'px';
+  spot.style.width = Math.max(24, Math.min(innerWidth - 8, rect.width + pad * 2)) + 'px';
+  spot.style.height = Math.max(24, Math.min(innerHeight - 8, rect.height + pad * 2)) + 'px';
+
+  const card = layer.querySelector('.tour-card');
+  const cardRect = card.getBoundingClientRect();
+  const gap = 18;
+  const margin = 12;
+  let top;
+  let left;
+  if (rect.bottom + gap + cardRect.height <= innerHeight - margin) {
+    top = rect.bottom + gap;
+    left = rect.left + rect.width / 2 - cardRect.width / 2;
+  } else if (rect.top - gap - cardRect.height >= margin) {
+    top = rect.top - gap - cardRect.height;
+    left = rect.left + rect.width / 2 - cardRect.width / 2;
+  } else if (rect.left - gap - cardRect.width >= margin) {
+    top = rect.top + rect.height / 2 - cardRect.height / 2;
+    left = rect.left - gap - cardRect.width;
+  } else if (rect.right + gap + cardRect.width <= innerWidth - margin) {
+    top = rect.top + rect.height / 2 - cardRect.height / 2;
+    left = rect.right + gap;
+  } else {
+    top = innerHeight - cardRect.height - margin;
+    left = innerWidth / 2 - cardRect.width / 2;
+  }
+  card.style.top = clamp(top, margin, innerHeight - cardRect.height - margin) + 'px';
+  card.style.left = clamp(left, margin, innerWidth - cardRect.width - margin) + 'px';
+  card.style.visibility = 'visible';
+}
+
+function renderStep() {
+  if (!layer) return;
+  const step = activeSteps[stepIndex];
+  layer.querySelector('.tour-progress').textContent =
+    'Quick tour · ' + (stepIndex + 1) + ' of ' + activeSteps.length;
+  layer.querySelector('.tour-title').textContent = step.title;
+  layer.querySelector('.tour-body').textContent = step.body;
+  layer.querySelector('.tour-back').disabled = stepIndex === 0;
+  layer.querySelector('.tour-next').textContent =
+    stepIndex === activeSteps.length - 1 ? 'Finish' : 'Next';
+  layer.querySelector('.tour-card').style.visibility = 'hidden';
+  requestAnimationFrame(() => {
+    positionTour();
+    layer && layer.querySelector('.tour-next').focus();
+  });
+}
+
+function finishTour() {
+  localStorage.setItem(TOUR_KEY, '1');
+  closeTour();
+}
+
+function closeTour() {
+  if (!layer) return;
+  const oldLayer = layer;
+  layer = null;
+  window.removeEventListener('resize', positionTour);
+  document.removeEventListener('keydown', handleTourKeydown, true);
+  oldLayer.remove();
+  if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+  previousFocus = null;
+}
+
+function handleTourKeydown(event) {
+  if (!layer) return;
+  // The modal owns every key while open; do not let editor shortcuts also run.
+  event.stopPropagation();
+  if ((event.key === 'Enter' || event.key === ' ') &&
+      event.target instanceof Element &&
+      event.target.closest('.tour-actions button')) {
+    event.preventDefault();
+    event.target.click();
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    finishTour();
+    return;
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    if (stepIndex < activeSteps.length - 1) { stepIndex++; renderStep(); }
+    else finishTour();
+    return;
+  }
+  if (event.key === 'ArrowLeft' && stepIndex > 0) {
+    event.preventDefault();
+    stepIndex--;
+    renderStep();
+    return;
+  }
+  if (event.key !== 'Tab') {
+    return;
+  }
+  const controls = [...layer.querySelectorAll('button:not([disabled])')];
+  if (!controls.length) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function showTour({ force = false } = {}) {
+  if (layer || (!force && localStorage.getItem(TOUR_KEY))) return false;
+  previousFocus = document.activeElement;
+  stepIndex = 0;
+  activeSteps = STEPS.filter(targetIsVisible);
+  if (!activeSteps.length) activeSteps = STEPS.slice(1);
+  layer = document.createElement('div');
+  layer.className = 'tour-layer';
+  layer.innerHTML = `
+    <div class="tour-spotlight" aria-hidden="true"></div>
+    <section class="tour-card" role="dialog" aria-modal="true"
+             aria-labelledby="tour-title" aria-describedby="tour-body">
+      <div class="tour-progress"></div>
+      <h2 class="tour-title" id="tour-title"></h2>
+      <p class="tour-body" id="tour-body" aria-live="polite"></p>
+      <div class="tour-actions">
+        <button class="btn tour-skip" type="button">Skip tour</button>
+        <button class="btn tour-back" type="button">Back</button>
+        <button class="btn btn-primary tour-next" type="button">Next</button>
+      </div>
+    </section>`;
+  document.body.appendChild(layer);
+  layer.querySelector('.tour-skip').addEventListener('click', finishTour);
+  layer.querySelector('.tour-back').addEventListener('click', () => {
+    if (stepIndex > 0) { stepIndex--; renderStep(); }
+  });
+  layer.querySelector('.tour-next').addEventListener('click', () => {
+    if (stepIndex < activeSteps.length - 1) { stepIndex++; renderStep(); }
+    else finishTour();
+  });
+  window.addEventListener('resize', positionTour);
+  document.addEventListener('keydown', handleTourKeydown, true);
+  renderStep();
+  return true;
+}
+
+return { TOUR_KEY, showTour };
+})();
+
 const __m_ui_help = (() => {
 const on = __m_core_events.on;
+const showTour = __m_ui_tour.showTour;
+const TOUR_KEY = __m_ui_tour.TOUR_KEY;
 
 const SEEN_KEY = 'slate.v1.help-seen';
 
 function initHelp() {
   on('help:show', showHelp);
 
-  if (!localStorage.getItem(SEEN_KEY)) {
-    // Defer so the app finishes rendering first
-    setTimeout(showHelp, 400);
+  if (!localStorage.getItem(TOUR_KEY)) {
+    // Defer until the toolbar and empty-state actions are real tour targets.
+    setTimeout(() => showTour(), 500);
   }
 }
 
@@ -4256,10 +4535,15 @@ function showHelp() {
     </div>
     <div class="help-footer">
       <a class="help-footer-link" href="guide/" target="_blank" rel="noopener">Open full guide &rarr;</a>
+      <button class="btn" id="help-start-tour" type="button">Take the quick tour</button>
     </div>
   `;
 
   dlg.querySelector('.help-close').addEventListener('click', () => closeHelp(dlg));
+  dlg.querySelector('#help-start-tour').addEventListener('click', () => {
+    closeHelp(dlg);
+    setTimeout(() => showTour({ force: true }), 0);
+  });
   dlg.addEventListener('click', e => { if (e.target === dlg) closeHelp(dlg); });
 
   dlg.querySelectorAll('.help-tab-btn').forEach(btn => {
@@ -8980,7 +9264,7 @@ async function boot() {
 
 function updateVersion() {
   const footer = document.getElementById('app-version');
-  if (footer) footer.textContent = 'Slate v1.0.0';
+  if (footer) footer.textContent = 'Slate v2.0.0';
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -9014,6 +9298,7 @@ function setupEmptyState() {
       ${!hasFSA ? '<p class="dropzone-hint" style="color:var(--warn)">Compatibility mode: folder write-back unavailable. Download only.</p>' : ''}
     </div>
     <div class="footer-pill">
+      <span id="app-version">Slate v2.0.0</span>
       <a href="guide/" target="_blank" rel="noopener">📖 Guide</a>
       <a href="https://naklitechie.github.io/">⬅ More Projects</a>
       <a href="https://github.com/NakliTechie/slate" target="_blank" rel="noopener">⌨ Source</a>
