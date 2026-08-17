@@ -105,8 +105,18 @@ assert.match(
 );
 assert.match(
   readme,
-  /open a HEIC and export it as PNG, JPEG, WebP or TIFF/,
+  /Open a HEIC off your phone, edit it, export it as PNG, JPEG, WebP or TIFF/,
   'README documents the read-only-format conversion path',
+);
+assert.match(
+  html,
+  /\$\{section\('Formats', `[\s\S]*?Anything Slate can read, it can convert[\s\S]*?Overwrite<\/strong> is unavailable for them/,
+  'Help explains what converts, and why overwrite is unavailable for read-only formats',
+);
+assert.match(
+  html,
+  /\$\{section\('Batch conversion', `[\s\S]*?saved as lossless PNG instead/,
+  'Help documents the batch fallback for read-only formats',
 );
 
 // ── A missing lazy decoder is not reported as a corrupt file ─────────────────

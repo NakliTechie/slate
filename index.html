@@ -4716,9 +4716,19 @@ function saving() {
       <p class="help-p">After opening a dragged or pasted image, Slate suggests picking a folder. Once set, ${kbd('Ctrl+S')} saves there automatically — no dialog needed.</p>
       <p class="help-p">The workspace folder also enables session restore across refreshes.</p>
     `)}
+    ${section('Formats', `
+      ${row('Read', 'JPG, PNG, WebP, GIF (first frame), AVIF, SVG, BMP, HEIC/HEIF, TIFF, JPEG-XL, PSD, TGA, DDS, and RAW (CR2, NEF, ARW, DNG, RAF, ORF) via the embedded preview')}
+      ${row('Write', 'PNG, JPEG, WebP, TIFF')}
+      <p class="help-p">Anything Slate can read, it can convert. Open a HEIC from your phone, edit it, and export it as PNG, JPEG, WebP or TIFF like any other image. The decoders for the less common formats (HEIC, TIFF, JPEG-XL, PSD) download the first time you open one, so that first open needs a connection and takes a moment.</p>
+      <p class="help-p">Saving <em>back</em> to those formats isn't possible — no browser can encode them, and Slate does everything on your device. That also means <strong>Overwrite</strong> is unavailable for them: overwriting reuses the original filename, so writing PNG data into a <em>.heic</em> file would leave you with a file that no longer matches its own name. Use <strong>Download</strong> or <strong>Workspace folder</strong> instead, and you'll get a properly named new file.</p>
+    `)}
     ${section('EXIF metadata', `
       <p class="help-p">EXIF is stripped by default when exporting (the canvas re-encode removes it). Uncheck <strong>Strip EXIF</strong> in the Export dialog to re-embed the original EXIF into JPEG exports.</p>
       <p class="help-p">If the source image has GPS coordinates, a warning appears in the Image Info panel (ⓘ button).</p>
+    `)}
+    ${section('Batch conversion', `
+      <p class="help-p">Batch (convert / resize / rotate / flip / rename across a folder) reads every format the editor does. With <strong>Convert</strong> switched on, pick the output format explicitly.</p>
+      <p class="help-p">With <strong>Convert</strong> switched off, files keep their own format — except read-only ones like HEIC or RAW, which have no encoder to write back to. Those are saved as lossless PNG instead, and the dry run tells you how many before anything is written.</p>
     `)}
   `;
 }

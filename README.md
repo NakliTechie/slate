@@ -42,7 +42,12 @@ Current release: **Slate v2.0.0**.
 - **Write:** PNG, JPEG, WebP, **TIFF**
 - **EXIF:** displayed on open with GPS warning, stripped on save by default (toggle)
 
-Read-only formats convert on save: open a HEIC and export it as PNG, JPEG, WebP or TIFF. Because the original container can't be rewritten, "overwrite the original file" is refused for those — save to a folder or download instead. In batch, a read-only format with **Convert** switched off defaults to lossless PNG.
+**Anything Slate reads, it converts.** Open a HEIC off your phone, edit it, export it as PNG, JPEG, WebP or TIFF — the same applies to RAW, PSD, TIFF, JPEG-XL, TGA and DDS. Batch handles those formats too.
+
+Writing *back* to them isn't possible: no browser ships an encoder for HEIC or RAW, and Slate does all its work on-device. Two consequences worth knowing:
+
+- **Overwrite is refused for read-only formats.** Overwriting reuses the original filename, so writing PNG bytes into a `.heic` would leave a file that contradicts its own extension. Use *Download* or *Workspace folder* and you get a correctly named new file.
+- **In batch with Convert off**, read-only formats fall back to lossless PNG rather than being silently re-compressed. The dry run reports how many before anything is written.
 
 ### Batch tools
 
