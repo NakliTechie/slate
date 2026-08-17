@@ -3020,6 +3020,18 @@ async function handleDrop(dataTransfer) {
 
 // ── Internal loaders ─────────────────────────────────────────────────────────
 
+// Formats whose decoder is fetched on demand fail for two very different
+// reasons — a bad file, or a decoder that never arrived. Blaming the file for a
+// network problem sends people off chasing a corrupt HEIC that is perfectly
+// fine, so pass the real reason through when the decoder itself is the problem.
+function decodeFailureMessage(name, err) {
+  const reason = err?.message ?? '';
+  if (/decoder|connection|network|failed to fetch|not supported/i.test(reason)) {
+    return `Could not open ${name}: ${reason}`;
+  }
+  return `Could not decode ${name}. The file may be corrupted.`;
+}
+
 async function loadSingleFile(file, handle, source) {
   emit('loading:start', { name: file.name });
   try {
@@ -3035,7 +3047,7 @@ async function loadSingleFile(file, handle, source) {
 
     emit('session:changed', state.session);
   } catch (err) {
-    emit('error', { message: `Could not decode ${file.name}. The file may be corrupted.` });
+    emit('error', { message: decodeFailureMessage(file.name, err) });
   } finally {
     emit('loading:end', null);
   }
@@ -3161,7 +3173,7 @@ async function navigateTo(index) {
     setImage(bitmap, format, exif);
     emit('navigate', { index: i, total: files.length, name: entry.name });
   } catch (err) {
-    emit('error', { message: `Could not decode ${entry.name}. The file may be corrupted.` });
+    emit('error', { message: decodeFailureMessage(entry.name, err) });
   } finally {
     emit('loading:end', null);
   }
@@ -5500,8 +5512,26 @@ const emit = __m_core_events.emit;
 const hasDirPicker = __m_core_fs.hasDirPicker;
 const formatOf = __m_decode_registry.formatOf;
 const isSupportedFile = __m_decode_registry.isSupportedFile;
+const decode = __m_decode_registry.decode;
 const parseExif = __m_exif.parseExif;
 const esc = __m_core_html.esc;
+
+// Formats a batch worker can decode by itself with createImageBitmap. Everything
+// else (HEIC, TIFF, JXL, PSD, RAW, TGA, DDS) needs the decode registry, whose
+// lazy WASM decoders and <img> based SVG rasteriser only exist on the main
+// thread — so those get decoded here and the bitmap is transferred in.
+const WORKER_DECODABLE = new Set(['jpeg', 'png', 'webp', 'gif', 'avif', 'bmp']);
+
+// Formats the encoder can actually write. When "convert" is off we keep the
+// source format, but only if it is one of these — otherwise the encoder would
+// silently fall through to JPEG bytes under the source's extension.
+const ENCODABLE = new Set(['png', 'jpeg', 'webp']);
+
+function outputFormatFor(file, convert) {
+  if (convert.enabled) return convert.format;
+  const srcFmt = formatOf(file);
+  return ENCODABLE.has(srcFmt) ? srcFmt : 'png';
+}
 
 // Runtime state
 let _sources  = [];      // [{ name, size, file, handle? }]
@@ -5750,13 +5780,17 @@ async function doDryRun(dlg) {
   const rows = [];
   const warnings = [];
   let missingDate = 0;
+  let reformatted = 0;
 
   for (let i = 0; i < sample.length; i++) {
     const src = sample[i];
     const exif = await parseExif(src.file);
     if (ops.rename.enabled && ops.rename.template.includes('{date}') && !exif?.dateTimeOriginal) missingDate++;
 
-    const outName = await computeOutputName(src, i, exif);
+    const outFmt = outputFormatFor(src.file, ops.convert);
+    if (!ops.convert.enabled && outFmt !== formatOf(src.file)) reformatted++;
+
+    const outName = await computeOutputName(src, i, exif, outFmt);
     rows.push({
       from: src.name,
       to: outName,
@@ -5766,6 +5800,7 @@ async function doDryRun(dlg) {
     });
   }
   if (missingDate > 0) warnings.push(`${missingDate} of ${sample.length} sampled files have no EXIF DateTimeOriginal — {date} will fall back to file mtime.`);
+  if (reformatted > 0) warnings.push(`${reformatted} of ${sample.length} sampled files are in a format Slate can read but not write (HEIC, TIFF, RAW…) — they will be saved as lossless PNG. Enable Convert to choose JPEG or WebP instead.`);
 
   status.textContent = '';
   showDryRunResults(dlg, rows, warnings);
@@ -5840,17 +5875,31 @@ async function doRun(dlg) {
       try {
         // Parse EXIF + compute output name on main thread
         const exif = await parseExif(job.src.file);
-        const outFmt = snapshot.convert.enabled ? snapshot.convert.format : (formatOf(job.src.file) ?? 'png');
+        const outFmt = outputFormatFor(job.src.file, snapshot.convert);
+
+        // Overwriting keeps the original filename, so the bytes have to match
+        // the container that name claims. Refuse rather than write PNG data
+        // into a .heic (or .tif, .cr2, .psd…) file.
+        if (dest.mode === 'overwrite' && outFmt !== formatOf(job.src.file)) {
+          throw new Error(`cannot overwrite a .${formatOf(job.src.file)} file with ${outFmt.toUpperCase()} data — write to a folder instead`);
+        }
+
         const exifRaw = (!snapshot.convert.enabled || !snapshot.convert.stripExif) && outFmt === 'jpeg' ? exif?.raw : null;
         const outName = await computeOutputName(job.src, job.index, exif, outFmt);
+
+        // Formats the worker cannot open are decoded here and transferred in.
+        const needsMainThreadDecode = !WORKER_DECODABLE.has(formatOf(job.src.file));
+        const bitmap = needsMainThreadDecode ? await decode(job.src.file) : null;
+
         // Send work to worker
         const blob = await dispatchWorker(w, {
-          file:    job.src.file,
+          file:    bitmap ? null : job.src.file,
+          bitmap,
           ops:     snapshot,
           outFmt,
           quality: snapshot.convert.enabled ? snapshot.convert.quality : 90,
           exifRaw,
-        });
+        }, bitmap ? [bitmap] : []);
         await writeToDestination(dest, outName, blob, job.src);
         results.ok++;
       } catch (err) {
@@ -5891,11 +5940,11 @@ function makeWorkerPool(size) {
   return workers;
 }
 
-function dispatchWorker(w, payload) {
+function dispatchWorker(w, payload, transfer = []) {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2);
     w._pending.set(id, { resolve, reject });
-    w.postMessage({ id, ...payload });
+    w.postMessage({ id, ...payload }, transfer);
   });
 }
 
@@ -5956,9 +6005,11 @@ async function encode(canvas, outFmt, quality, exifRaw) {
 }
 
 self.onmessage = async (e) => {
-  const { id, file, ops, outFmt, quality, exifRaw } = e.data;
+  const { id, file, bitmap: preDecoded, ops, outFmt, quality, exifRaw } = e.data;
   try {
-    const bitmap = await createImageBitmap(file);
+    // Exotic formats (HEIC, TIFF, JXL, PSD, RAW, TGA, DDS, SVG) arrive already
+    // decoded from the main thread; everything else we open here.
+    const bitmap = preDecoded ?? await createImageBitmap(file);
     let canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     canvas.getContext('2d').drawImage(bitmap, 0, 0);
     bitmap.close?.();
@@ -9156,6 +9207,7 @@ const encodePng = __m_encode_png.encodePng;
 const encodeJpeg = __m_encode_jpeg.encodeJpeg;
 const encodeWebp = __m_encode_webp.encodeWebp;
 const encodeTiff = __m_encode_tiff.encodeTiff;
+const formatOf = __m_decode_registry.formatOf;
 const saveDownload = __m_core_fs.saveDownload;
 const saveOverwrite = __m_core_fs.saveOverwrite;
 const saveSidecar = __m_core_fs.saveSidecar;
@@ -9511,6 +9563,14 @@ async function doSave(showDialog = false) {
 
   try {
     if (exp.saveMode === 'overwrite' && entry?.handle) {
+      // Overwriting reuses the original filename, so the bytes we write must
+      // match the container the name claims. Saving a HEIC (or TIFF, RAW, PSD…)
+      // as PNG through this path would leave PNG data behind a .heic extension.
+      const srcFmt = formatOf(entry.file ?? entry);
+      if (srcFmt !== 'unknown' && srcFmt !== exp.format) {
+        emit('error', { message: `Cannot overwrite ${entry.name} with ${exp.format.toUpperCase()} — that would leave ${exp.format.toUpperCase()} data under a .${srcFmt} name. Save to a folder or download instead.` });
+        return;
+      }
       const confirmed = await confirmDialog('This replaces the original file. Undo history will be lost on next open.');
       if (!confirmed) return;
       await saveOverwrite(blob);

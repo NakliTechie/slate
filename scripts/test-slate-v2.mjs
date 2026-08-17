@@ -58,4 +58,69 @@ assert.match(
   'public backlog position excludes animation editing',
 );
 
+// ── Read-only formats (HEIC, TIFF, RAW, PSD…) survive the batch pipeline ──────
+
+assert.match(
+  html,
+  /const WORKER_DECODABLE = new Set\(\['jpeg', 'png', 'webp', 'gif', 'avif', 'bmp'\]\)/,
+  'batch knows which formats a worker can open unaided',
+);
+assert.match(
+  html,
+  /const needsMainThreadDecode = !WORKER_DECODABLE\.has\(formatOf\(job\.src\.file\)\)[\s\S]*?await decode\(job\.src\.file\)/,
+  'batch decodes worker-opaque formats through the main-thread registry',
+);
+assert.match(
+  html,
+  /w\.postMessage\(\{ id, \.\.\.payload \}, transfer\)/,
+  'the decoded bitmap is transferred to the worker rather than copied',
+);
+assert.match(
+  html,
+  /const bitmap = preDecoded \?\? await createImageBitmap\(file\)/,
+  'the worker prefers a pre-decoded bitmap and still opens plain formats itself',
+);
+
+// ── Output bytes always match the extension they are written under ────────────
+
+assert.match(
+  html,
+  /const ENCODABLE = new Set\(\['png', 'jpeg', 'webp'\]\)/,
+  'batch distinguishes formats it can write from formats it can only read',
+);
+assert.match(
+  html,
+  /function outputFormatFor[\s\S]*?ENCODABLE\.has\(srcFmt\) \? srcFmt : 'png'/,
+  'an unwritable source format falls back to lossless PNG instead of mislabelled JPEG',
+);
+assert.match(
+  html,
+  /dest\.mode === 'overwrite' && outFmt !== formatOf\(job\.src\.file\)[\s\S]*?throw new Error/,
+  'batch refuses to overwrite an original with bytes of a different container',
+);
+assert.match(
+  html,
+  /const srcFmt = formatOf\(entry\.file \?\? entry\)[\s\S]*?srcFmt !== 'unknown' && srcFmt !== exp\.format[\s\S]*?emit\('error'/,
+  'single-image save refuses to overwrite a HEIC with PNG or JPEG data',
+);
+assert.match(
+  readme,
+  /open a HEIC and export it as PNG, JPEG, WebP or TIFF/,
+  'README documents the read-only-format conversion path',
+);
+
+// ── A missing lazy decoder is not reported as a corrupt file ─────────────────
+
+assert.match(
+  html,
+  /function decodeFailureMessage[\s\S]*?decoder\|connection\|network[\s\S]*?Could not open \$\{name\}: \$\{reason\}/,
+  'a decoder that failed to load reports the real reason instead of blaming the file',
+);
+assert.equal(
+  (html.match(/Could not decode \$\{(?:file|entry)\.name\}\. The file may be corrupted\./g) || []).length,
+  0,
+  'no loader still hardcodes the corrupt-file message',
+);
+
 console.log('Slate v2.0 onboarding contract: PASS');
+console.log('Slate HEIC / read-only format contract: PASS');

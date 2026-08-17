@@ -42,6 +42,8 @@ Current release: **Slate v2.0.0**.
 - **Write:** PNG, JPEG, WebP, **TIFF**
 - **EXIF:** displayed on open with GPS warning, stripped on save by default (toggle)
 
+Read-only formats convert on save: open a HEIC and export it as PNG, JPEG, WebP or TIFF. Because the original container can't be rewritten, "overwrite the original file" is refused for those — save to a folder or download instead. In batch, a read-only format with **Convert** switched off defaults to lossless PNG.
+
 ### Batch tools
 
 - **Batch operations** — convert / resize / rotate / flip / rename across a folder, with worker pool, dry-run, progress bar, cancel
