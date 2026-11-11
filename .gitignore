@@ -15,3 +15,9 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# Canonical NakliOS SDK refresh (vendor-sdk workflow)
+!scripts/vendor-naklios-sdk.mjs
+!.github/
+!.github/workflows/
+!.github/workflows/vendor-sdk.yml
