@@ -11,13 +11,22 @@
 //   "updated": "2026-11-16T12:00:00.000Z",
 //   "items": {
 //     "<relative path>": { "size": 123, "fav": true, "rating": 4, "flag": "pick",
-//                          "hidden": true, "tags": ["trips/goa"], "trashed": "<ISO time>" }
+//                          "hidden": true, "tags": ["trips/goa"], "trashed": "<ISO time>",
+//                          "meta": { "taken": "2019-07-03T15:26:30", "lat": 15.5, "lon": 73.8,
+//                                    "caption": "Sunset", "people": ["Asha"], "source": "takeout" } }
 //   },
 //   "albums": [
 //     { "id": "al_k3j9x2", "name": "Goa 2024", "created": "<ISO>", "cover": "<relative path>|null",
 //       "items": ["<relative path>", ...] }
 //   ]
 // }
+//
+// `meta` (optional, added within version 1; older files without it still load) holds the
+// date, place, caption and people that came from an import, a Google Takeout JSON or an
+// iCloud export CSV, so a rebuild or full rescan restores them without that JSON or CSV.
+// `taken` is the wall clock as Slate stores it (schema.wallClockToTime), with no zone.
+// `source` is "takeout" or "icloud". The scanner applies each field only where the file's
+// own EXIF or XMP has none (scan.applyMeta). Every field inside `meta` is optional.
 //
 // Only non-default fields are written. `size` is written with every item so a
 // file that moved inside the root can be re-matched by name plus size.
@@ -51,6 +60,8 @@ export function parseLibFile(text) {
   for (const [p, v] of Object.entries(raw.items && typeof raw.items === 'object' ? raw.items : {})) {
     const c = cleanChoice(v);
     if (!c) { skipped++; continue; }
+    const meta = cleanMeta(v.meta);
+    if (meta) c.meta = meta;
     file.items[normPath(p)] = c;
   }
   for (const a of Array.isArray(raw.albums) ? raw.albums : []) {
@@ -78,17 +89,40 @@ function cleanChoice(v) {
   return c;
 }
 
+export const META_SOURCES = ['takeout', 'icloud'];
+
+// Clean an item's `meta` object; null when nothing usable is left.
+export function cleanMeta(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const m = {};
+  if (typeof v.taken === 'string' && metaTime(v.taken) != null) m.taken = v.taken;
+  if (Number.isFinite(v.lat) && Number.isFinite(v.lon) && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180) { m.lat = v.lat; m.lon = v.lon; }
+  if (typeof v.caption === 'string' && v.caption) m.caption = v.caption;
+  if (Array.isArray(v.people)) { const p = [...new Set(v.people.filter(x => typeof x === 'string' && x))]; if (p.length) m.people = p; }
+  if (!Object.keys(m).length) return null;
+  m.source = META_SOURCES.includes(v.source) ? v.source : 'takeout';
+  return m;
+}
+
+// Stored time (ms, wall clock read as UTC) <-> the `taken` string.
+export function metaTaken(time) { return new Date(time).toISOString().slice(0, 19); }
+export function metaTime(taken) {
+  const t = Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(taken) ? taken : taken + 'Z');
+  return Number.isFinite(t) ? t : null;
+}
+
 // Build the file for one root from in-memory state.
 //   choices: Map(path -> choice) for this root
+//   meta:    Map(path -> meta) for this root (import details; see the header)
 //   sizes:   Map(path -> size) for this root (from the index)
 //   albums:  [{ id, name, created, cover: path|null, items: [path] }] restricted to this root
-export function buildLibFile({ choices, sizes, albums, now = new Date() }) {
+export function buildLibFile({ choices, meta = new Map(), sizes, albums, now = new Date() }) {
   const file = emptyLibFile();
   file.updated = now.toISOString();
-  const paths = [...choices.keys()].sort();
+  const paths = [...new Set([...choices.keys(), ...meta.keys()])].sort();
   for (const p of paths) {
-    const c = choices.get(p);
-    if (isEmptyChoice(c)) continue;
+    const c = choices.get(p) ?? emptyChoice(), m = meta.get(p);
+    if (isEmptyChoice(c) && !m) continue;
     const out = {};
     const size = sizes?.get(p) ?? c.size;
     if (typeof size === 'number') out.size = size;
@@ -98,6 +132,7 @@ export function buildLibFile({ choices, sizes, albums, now = new Date() }) {
     if (c.hidden) out.hidden = true;
     if (c.tags?.length) out.tags = [...c.tags].sort();
     if (c.trashed) out.trashed = c.trashed;
+    if (m) out.meta = m;
     file.items[p] = out;
   }
   file.albums = [...albums]

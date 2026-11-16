@@ -278,4 +278,18 @@ const XMP = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.
   assert.equal(watchStatus(), 'unavailable');
 }
 
+// ── library-file meta: EXIF beats it, a plain file takes it ───────────────────
+{
+  const meta = { taken: '2019-07-03T15:26:30', lat: 15.5, lon: 73.8, caption: 'Sunset', source: 'takeout' };
+  const text = JSON.stringify({ format: 'slate-library', version: 1, items: { 'exif.jpg': { meta }, 'plain.jpg': { meta } }, albums: [] });
+  const { parseLibFile } = await import('../src/library/libfile.js');
+  const thumbs = { enqueue() {}, async remove() {}, async clear() {}, async url() { return null; } };
+  const lib = new Library({ store: memoryStore(), services: { scanRoot, thumbs, persist: { async load() { return parseLibFile(text).file; }, async save() {}, canWrite: () => true } }, saveDelay: 5 });
+  const root = await lib.addRoot({ handle: fakeDir('M', { 'exif.jpg': file('exif.jpg', jpegWithExif()), 'plain.jpg': file('plain.jpg', 'x') }, { state: 'granted' }), name: 'M' });
+  const ex = lib.get(makeId(root.id, 'exif.jpg')), pl = lib.get(makeId(root.id, 'plain.jpg'));
+  assert.deepEqual([ex.time, ex.timeSource], [wallClockToTime(2023, 7, 14, 18, 5, 9), 'exif'], 'EXIF beats meta');
+  assert.equal(ex.description, 'Sunset', 'a caption from meta still fills in');
+  assert.deepEqual([pl.time, pl.timeSource, pl.lat, pl.lon], [wallClockToTime(2019, 7, 3, 15, 26, 30), 'takeout', 15.5, 73.8], 'a file with no EXIF takes meta');
+}
+
 console.log('test-library-scan: all passed');

@@ -186,6 +186,33 @@ await check('scan: an existing library-file entry keeps Takeout choices out', as
   assert.equal(lib.choice(makeId(root.id, 'Trip/IMG_1.jpg')).fav, true);
 });
 
+await check('scan: Takeout details are saved once as meta and survive a rebuild with the JSON gone', async () => {
+  let saved = null;
+  const thumbs = { enqueue() {}, async remove() {}, async clear() {}, async url() { return null; } };
+  const persist = { async load() { return saved; }, async save(_r, f) { saved = parseLibFile(JSON.stringify(f)).file; }, canWrite: () => true };
+  const lib = new Library({ store: memoryStore(), services: { scanRoot, thumbs, persist }, saveDelay: 5 });
+  const tree = takeoutTree();
+  const root = await lib.addRoot({ handle: fakeDir('Takeout', tree), name: 'Takeout' });
+  await lib.flush();
+  const meta = saved.items['Trip/IMG_1.jpg'].meta;
+  assert.deepEqual(meta, { taken: '2019-07-03T15:26:30', lat: 15.5, lon: 73.8, caption: 'Sunset', people: ['Asha'], source: 'takeout' });
+  // A changed JSON is not read again once meta exists.
+  tree.Trip['IMG_1.jpg.supplemental-metadata.json'] = tj({ photoTakenTime: { timestamp: '1000' }, description: 'Changed' });
+  await scanRoot(lib, root, { full: true });
+  const id1 = makeId(root.id, 'Trip/IMG_1.jpg');
+  assert.equal(lib.get(id1).description, 'Sunset', 'the JSON is not re-read');
+  // Rebuild with every JSON removed: the details come back from the library file.
+  for (const k of Object.keys(tree.Trip)) if (k.endsWith('.json')) delete tree.Trip[k];
+  const fresh = new Library({ store: memoryStore(), services: { scanRoot, thumbs, persist }, saveDelay: 5 });
+  await fresh.addRoot({ handle: fakeDir('Takeout', tree), name: 'Takeout' });
+  await fresh.rebuild();
+  const r1 = [...fresh.records.values()].find(r => r.path === 'Trip/IMG_1.jpg');
+  assert.deepEqual([r1.time, r1.timeSource, r1.lat, r1.lon, r1.description], [1562167590000, 'takeout', 15.5, 73.8, 'Sunset']);
+  assert.deepEqual(r1.xmpTags, ['people/Asha']);
+  const r2 = [...fresh.records.values()].find(r => r.path === 'Trip/IMG_2.jpg');
+  assert.equal(r2.time, 1600000000000, 'a creationTime date survives too');
+});
+
 // ── zip import loop ─────────────────────────────────────────────────────────
 await check('import: destPath keeps album folders and drops Takeout/<product>', () => {
   assert.deepEqual(destPath('Takeout/Google Photos/Trip 2024/IMG_1.jpg'), ['Trip 2024', 'IMG_1.jpg']);

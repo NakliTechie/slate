@@ -21,6 +21,8 @@
 // wall clock as if it were UTC (schema.wallClockToTime). Slate has no zone for the photo, so the
 // instant is stored as its UTC wall clock: a photo taken at 09:00 in India (UTC+05:30) groups
 // under 03:30. scan.js uses it only when the photo has no EXIF or XMP time.
+// scan.js saves what the JSON says in the library file (libfile.js `meta`) the first time and
+// does not read the JSON again after that.
 
 import { kindOf } from './schema.js';
 

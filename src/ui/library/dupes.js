@@ -3,8 +3,11 @@
 // trash the rest" trashes one group; "Trash all suggested" does every group on
 // the page. Both go through runCommand('photo.trash') and offer Undo.
 //
-// initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
-// 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
+// initDupes(lib, ui) registers the view. Exact copies take two passes on
+// lib.jobs as kind 'dupes': a sampled fingerprint (first and last 1 MB plus the
+// size) for files that share a size, then a chunked byte comparison of files
+// whose fingerprints match, so no whole large video is read into memory.
+// Similar-photo fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
 // them for photos thumbnailed before Slate took them.
 // "Also use meaning (CLIP)" (row D4) adds a third pass over the vectors that
 // Search by meaning keeps (lib.services.clip, clip.js): photos whose cosine is
@@ -12,14 +15,14 @@
 
 import { runCommand } from '../../library/commands.js';
 import { esc } from '../../core/html.js';
-import { exactGroups, nearGroupsAsync, clipGroupsAsync, sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT } from '../../library/dupes.js';
+import { exactGroups, fingerprintCandidates, splitByBytes, sampleFingerprint, sameBytes, nearGroupsAsync, clipGroupsAsync, sizeCollisions, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT } from '../../library/dupes.js';
 
 const TRASH_CAP = 5000;        // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
 const PAGE = 40;               // groups drawn at a time
 const RECOMPUTE_MS = 1200;
 const THRESHOLD_KEY = 'slate.dupes.threshold';
-const SHA_PATCH_BATCH = 200;
+const FP_PATCH_BATCH = 200;
 const CLIP_ON_KEY = 'slate.dupes.clip';
 const CLIP_MIN_KEY = 'slate.dupes.clipmin';
 
@@ -45,7 +48,8 @@ export function initDupes(lib, ui) {
   const clip = () => lib.services.clip ?? null;
   const clipReady = () => !!(clip()?.enabled() && clip().count());
 
-  const sha = new Map();       // id -> content hash found this session (also patched onto the record)
+  const fp = new Map();        // id -> sampled fingerprint found this session (also patched onto the record)
+  const same = new Map();      // 'idA|idB|fingerprint' -> byte comparison result this session
   const keep = new Map();      // group key -> Set of ids marked to keep
   let exact = [], near = [], byMeaning = [];
   let computed = false, stale = true, busy = false, again = false;
@@ -57,7 +61,16 @@ export function initDupes(lib, ui) {
     isTrashed: (r) => !!lib.choice(r.id).trashed,
     choiceOf: (id) => ({ fav: lib.choice(id).fav, rating: lib.rating(id) }),
   });
-  const hashOf = (r) => sha.get(r.id) ?? r.sha256 ?? null;
+  // Records written before 2026-11-17 carry a whole-file `sha256`; it is a
+  // different hash, so it is ignored and the fingerprint is made afresh.
+  const fingerprintOf = (r) => fp.get(r.id) ?? r.fingerprint ?? null;
+  const pairKey = (a, b) => `${a.id}|${b.id}|${fingerprintOf(a)}`;
+  const sameOf = async (a, b, signal) => {
+    const k = pairKey(a, b);
+    if (!same.has(k)) same.set(k, await sameBytes(await lib.getFile(a.id), await lib.getFile(b.id), { signal }));
+    return same.get(k);
+  };
+  const knownSame = (a, b) => same.get(pairKey(a, b)) ?? false;
 
   function say(message, level = 'info') { ui.toast?.(message, level); }
 
@@ -111,24 +124,33 @@ export function initDupes(lib, ui) {
         try { await lib.services.thumbs.rehash(noHash); } finally { off(); }
       }
 
-      // 2. Content hashes, only for files whose size another file shares.
-      const todo = sizeCollisions(all, o).filter(r => !hashOf(r));
+      // 2a. Sampled fingerprints, only for files whose size another file shares.
+      const todo = sizeCollisions(all, o).filter(r => !fingerprintOf(r));
       if (todo.length) {
-        const off = trackJobs(`Comparing the contents of ${plural(todo.length, 'file')} that share a size`, todo.length);
+        const off = trackJobs(`Fingerprinting ${plural(todo.length, 'file')} that share a size`, todo.length);
         let patches = [];
         const flush = () => { const l = patches; patches = []; return l.length ? lib.patchRecords(l, 'dupes').catch(() => {}) : null; };
         try {
           await runOnJobs(lib.jobs, 'dupes', todo, async (rec, signal) => {
             const file = await lib.getFile(rec.id);
             if (signal.aborted) return;
-            const h = await sha256Hex(file);
-            sha.set(rec.id, h);
-            patches.push({ id: rec.id, sha256: h });
-            if (patches.length >= SHA_PATCH_BATCH) flush();
+            const h = await sampleFingerprint(file);
+            fp.set(rec.id, h);
+            patches.push({ id: rec.id, fingerprint: h });
+            if (patches.length >= FP_PATCH_BATCH) flush();
           });
         } finally { off(); await flush(); }
       }
-      exact = await exactGroups(all, hashOf, o);
+      // 2b. Byte comparison of files whose fingerprints match, one job per set.
+      const candidates = [...(await fingerprintCandidates(all, fingerprintOf, o)).values()]
+        .filter(list => list.slice(1).some(r => !same.has(pairKey(list[0], r))));
+      if (candidates.length) {
+        const off = trackJobs(`Comparing the bytes of ${plural(candidates.length, 'set')} of matching files`, candidates.length);
+        try {
+          await runOnJobs(lib.jobs, 'dupes', candidates, (list, signal) => splitByBytes(list, (a, b) => sameOf(a, b, signal)));
+        } finally { off(); }
+      }
+      exact = await exactGroups(all, fingerprintOf, knownSame, o);
 
       // 3. Similar photos by fingerprint.
       const hashed = all.filter(r => r.dhash).length;

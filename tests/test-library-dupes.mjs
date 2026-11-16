@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   dhashRGBA, hamming, exactGroups, nearGroups, nearGroupsAsync, rankKeeper,
-  sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, MAX_DISTANCE_LIMIT,
+  sizeCollisions, sha256Hex, sampleFingerprint, sameBytes, splitByBytes, SAMPLE_BYTES, CHUNK_BYTES, dropCoveredNear, runOnJobs, MAX_DISTANCE_LIMIT,
   clipGroups, clipGroupsAsync, clipCosine, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT,
 } from '../src/library/dupes.js';
 import { JobQueue } from '../src/library/jobs.js';
@@ -150,8 +150,9 @@ await test('exact grouping hashes only colliding sizes and leaves out trashed an
   const recs = [recOf('r/a.jpg', { mtime: 5 }), recOf('r/b.jpg', { mtime: 2 }), recOf('r/c.jpg'), recOf('r/d.jpg'), recOf('r/e.jpg'), recOf('r/f.jpg', { missing: true })];
   const trashed = new Set(['r/d.jpg']);
   const read = [];
-  const getFile = async (id) => { read.push(id); return { arrayBuffer: async () => FILES[id].slice().buffer }; };
-  const groups = await exactGroups(recs, async (r) => sha256Hex(await getFile(r.id)), { isTrashed: r => trashed.has(r.id) });
+  const getFile = async (id) => { read.push(id); return new Blob([FILES[id]]); };
+  const blobOf = (r) => new Blob([FILES[r.id]]);
+  const groups = await exactGroups(recs, async (r) => sampleFingerprint(await getFile(r.id)), async (a, b) => sameBytes(blobOf(a), blobOf(b)), { isTrashed: r => trashed.has(r.id) });
   assert.equal(groups.length, 1);
   assert.equal(groups[0].kind, 'exact');
   assert.deepEqual(groups[0].ids, ['r/b.jpg', 'r/a.jpg']); // same pixels: the older file keeps
@@ -162,6 +163,71 @@ await test('exact grouping hashes only colliding sizes and leaves out trashed an
 
 await test('sha256Hex matches the known digest', async () => {
   assert.equal(await sha256Hex(enc('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+});
+
+// A fake file of `size` bytes whose byte at i is byteAt(i). It answers only
+// slice() and arrayBuffer() on slices, and counts the largest read, so a test
+// can prove the whole file is never read at once.
+function fakeFile(size, byteAt, stats = { largest: 0, reads: 0 }) {
+  const part = (start, end) => ({
+    size: end - start,
+    slice: (s = 0, e = end - start) => part(start + s, start + Math.min(e, end - start)),
+    arrayBuffer: async () => {
+      const n = end - start;
+      stats.largest = Math.max(stats.largest, n); stats.reads++;
+      const u = new Uint8Array(n);
+      for (let i = 0; i < n; i++) u[i] = byteAt(start + i);
+      return u.buffer;
+    },
+  });
+  const f = part(0, size);
+  f.arrayBuffer = async () => { throw new Error('whole-file read'); };
+  return f;
+}
+
+await test('same size, head and tail but a different middle: fingerprints match, bytes do not', async () => {
+  const size = 5 * SAMPLE_BYTES;
+  const mid = Math.floor(size / 2);
+  const a = fakeFile(size, i => i & 0xff);
+  const b = fakeFile(size, i => (i === mid ? 7 : i & 0xff) & 0xff);
+  const c = fakeFile(size, i => i & 0xff);
+  assert.equal(await sampleFingerprint(a), await sampleFingerprint(b));
+  assert.equal(await sameBytes(a, b), false);
+  assert.equal(await sameBytes(a, c), true);
+  const files = { a, b, c };
+  const recs = ['a', 'b', 'c'].map(id => ({ id, size, w: 1, h: 1, mtime: 1 }));
+  const groups = await exactGroups(recs, r => sampleFingerprint(files[r.id]), (x, y) => sameBytes(files[x.id], files[y.id]));
+  assert.deepEqual(groups.map(g => [...g.ids].sort().join()), ['a,c']);
+});
+
+await test('a 200 MB file is fingerprinted and compared in chunks, never read whole', async () => {
+  const size = 200 * 1024 * 1024;
+  const stats = { largest: 0, reads: 0 };
+  const byteAt = i => (i * 31 + (i >>> 12)) & 0xff;
+  const a = fakeFile(size, byteAt, stats), b = fakeFile(size, byteAt, stats);
+  assert.equal(await sampleFingerprint(a), await sampleFingerprint(b));
+  assert.equal(stats.largest, SAMPLE_BYTES);
+  stats.reads = 0;
+  assert.equal(await sameBytes(a, b), true);
+  assert.equal(stats.reads, 2 * 50); // 50 chunks of 4 MB from each file
+  assert.equal(stats.largest, CHUNK_BYTES);
+});
+
+await test('byte comparison stops at the first chunk that differs', async () => {
+  const size = 64 * 1024 * 1024;
+  const stats = { largest: 0, reads: 0 };
+  const a = fakeFile(size, () => 1, stats);
+  const b = fakeFile(size, i => (i < CHUNK_BYTES ? 1 : 2), stats);
+  assert.equal(await sameBytes(a, b), false);
+  assert.equal(stats.reads, 4); // chunk 0 equal, chunk 1 differs: two reads each
+  assert.equal(stats.largest, CHUNK_BYTES);
+});
+
+await test('splitByBytes keeps distinct contents apart and treats a throw as unequal', async () => {
+  const val = { a: 1, b: 2, c: 1, d: 2, e: 3 };
+  const list = Object.keys(val).map(id => ({ id }));
+  const sets = await splitByBytes(list, async (x, y) => { if (y.id === 'e') throw new Error('unreadable'); return val[x.id] === val[y.id]; });
+  assert.deepEqual(sets.map(s => s.map(r => r.id).join()), ['a,c', 'b,d', 'e']);
 });
 
 await test('trashed records are left out of near groups by default and by choice', () => {

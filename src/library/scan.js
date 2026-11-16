@@ -13,6 +13,12 @@
 // entry in the library file, so a later rescan never overrides what the person chose.
 // When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
 //
+// Import details (spec rows I2, I5): the first time a photo is read with its Takeout JSON, its
+// date, place, caption and people go to lib.setMeta, which saves them in the library file
+// (libfile.js `meta`). From then on the JSON is not read again: the scanner applies the saved
+// `meta` instead, by the same rule (only where EXIF and XMP have none), so a rebuild or full
+// rescan restores them without the JSON. iCloud CSV dates (icloud.js) are saved and applied the same way.
+//
 // Apple Live Photos (row M7): a HEIC or JPEG and a MOV with the same stem in the same folder
 // (IMG_1234.HEIC + IMG_1234.MOV) are one photo. The MOV gets no record of its own; the photo
 // record carries `liveVideo: '<relative path of the MOV>'`. A MOV with no such photo stays a video.
@@ -22,6 +28,7 @@ import { relPathOf } from './library.js';
 import { readMetadata } from './metadata.js';
 import { sidecarNames, parseXmp } from './xmp.js';
 import { matchSidecars, readTakeoutJson } from './takeout.js';
+import { metaTaken, metaTime } from './libfile.js';
 
 export const BATCH = 500;
 
@@ -87,11 +94,12 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     const old = lib.get(id);
     const sideOpen = sidecarFor(entry.path);
     const side = sideOpen ? await sideOpen() : null;
+    const meta = lib.meta?.get(id) ?? null;
     const tjOpen = takeoutFor.get(entry.path);
     const tj = tjOpen ? await tjOpen() : null;
     const liveVideo = live.get(entry.path) ?? null;
     const sideChanged = old && ((old.liveVideo ?? null) !== liveVideo || !!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
-      || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
+      || !!tj !== !!old.takeout || (tj && !meta && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
       if (old.thumb == null) thumbless.push(old);
@@ -101,9 +109,14 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     Object.assign(rec, await readMetadata(file, rec));
     if (liveVideo) rec.liveVideo = liveVideo;
     if (side) applySidecar(rec, parseXmp(await side.text()));
-    if (tj) {
+    if (meta) {
+      applyMeta(rec, meta);
+      if (tj) { rec.takeout = true; takeout.matched++; }
+    } else if (tj) {
       const t = readTakeoutJson(await tj.text());
       applyTakeout(rec, t);
+      const m = takeoutMeta(t);
+      if (m) lib.setMeta?.(id, m);
       takeout.matched++;
       if (t && !old && !lib.choices.has(id)) {
         if (t.favorited) fromTakeout.fav.push(id);
@@ -162,12 +175,29 @@ export function applySidecar(rec, x) {
 // Takeout fills in only what EXIF and XMP left empty; see the header.
 export function applyTakeout(rec, t) {
   rec.takeout = true;
-  if (!t) return rec;
-  if (t.time != null && rec.timeSource === 'file') { rec.time = t.time; rec.timeSource = 'takeout'; }
-  if (rec.lat == null && t.lat != null && t.lon != null) { rec.lat = t.lat; rec.lon = t.lon; }
-  if (t.description) rec.description = t.description;
-  if (t.people?.length) {
-    const tags = t.people.map(p => `people/${p.replace(/\//g, '-')}`);
+  const m = takeoutMeta(t);
+  return m ? applyMeta(rec, m) : rec;
+}
+
+// The library-file `meta` for what a Takeout JSON says (null when it says nothing to keep).
+export function takeoutMeta(t) {
+  if (!t) return null;
+  const m = {};
+  if (t.time != null) m.taken = metaTaken(t.time);
+  if (t.lat != null && t.lon != null) { m.lat = t.lat; m.lon = t.lon; }
+  if (t.description) m.caption = t.description;
+  if (t.people?.length) m.people = [...t.people];
+  return Object.keys(m).length ? { ...m, source: 'takeout' } : null;
+}
+
+// Saved import details (libfile.js `meta`) fill in only what EXIF and XMP left empty.
+export function applyMeta(rec, m) {
+  const time = m.taken != null ? metaTime(m.taken) : null;
+  if (time != null && rec.timeSource === 'file') { rec.time = time; rec.timeSource = m.source; }
+  if (rec.lat == null && m.lat != null && m.lon != null) { rec.lat = m.lat; rec.lon = m.lon; }
+  if (m.caption) rec.description = m.caption;
+  if (m.people?.length) {
+    const tags = m.people.map(p => `people/${p.replace(/\//g, '-')}`);
     rec.xmpTags = [...new Set([...(rec.xmpTags || []), ...tags])];
   }
   return rec;

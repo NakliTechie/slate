@@ -80,16 +80,29 @@ export function folderOf(path) {
  * @property {string} [description] caption from a Google Takeout JSON (searchable)
  * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
  * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
- * @property {string} [sha256]   content hash, computed only for files whose size another file shares
+ * @property {string} [fingerprint] SHA-256 hex of the first 1 MB, the last 1 MB and the size; only for files that share a size. Byte equality is checked separately (dupes.js)
  * @property {{offset:number,length:number}} [motion] a Google Motion Photo's embedded MP4, as bytes from the end of the file
  * @property {string} [liveVideo] path of the paired Apple Live Photo MOV in the same folder (that MOV has no record of its own)
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *
+ * The index is disposable, so details from an import (Takeout JSON, iCloud CSV) are also kept
+ * in the library file as an item's `meta` (lib.meta), and scan.js applies them on every read.
+ *
  * Capture time note: EXIF DateTimeOriginal has no zone. It is stored as if it
  * were UTC (Date.UTC of the wall-clock fields) so a photo taken at 09:00
  * groups under 09:00 on its day wherever the library is opened. Day and month
  * keys below therefore use UTC getters.
+ */
+
+/**
+ * @typedef {object} ImportMeta  library-file `meta` for one photo (libfile.js); every field optional
+ * @property {string} [taken]    wall clock as stored (no zone), "2019-07-03T15:26:30"
+ * @property {number} [lat]
+ * @property {number} [lon]
+ * @property {string} [caption]
+ * @property {string[]} [people] names, applied as people/<name> tags
+ * @property {'takeout'|'icloud'} source
  */
 
 export function newRecord(rootId, path, file) {

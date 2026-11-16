@@ -1,10 +1,12 @@
-// Duplicates: exact copies (same size, same SHA-256) and near copies (64-bit
+// Duplicates: exact copies (same size, same sampled fingerprint, then equal
+// bytes, compared in chunks) and near copies (64-bit
 // dHash within a Hamming distance). Pure, so Node runs every part of it.
 //
 //   dhashRGBA(data, w, h)            -> 16 hex chars; data is RGBA bytes of a w x h picture
 //   hamming(a, b)                    -> bits that differ between two 16-hex hashes
 //   sizeCollisions(records, opts)    -> records whose size another record shares
-//   exactGroups(records, hashOf, opts)        -> Promise<Group[]>
+//   exactGroups(records, fingerprintOf, sameOf, opts) -> Promise<Group[]>
+//   sampleFingerprint(blob) / sameBytes(a, b)  -> the two stages for real files
 //   nearGroups(records, opts)                 -> Group[]
 //   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
 //   rankKeeper(records, opts)        -> records sorted best keeper first
@@ -107,23 +109,97 @@ export function sizeCollisions(records, opts = {}) {
   return out;
 }
 
-// hashOf(record) -> content hash (or a Promise of one); null or a throw leaves the record out.
-export async function exactGroups(records, hashOf, opts = {}) {
+// Exact copies in two stages, so no stage ever holds a whole large file:
+//   1. fingerprintOf(record) -> sampleFingerprint of its file (or a Promise of
+//      one); null or a throw leaves the record out. Records group by size and
+//      fingerprint.
+//   2. sameOf(a, b) -> Promise<boolean>, true when the two files are equal byte
+//      for byte (sameBytes); each fingerprint group splits into byte-equal sets.
+// A group is exact only when both stages agree.
+export async function exactGroups(records, fingerprintOf, sameOf, opts = {}) {
+  const out = [];
+  for (const [key, list] of await fingerprintCandidates(records, fingerprintOf, opts)) {
+    for (const set of await splitByBytes(list, sameOf)) if (set.length > 1) out.push(toGroup('exact', key, set, opts));
+  }
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+// Stage 1 alone: Map of `${size}:${fingerprint}` -> records, only keys with 2+ records.
+export async function fingerprintCandidates(records, fingerprintOf, opts = {}) {
   const groups = new Map();
   for (const r of sizeCollisions(records, opts)) {
     let h = null;
-    try { h = await hashOf(r); } catch { h = null; }
+    try { h = await fingerprintOf(r); } catch { h = null; }
     if (!h) continue;
     const key = `${r.size}:${h}`;
     const list = groups.get(key);
     if (list) list.push(r); else groups.set(key, [r]);
   }
-  const out = [];
-  for (const [key, list] of groups) if (list.length > 1) out.push(toGroup('exact', key, list, opts));
-  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+  for (const [k, list] of groups) if (list.length < 2) groups.delete(k);
+  return groups;
 }
 
-// SHA-256 of a File, Blob or ArrayBuffer, as hex (browser and Node 20+).
+// Stage 2 alone: split records into sets whose files are equal byte for byte.
+// Each record is compared with the first record of each set until one matches,
+// so a group of true copies costs n - 1 comparisons. A throw counts as unequal.
+export async function splitByBytes(list, sameOf) {
+  const sets = [];
+  for (const r of list) {
+    let home = null;
+    for (const set of sets) {
+      let same = false;
+      try { same = await sameOf(set[0], r); } catch { same = false; }
+      if (same) { home = set; break; }
+    }
+    if (home) home.push(r); else sets.push([r]);
+  }
+  return sets;
+}
+
+export const SAMPLE_BYTES = 1 << 20;   // fingerprint reads this much from each end
+export const CHUNK_BYTES = 4 << 20;    // byte comparison reads this much at a time
+
+// A quick fingerprint of a File or Blob: SHA-256 (hex) over the first 1 MB,
+// the last 1 MB and the size. It reads at most 2 MB however large the file is,
+// so equal fingerprints only nominate a pair; sameBytes confirms it.
+export async function sampleFingerprint(blob) {
+  const size = blob.size;
+  const head = await blob.slice(0, Math.min(SAMPLE_BYTES, size)).arrayBuffer();
+  const tail = await blob.slice(Math.max(0, size - SAMPLE_BYTES), size).arrayBuffer();
+  const sizeBytes = new TextEncoder().encode(`:${size}`);
+  const buf = new Uint8Array(head.byteLength + tail.byteLength + sizeBytes.length);
+  buf.set(new Uint8Array(head), 0);
+  buf.set(new Uint8Array(tail), head.byteLength);
+  buf.set(sizeBytes, head.byteLength + tail.byteLength);
+  return sha256Hex(buf);
+}
+
+// True when two Files or Blobs hold the same bytes. Reads both in 4 MB chunks
+// and stops at the first chunk that differs, so it holds two chunks at most.
+export async function sameBytes(a, b, opts = {}) {
+  if (a.size !== b.size) return false;
+  const step = opts.chunk ?? CHUNK_BYTES;
+  for (let at = 0; at < a.size; at += step) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const end = Math.min(a.size, at + step);
+    const [x, y] = await Promise.all([a.slice(at, end).arrayBuffer(), b.slice(at, end).arrayBuffer()]);
+    if (!equalBuffers(x, y)) return false;
+  }
+  return true;
+}
+
+function equalBuffers(x, y) {
+  if (x.byteLength !== y.byteLength) return false;
+  const n8 = x.byteLength, n4 = n8 >> 2;
+  const a4 = new Uint32Array(x, 0, n4), b4 = new Uint32Array(y, 0, n4);
+  for (let i = 0; i < n4; i++) if (a4[i] !== b4[i]) return false;
+  const a1 = new Uint8Array(x), b1 = new Uint8Array(y);
+  for (let i = n4 << 2; i < n8; i++) if (a1[i] !== b1[i]) return false;
+  return true;
+}
+
+// SHA-256 of a small buffer or Blob, as hex (browser and Node 20+). Callers
+// pass at most a few MB: whole large files go through sampleFingerprint.
 export async function sha256Hex(data) {
   const buf = data instanceof ArrayBuffer || ArrayBuffer.isView(data) ? data : await data.arrayBuffer();
   const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));

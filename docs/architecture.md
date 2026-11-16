@@ -44,7 +44,7 @@ The user's folders are the record. Slate never moves a photo into its own store 
 - **The index** is IndexedDB `slate.library` (`store.js`): stores `photos`, `roots` and `kv`. It can be deleted at any time; a rescan rebuilds it.
 - **Choices** are favourite, rating 0 to 5, flag (pick or reject), hidden, tags and trashed. They live in `lib.choices` (Map id to choice) and are saved in the library file.
 - **Albums** are `{ id, name, created, cover, items: Set<id> }` in `lib.albums`. They hold references only.
-- **The library file** is `.slate-library.json` at the top of each root. Its format is in the header of `libfile.js`. `Library.libFileFor(rootId)` builds it and `Library.flush()` hands it to `persist.save`. Saves are debounced by 600 ms after any change.
+- **The library file** is `.slate-library.json` at the top of each root. Its format is in the header of `libfile.js`. `Library.libFileFor(rootId)` builds it and `Library.flush()` hands it to `persist.save`. Saves are debounced by 600 ms after any change. It also keeps each photo's import details (`lib.meta`: date, place, caption and people from a Takeout JSON or an iCloud CSV), which `scan.js` applies where EXIF and XMP have none, so a rebuild keeps them.
 - **Thumbnails** are WebP files in OPFS (`thumbs.js`), at most 256 px on the long edge.
 
 ## The core: `Library` (library.js)

@@ -105,6 +105,27 @@ assert.equal(dayKey(T(1, 23)), '2024-03-01', 'capture time groups by its own wal
   assert.equal(lib.albums.get(al.albumId).items.size, 1);
 }
 
+// import meta: older files without it still parse; a meta-only item round-trips; bad meta is dropped
+{
+  const old = parseLibFile(JSON.stringify({ format: 'slate-library', version: 1, items: { 'a.jpg': { size: 1, fav: true } }, albums: [] }));
+  assert.ok(old.ok);
+  assert.equal(old.file.items['a.jpg'].meta, undefined, 'a file without meta parses');
+  const m = parseLibFile(JSON.stringify({ format: 'slate-library', version: 1, items: {
+    'b.jpg': { size: 2, meta: { taken: '2019-07-03T15:26:30', lat: 15.5, lon: 73.8, caption: 'Sunset', source: 'takeout', junk: 1 } },
+    'c.jpg': { size: 3, meta: { taken: 'not a date', lat: 'x', source: 'other' } },
+  } }));
+  assert.deepEqual(m.file.items['b.jpg'].meta, { taken: '2019-07-03T15:26:30', lat: 15.5, lon: 73.8, caption: 'Sunset', source: 'takeout' });
+  assert.equal(m.file.items['c.jpg'].meta, undefined, 'meta with nothing usable is dropped');
+  const lib = new Library({ store: memoryStore() });
+  lib.roots.set('r1', { id: 'r1', name: 'R' });
+  lib.applyLibFile('r1', m.file);
+  assert.equal(lib.meta.get('r1/b.jpg').caption, 'Sunset');
+  assert.equal(lib.choices.get('r1/b.jpg').meta, undefined, 'meta is kept apart from choices');
+  const back = lib.libFileFor('r1');
+  assert.deepEqual(back.items['b.jpg'], { size: 2, meta: m.file.items['b.jpg'].meta }, 'a meta-only item is written back');
+  assert.equal(back.items['c.jpg'], undefined);
+}
+
 // a moved file keeps its choices (same name and size)
 {
   const { lib, root } = await makeLib(fake);

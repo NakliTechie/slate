@@ -6,6 +6,8 @@
 //   roots    Map(rootId -> { id, name, handle, mode: 'fsa'|'files', added, lastScan })
 //   records  Map(id -> PhotoRecord)              the index (store.js persists it)
 //   choices  Map(id -> choice)                   the user's choices (libfile.js persists them)
+//   meta     Map(id -> meta)                     date, place and caption from a Takeout or iCloud import
+//                                                (libfile.js persists them; scan.js applies them)
 //   albums   Map(albumId -> { id, name, created, cover: id|null, items: Set<id> })
 //
 // Services are injected so the core runs in Node tests with fakes:
@@ -39,6 +41,7 @@ export class Library {
     this.roots = new Map();
     this.records = new Map();
     this.choices = new Map();
+    this.meta = new Map();
     this.albums = new Map();
     this.jobs = new JobQueue({ concurrency: 4 });
     this.listeners = new Map();
@@ -77,9 +80,13 @@ export class Library {
   // Merge a parsed library file (or its text) into choices and albums for one root.
   applyLibFile(rootId, fileOrText) {
     const file = typeof fileOrText === 'string' ? parseLibFile(fileOrText).file : fileOrText;
-    for (const id of [...this.choices.keys()]) if (splitId(id).rootId === rootId) this.choices.delete(id);
+    for (const map of [this.choices, this.meta]) for (const id of [...map.keys()]) if (splitId(id).rootId === rootId) map.delete(id);
     for (const a of this.albums.values()) for (const id of [...a.items]) if (splitId(id).rootId === rootId) a.items.delete(id);
-    for (const [path, c] of Object.entries(file.items)) this.choices.set(makeId(rootId, path), { ...emptyChoice(), ...c });
+    for (const [path, { meta, ...c }] of Object.entries(file.items)) {
+      const id = makeId(rootId, path);
+      this.choices.set(id, { ...emptyChoice(), ...c });
+      if (meta) this.meta.set(id, meta);
+    }
     for (const a of file.albums) {
       let al = this.albums.get(a.id);
       if (!al) { al = { id: a.id, name: a.name, created: a.created, cover: null, items: new Set(), homeRoot: rootId }; this.albums.set(a.id, al); }
@@ -117,7 +124,7 @@ export class Library {
     await this.flush();
     const ids = [...this.records.values()].filter(r => r.rootId === rootId).map(r => r.id);
     for (const id of ids) this.records.delete(id);
-    for (const id of [...this.choices.keys()]) if (splitId(id).rootId === rootId) this.choices.delete(id);
+    for (const map of [this.choices, this.meta]) for (const id of [...map.keys()]) if (splitId(id).rootId === rootId) map.delete(id);
     for (const a of this.albums.values()) for (const id of [...a.items]) if (splitId(id).rootId === rootId) a.items.delete(id);
     this.roots.delete(rootId);
     await this.store.deleteRoot(rootId);
@@ -191,7 +198,14 @@ export class Library {
     return changed.length;
   }
 
-  // After a full scan: carry choices and album membership over to files that
+  // Import details (date, place, caption) for one record, from scan.js (Takeout) or
+  // icloud.js. Saved in the library file so a rebuild restores them; null removes them.
+  setMeta(id, meta) {
+    if (meta) this.meta.set(id, meta); else this.meta.delete(id);
+    this.markDirty(splitId(id).rootId);
+  }
+
+  // After a full scan: carry choices, import details and album membership over to files that
   // moved within the root (same name and size), then drop missing rows that
   // have no choices attached.
   reconcile(rootId) {
@@ -200,13 +214,16 @@ export class Library {
       const { rootId: rid, path } = splitId(id);
       if (rid === rootId) items[path] = { ...c, size: c.size ?? this.records.get(id)?.size };
     }
+    for (const id of this.meta.keys()) {
+      const { rootId: rid, path } = splitId(id);
+      if (rid === rootId && !items[path]) items[path] = { size: this.records.get(id)?.size };
+    }
     const present = [...this.records.values()].filter(r => r.rootId === rootId && !r.missing);
     const sizeOf = new Map(present.map(r => [r.path, r.size]));
     const moves = rematchMoved(items, present.map(r => r.path), p => sizeOf.get(p));
     for (const [from, to] of moves) {
       const fromId = makeId(rootId, from), toId = makeId(rootId, to);
-      this.choices.set(toId, this.choices.get(fromId));
-      this.choices.delete(fromId);
+      for (const map of [this.choices, this.meta]) if (map.has(fromId)) { map.set(toId, map.get(fromId)); map.delete(fromId); }
       for (const a of this.albums.values()) {
         if (a.items.delete(fromId)) a.items.add(toId);
         if (a.cover === fromId) a.cover = toId;
@@ -390,6 +407,7 @@ export class Library {
         if (!this.records.get(id)?.missing) await this.services.trash?.purge(this.roots.get(rootId), path);
         this.records.delete(id);
         this.choices.delete(id);
+        this.meta.delete(id);
         for (const a of this.albums.values()) { a.items.delete(id); if (a.cover === id) a.cover = null; }
         this.markDirty(rootId);
         gone.push(id);
@@ -574,7 +592,7 @@ export class Library {
     const next = { ...rec, id: toId, path: toPath, name, ext: extOf(name), thumb: null, indexed: Date.now() };
     this.records.delete(fromId);
     this.records.set(toId, next);
-    if (this.choices.has(fromId)) { this.choices.set(toId, this.choices.get(fromId)); this.choices.delete(fromId); }
+    for (const map of [this.choices, this.meta]) if (map.has(fromId)) { map.set(toId, map.get(fromId)); map.delete(fromId); }
     for (const a of this.albums.values()) {
       if (a.items.delete(fromId)) a.items.add(toId);
       if (a.cover === fromId) a.cover = toId;
@@ -626,13 +644,15 @@ export class Library {
 
   // The library file content for one root, from current state.
   libFileFor(rootId) {
-    const choices = new Map(), sizes = new Map();
-    for (const [id, c] of this.choices) {
-      const { rootId: rid, path } = splitId(id);
-      if (rid !== rootId) continue;
-      choices.set(path, c);
-      const rec = this.records.get(id);
-      if (rec) sizes.set(path, rec.size);
+    const choices = new Map(), meta = new Map(), sizes = new Map();
+    for (const [map, into] of [[this.choices, choices], [this.meta, meta]]) {
+      for (const [id, v] of map) {
+        const { rootId: rid, path } = splitId(id);
+        if (rid !== rootId) continue;
+        into.set(path, v);
+        const rec = this.records.get(id);
+        if (rec) sizes.set(path, rec.size);
+      }
     }
     const albums = [];
     for (const a of this.albums.values()) {
@@ -641,7 +661,7 @@ export class Library {
       const cover = a.cover && splitId(a.cover).rootId === rootId ? splitId(a.cover).path : null;
       albums.push({ id: a.id, name: a.name, created: a.created, cover, items });
     }
-    return buildLibFile({ choices, sizes, albums });
+    return buildLibFile({ choices, meta, sizes, albums });
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────

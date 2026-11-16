@@ -111,4 +111,34 @@ const ALBUM = 'Images\nIMG_0001.HEIC\nimg_0002.jpg\nMISSING.JPG\n';
   await assert.rejects(applyICloudCsv(lib, 'nope', csv), /no root/);
 }
 
+// ── a CSV date survives a rebuild with the CSV gone (libfile meta) ─────────────
+{
+  const { scanRoot } = await import('../src/library/scan.js');
+  const { parseLibFile } = await import('../src/library/libfile.js');
+  const tree = { 'IMG_0001.HEIC': new File(['x'], 'IMG_0001.HEIC', { lastModified: 1000 }) };
+  const dir = {
+    kind: 'directory', name: 'iCloud',
+    async *entries() { for (const [k, v] of Object.entries(tree)) yield [k, { kind: 'file', name: k, getFile: async () => v }]; },
+    async queryPermission() { return 'granted'; },
+    async isSameEntry(o) { return o === this; },
+  };
+  let saved = null;
+  const thumbs = { enqueue() {}, async remove() {}, async clear() {}, async url() { return null; } };
+  const persist = { async load() { return saved; }, async save(_r, f) { saved = parseLibFile(JSON.stringify(f)).file; }, canWrite: () => true };
+  const lib = new Library({ store: memoryStore(), services: { scanRoot, thumbs, persist }, saveDelay: 5 });
+  const root = await lib.addRoot({ handle: dir, name: 'iCloud' });
+  const id = `${root.id}/IMG_0001.HEIC`;
+  assert.equal(lib.get(id).timeSource, 'file');
+  const r = await applyICloudCsv(lib, root.id, [{ name: 'Photo Details.csv', text: DETAILS }]);
+  await lib.flush();
+  assert.deepEqual(saved.items['IMG_0001.HEIC'].meta, { taken: '2023-03-18T15:26:00', source: 'icloud' });
+  await lib.rebuild();
+  assert.equal(lib.get(id).time, wallClockToTime(2023, 3, 18, 15, 26, 0), 'the CSV date comes back after a rebuild');
+  assert.equal(lib.get(id).timeSource, 'icloud');
+  await lib.undo(r.undo);
+  assert.equal(lib.meta.has(id), false, 'undo removes the saved date');
+  await lib.rebuild();
+  assert.equal(lib.get(id).timeSource, 'file');
+}
+
 console.log('Slate library iCloud: PASS');

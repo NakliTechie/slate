@@ -15,6 +15,10 @@
 // Dates: the CSV gives an instant in GMT and Slate stores a wall clock as if it were UTC
 // (schema.wallClockToTime), so the GMT wall clock is stored, as takeout.js does. A CSV date
 // fills a record's time only when the file had no date of its own (timeSource 'file').
+// Each date applied is also saved in the library file (libfile.js `meta`, source 'icloud'), so
+// a rebuild or full rescan restores it without the CSV (scan.applyMeta).
+
+import { metaTaken } from './libfile.js';
 
 export function parseCsv(text) {
   const s = String(text ?? '').replace(/^﻿/, '');
@@ -168,8 +172,13 @@ export async function applyICloudCsv(lib, rootId, csvTexts, { dryRun = false } =
   }
   if (times.size) {
     const before = [...times.keys()].map(id => ({ id, time: lib.get(id).time, timeSource: lib.get(id).timeSource }));
+    const metaBefore = new Map([...times.keys()].map(id => [id, lib.meta.get(id) ?? null]));
     await lib.patchRecords([...times].map(([id, time]) => ({ id, time, timeSource: 'icloud' })), 'icloud');
-    tokens.push(lib.rememberUndo('icloud-dates', () => lib.patchRecords(before.filter(b => lib.get(b.id)), 'undo')));
+    for (const [id, time] of times) lib.setMeta(id, { ...metaBefore.get(id), taken: metaTaken(time), source: 'icloud' });
+    tokens.push(lib.rememberUndo('icloud-dates', async () => {
+      for (const [id, m] of metaBefore) lib.setMeta(id, m);
+      await lib.patchRecords(before.filter(b => lib.get(b.id)), 'undo');
+    }));
   }
   const list = tokens.filter(Boolean);
   const undo = list.length ? lib.rememberUndo('icloud', async () => {

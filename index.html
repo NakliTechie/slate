@@ -8041,16 +8041,29 @@ function folderOf(path) {
  * @property {string} [description] caption from a Google Takeout JSON (searchable)
  * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
  * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
- * @property {string} [sha256]   content hash, computed only for files whose size another file shares
+ * @property {string} [fingerprint] SHA-256 hex of the first 1 MB, the last 1 MB and the size; only for files that share a size. Byte equality is checked separately (dupes.js)
  * @property {{offset:number,length:number}} [motion] a Google Motion Photo's embedded MP4, as bytes from the end of the file
  * @property {string} [liveVideo] path of the paired Apple Live Photo MOV in the same folder (that MOV has no record of its own)
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *
+ * The index is disposable, so details from an import (Takeout JSON, iCloud CSV) are also kept
+ * in the library file as an item's `meta` (lib.meta), and scan.js applies them on every read.
+ *
  * Capture time note: EXIF DateTimeOriginal has no zone. It is stored as if it
  * were UTC (Date.UTC of the wall-clock fields) so a photo taken at 09:00
  * groups under 09:00 on its day wherever the library is opened. Day and month
  * keys below therefore use UTC getters.
+ */
+
+/**
+ * @typedef {object} ImportMeta  library-file `meta` for one photo (libfile.js); every field optional
+ * @property {string} [taken]    wall clock as stored (no zone), "2019-07-03T15:26:30"
+ * @property {number} [lat]
+ * @property {number} [lon]
+ * @property {string} [caption]
+ * @property {string[]} [people] names, applied as people/<name> tags
+ * @property {'takeout'|'icloud'} source
  */
 
 function newRecord(rootId, path, file) {
@@ -8518,13 +8531,22 @@ const __m_library_libfile = (() => {
 //   "updated": "2026-11-16T12:00:00.000Z",
 //   "items": {
 //     "<relative path>": { "size": 123, "fav": true, "rating": 4, "flag": "pick",
-//                          "hidden": true, "tags": ["trips/goa"], "trashed": "<ISO time>" }
+//                          "hidden": true, "tags": ["trips/goa"], "trashed": "<ISO time>",
+//                          "meta": { "taken": "2019-07-03T15:26:30", "lat": 15.5, "lon": 73.8,
+//                                    "caption": "Sunset", "people": ["Asha"], "source": "takeout" } }
 //   },
 //   "albums": [
 //     { "id": "al_k3j9x2", "name": "Goa 2024", "created": "<ISO>", "cover": "<relative path>|null",
 //       "items": ["<relative path>", ...] }
 //   ]
 // }
+//
+// `meta` (optional, added within version 1; older files without it still load) holds the
+// date, place, caption and people that came from an import, a Google Takeout JSON or an
+// iCloud export CSV, so a rebuild or full rescan restores them without that JSON or CSV.
+// `taken` is the wall clock as Slate stores it (schema.wallClockToTime), with no zone.
+// `source` is "takeout" or "icloud". The scanner applies each field only where the file's
+// own EXIF or XMP has none (scan.applyMeta). Every field inside `meta` is optional.
 //
 // Only non-default fields are written. `size` is written with every item so a
 // file that moved inside the root can be re-matched by name plus size.
@@ -8562,6 +8584,8 @@ function parseLibFile(text) {
   for (const [p, v] of Object.entries(raw.items && typeof raw.items === 'object' ? raw.items : {})) {
     const c = cleanChoice(v);
     if (!c) { skipped++; continue; }
+    const meta = cleanMeta(v.meta);
+    if (meta) c.meta = meta;
     file.items[normPath(p)] = c;
   }
   for (const a of Array.isArray(raw.albums) ? raw.albums : []) {
@@ -8589,17 +8613,40 @@ function cleanChoice(v) {
   return c;
 }
 
+const META_SOURCES = ['takeout', 'icloud'];
+
+// Clean an item's `meta` object; null when nothing usable is left.
+function cleanMeta(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const m = {};
+  if (typeof v.taken === 'string' && metaTime(v.taken) != null) m.taken = v.taken;
+  if (Number.isFinite(v.lat) && Number.isFinite(v.lon) && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180) { m.lat = v.lat; m.lon = v.lon; }
+  if (typeof v.caption === 'string' && v.caption) m.caption = v.caption;
+  if (Array.isArray(v.people)) { const p = [...new Set(v.people.filter(x => typeof x === 'string' && x))]; if (p.length) m.people = p; }
+  if (!Object.keys(m).length) return null;
+  m.source = META_SOURCES.includes(v.source) ? v.source : 'takeout';
+  return m;
+}
+
+// Stored time (ms, wall clock read as UTC) <-> the `taken` string.
+function metaTaken(time) { return new Date(time).toISOString().slice(0, 19); }
+function metaTime(taken) {
+  const t = Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(taken) ? taken : taken + 'Z');
+  return Number.isFinite(t) ? t : null;
+}
+
 // Build the file for one root from in-memory state.
 //   choices: Map(path -> choice) for this root
+//   meta:    Map(path -> meta) for this root (import details; see the header)
 //   sizes:   Map(path -> size) for this root (from the index)
 //   albums:  [{ id, name, created, cover: path|null, items: [path] }] restricted to this root
-function buildLibFile({ choices, sizes, albums, now = new Date() }) {
+function buildLibFile({ choices, meta = new Map(), sizes, albums, now = new Date() }) {
   const file = emptyLibFile();
   file.updated = now.toISOString();
-  const paths = [...choices.keys()].sort();
+  const paths = [...new Set([...choices.keys(), ...meta.keys()])].sort();
   for (const p of paths) {
-    const c = choices.get(p);
-    if (isEmptyChoice(c)) continue;
+    const c = choices.get(p) ?? emptyChoice(), m = meta.get(p);
+    if (isEmptyChoice(c) && !m) continue;
     const out = {};
     const size = sizes?.get(p) ?? c.size;
     if (typeof size === 'number') out.size = size;
@@ -8609,6 +8656,7 @@ function buildLibFile({ choices, sizes, albums, now = new Date() }) {
     if (c.hidden) out.hidden = true;
     if (c.tags?.length) out.tags = [...c.tags].sort();
     if (c.trashed) out.trashed = c.trashed;
+    if (m) out.meta = m;
     file.items[p] = out;
   }
   file.albums = [...albums]
@@ -8645,7 +8693,7 @@ function newAlbumId() {
   return 'al_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3);
 }
 
-return { LIBFILE_FORMAT, LIBFILE_VERSION, emptyLibFile, parseLibFile, buildLibFile, serialiseLibFile, rematchMoved, newAlbumId };
+return { LIBFILE_FORMAT, LIBFILE_VERSION, emptyLibFile, parseLibFile, META_SOURCES, cleanMeta, metaTaken, metaTime, buildLibFile, serialiseLibFile, rematchMoved, newAlbumId };
 })();
 
 const __m_library_query = (() => {
@@ -8841,6 +8889,8 @@ const __m_library_library = (() => {
 //   roots    Map(rootId -> { id, name, handle, mode: 'fsa'|'files', added, lastScan })
 //   records  Map(id -> PhotoRecord)              the index (store.js persists it)
 //   choices  Map(id -> choice)                   the user's choices (libfile.js persists them)
+//   meta     Map(id -> meta)                     date, place and caption from a Takeout or iCloud import
+//                                                (libfile.js persists them; scan.js applies them)
 //   albums   Map(albumId -> { id, name, created, cover: id|null, items: Set<id> })
 //
 // Services are injected so the core runs in Node tests with fakes:
@@ -8892,6 +8942,7 @@ class Library {
     this.roots = new Map();
     this.records = new Map();
     this.choices = new Map();
+    this.meta = new Map();
     this.albums = new Map();
     this.jobs = new JobQueue({ concurrency: 4 });
     this.listeners = new Map();
@@ -8930,9 +8981,13 @@ class Library {
   // Merge a parsed library file (or its text) into choices and albums for one root.
   applyLibFile(rootId, fileOrText) {
     const file = typeof fileOrText === 'string' ? parseLibFile(fileOrText).file : fileOrText;
-    for (const id of [...this.choices.keys()]) if (splitId(id).rootId === rootId) this.choices.delete(id);
+    for (const map of [this.choices, this.meta]) for (const id of [...map.keys()]) if (splitId(id).rootId === rootId) map.delete(id);
     for (const a of this.albums.values()) for (const id of [...a.items]) if (splitId(id).rootId === rootId) a.items.delete(id);
-    for (const [path, c] of Object.entries(file.items)) this.choices.set(makeId(rootId, path), { ...emptyChoice(), ...c });
+    for (const [path, { meta, ...c }] of Object.entries(file.items)) {
+      const id = makeId(rootId, path);
+      this.choices.set(id, { ...emptyChoice(), ...c });
+      if (meta) this.meta.set(id, meta);
+    }
     for (const a of file.albums) {
       let al = this.albums.get(a.id);
       if (!al) { al = { id: a.id, name: a.name, created: a.created, cover: null, items: new Set(), homeRoot: rootId }; this.albums.set(a.id, al); }
@@ -8970,7 +9025,7 @@ class Library {
     await this.flush();
     const ids = [...this.records.values()].filter(r => r.rootId === rootId).map(r => r.id);
     for (const id of ids) this.records.delete(id);
-    for (const id of [...this.choices.keys()]) if (splitId(id).rootId === rootId) this.choices.delete(id);
+    for (const map of [this.choices, this.meta]) for (const id of [...map.keys()]) if (splitId(id).rootId === rootId) map.delete(id);
     for (const a of this.albums.values()) for (const id of [...a.items]) if (splitId(id).rootId === rootId) a.items.delete(id);
     this.roots.delete(rootId);
     await this.store.deleteRoot(rootId);
@@ -9044,7 +9099,14 @@ class Library {
     return changed.length;
   }
 
-  // After a full scan: carry choices and album membership over to files that
+  // Import details (date, place, caption) for one record, from scan.js (Takeout) or
+  // icloud.js. Saved in the library file so a rebuild restores them; null removes them.
+  setMeta(id, meta) {
+    if (meta) this.meta.set(id, meta); else this.meta.delete(id);
+    this.markDirty(splitId(id).rootId);
+  }
+
+  // After a full scan: carry choices, import details and album membership over to files that
   // moved within the root (same name and size), then drop missing rows that
   // have no choices attached.
   reconcile(rootId) {
@@ -9053,13 +9115,16 @@ class Library {
       const { rootId: rid, path } = splitId(id);
       if (rid === rootId) items[path] = { ...c, size: c.size ?? this.records.get(id)?.size };
     }
+    for (const id of this.meta.keys()) {
+      const { rootId: rid, path } = splitId(id);
+      if (rid === rootId && !items[path]) items[path] = { size: this.records.get(id)?.size };
+    }
     const present = [...this.records.values()].filter(r => r.rootId === rootId && !r.missing);
     const sizeOf = new Map(present.map(r => [r.path, r.size]));
     const moves = rematchMoved(items, present.map(r => r.path), p => sizeOf.get(p));
     for (const [from, to] of moves) {
       const fromId = makeId(rootId, from), toId = makeId(rootId, to);
-      this.choices.set(toId, this.choices.get(fromId));
-      this.choices.delete(fromId);
+      for (const map of [this.choices, this.meta]) if (map.has(fromId)) { map.set(toId, map.get(fromId)); map.delete(fromId); }
       for (const a of this.albums.values()) {
         if (a.items.delete(fromId)) a.items.add(toId);
         if (a.cover === fromId) a.cover = toId;
@@ -9243,6 +9308,7 @@ class Library {
         if (!this.records.get(id)?.missing) await this.services.trash?.purge(this.roots.get(rootId), path);
         this.records.delete(id);
         this.choices.delete(id);
+        this.meta.delete(id);
         for (const a of this.albums.values()) { a.items.delete(id); if (a.cover === id) a.cover = null; }
         this.markDirty(rootId);
         gone.push(id);
@@ -9427,7 +9493,7 @@ class Library {
     const next = { ...rec, id: toId, path: toPath, name, ext: extOf(name), thumb: null, indexed: Date.now() };
     this.records.delete(fromId);
     this.records.set(toId, next);
-    if (this.choices.has(fromId)) { this.choices.set(toId, this.choices.get(fromId)); this.choices.delete(fromId); }
+    for (const map of [this.choices, this.meta]) if (map.has(fromId)) { map.set(toId, map.get(fromId)); map.delete(fromId); }
     for (const a of this.albums.values()) {
       if (a.items.delete(fromId)) a.items.add(toId);
       if (a.cover === fromId) a.cover = toId;
@@ -9479,13 +9545,15 @@ class Library {
 
   // The library file content for one root, from current state.
   libFileFor(rootId) {
-    const choices = new Map(), sizes = new Map();
-    for (const [id, c] of this.choices) {
-      const { rootId: rid, path } = splitId(id);
-      if (rid !== rootId) continue;
-      choices.set(path, c);
-      const rec = this.records.get(id);
-      if (rec) sizes.set(path, rec.size);
+    const choices = new Map(), meta = new Map(), sizes = new Map();
+    for (const [map, into] of [[this.choices, choices], [this.meta, meta]]) {
+      for (const [id, v] of map) {
+        const { rootId: rid, path } = splitId(id);
+        if (rid !== rootId) continue;
+        into.set(path, v);
+        const rec = this.records.get(id);
+        if (rec) sizes.set(path, rec.size);
+      }
     }
     const albums = [];
     for (const a of this.albums.values()) {
@@ -9494,7 +9562,7 @@ class Library {
       const cover = a.cover && splitId(a.cover).rootId === rootId ? splitId(a.cover).path : null;
       albums.push({ id: a.id, name: a.name, created: a.created, cover, items });
     }
-    return buildLibFile({ choices, sizes, albums });
+    return buildLibFile({ choices, meta, sizes, albums });
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────
@@ -9752,13 +9820,15 @@ return { TESSERACT_URL, OCR_MAX_EDGE, extractText, ocrImage, WORD_CONFIDENCE, MI
 })();
 
 const __m_library_dupes = (() => {
-// Duplicates: exact copies (same size, same SHA-256) and near copies (64-bit
+// Duplicates: exact copies (same size, same sampled fingerprint, then equal
+// bytes, compared in chunks) and near copies (64-bit
 // dHash within a Hamming distance). Pure, so Node runs every part of it.
 //
 //   dhashRGBA(data, w, h)            -> 16 hex chars; data is RGBA bytes of a w x h picture
 //   hamming(a, b)                    -> bits that differ between two 16-hex hashes
 //   sizeCollisions(records, opts)    -> records whose size another record shares
-//   exactGroups(records, hashOf, opts)        -> Promise<Group[]>
+//   exactGroups(records, fingerprintOf, sameOf, opts) -> Promise<Group[]>
+//   sampleFingerprint(blob) / sameBytes(a, b)  -> the two stages for real files
 //   nearGroups(records, opts)                 -> Group[]
 //   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
 //   rankKeeper(records, opts)        -> records sorted best keeper first
@@ -9861,23 +9931,97 @@ function sizeCollisions(records, opts = {}) {
   return out;
 }
 
-// hashOf(record) -> content hash (or a Promise of one); null or a throw leaves the record out.
-async function exactGroups(records, hashOf, opts = {}) {
+// Exact copies in two stages, so no stage ever holds a whole large file:
+//   1. fingerprintOf(record) -> sampleFingerprint of its file (or a Promise of
+//      one); null or a throw leaves the record out. Records group by size and
+//      fingerprint.
+//   2. sameOf(a, b) -> Promise<boolean>, true when the two files are equal byte
+//      for byte (sameBytes); each fingerprint group splits into byte-equal sets.
+// A group is exact only when both stages agree.
+async function exactGroups(records, fingerprintOf, sameOf, opts = {}) {
+  const out = [];
+  for (const [key, list] of await fingerprintCandidates(records, fingerprintOf, opts)) {
+    for (const set of await splitByBytes(list, sameOf)) if (set.length > 1) out.push(toGroup('exact', key, set, opts));
+  }
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+// Stage 1 alone: Map of `${size}:${fingerprint}` -> records, only keys with 2+ records.
+async function fingerprintCandidates(records, fingerprintOf, opts = {}) {
   const groups = new Map();
   for (const r of sizeCollisions(records, opts)) {
     let h = null;
-    try { h = await hashOf(r); } catch { h = null; }
+    try { h = await fingerprintOf(r); } catch { h = null; }
     if (!h) continue;
     const key = `${r.size}:${h}`;
     const list = groups.get(key);
     if (list) list.push(r); else groups.set(key, [r]);
   }
-  const out = [];
-  for (const [key, list] of groups) if (list.length > 1) out.push(toGroup('exact', key, list, opts));
-  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+  for (const [k, list] of groups) if (list.length < 2) groups.delete(k);
+  return groups;
 }
 
-// SHA-256 of a File, Blob or ArrayBuffer, as hex (browser and Node 20+).
+// Stage 2 alone: split records into sets whose files are equal byte for byte.
+// Each record is compared with the first record of each set until one matches,
+// so a group of true copies costs n - 1 comparisons. A throw counts as unequal.
+async function splitByBytes(list, sameOf) {
+  const sets = [];
+  for (const r of list) {
+    let home = null;
+    for (const set of sets) {
+      let same = false;
+      try { same = await sameOf(set[0], r); } catch { same = false; }
+      if (same) { home = set; break; }
+    }
+    if (home) home.push(r); else sets.push([r]);
+  }
+  return sets;
+}
+
+const SAMPLE_BYTES = 1 << 20;   // fingerprint reads this much from each end
+const CHUNK_BYTES = 4 << 20;    // byte comparison reads this much at a time
+
+// A quick fingerprint of a File or Blob: SHA-256 (hex) over the first 1 MB,
+// the last 1 MB and the size. It reads at most 2 MB however large the file is,
+// so equal fingerprints only nominate a pair; sameBytes confirms it.
+async function sampleFingerprint(blob) {
+  const size = blob.size;
+  const head = await blob.slice(0, Math.min(SAMPLE_BYTES, size)).arrayBuffer();
+  const tail = await blob.slice(Math.max(0, size - SAMPLE_BYTES), size).arrayBuffer();
+  const sizeBytes = new TextEncoder().encode(`:${size}`);
+  const buf = new Uint8Array(head.byteLength + tail.byteLength + sizeBytes.length);
+  buf.set(new Uint8Array(head), 0);
+  buf.set(new Uint8Array(tail), head.byteLength);
+  buf.set(sizeBytes, head.byteLength + tail.byteLength);
+  return sha256Hex(buf);
+}
+
+// True when two Files or Blobs hold the same bytes. Reads both in 4 MB chunks
+// and stops at the first chunk that differs, so it holds two chunks at most.
+async function sameBytes(a, b, opts = {}) {
+  if (a.size !== b.size) return false;
+  const step = opts.chunk ?? CHUNK_BYTES;
+  for (let at = 0; at < a.size; at += step) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const end = Math.min(a.size, at + step);
+    const [x, y] = await Promise.all([a.slice(at, end).arrayBuffer(), b.slice(at, end).arrayBuffer()]);
+    if (!equalBuffers(x, y)) return false;
+  }
+  return true;
+}
+
+function equalBuffers(x, y) {
+  if (x.byteLength !== y.byteLength) return false;
+  const n8 = x.byteLength, n4 = n8 >> 2;
+  const a4 = new Uint32Array(x, 0, n4), b4 = new Uint32Array(y, 0, n4);
+  for (let i = 0; i < n4; i++) if (a4[i] !== b4[i]) return false;
+  const a1 = new Uint8Array(x), b1 = new Uint8Array(y);
+  for (let i = n4 << 2; i < n8; i++) if (a1[i] !== b1[i]) return false;
+  return true;
+}
+
+// SHA-256 of a small buffer or Blob, as hex (browser and Node 20+). Callers
+// pass at most a few MB: whole large files go through sampleFingerprint.
 async function sha256Hex(data) {
   const buf = data instanceof ArrayBuffer || ArrayBuffer.isView(data) ? data : await data.arrayBuffer();
   const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
@@ -10130,7 +10274,7 @@ async function clipGroupsAsync(records, vectorOf, opts = {}) {
   }
 }
 
-return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT, clipCosine, clipGroups, clipGroupsAsync };
+return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, fingerprintCandidates, splitByBytes, SAMPLE_BYTES, CHUNK_BYTES, sampleFingerprint, sameBytes, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT, clipCosine, clipGroups, clipGroupsAsync };
 })();
 
 const __m_library_clip = (() => {
@@ -11462,6 +11606,8 @@ const __m_library_takeout = (() => {
 // wall clock as if it were UTC (schema.wallClockToTime). Slate has no zone for the photo, so the
 // instant is stored as its UTC wall clock: a photo taken at 09:00 in India (UTC+05:30) groups
 // under 03:30. scan.js uses it only when the photo has no EXIF or XMP time.
+// scan.js saves what the JSON says in the library file (libfile.js `meta`) the first time and
+// does not read the JSON again after that.
 
 const kindOf = __m_library_schema.kindOf;
 
@@ -11631,6 +11777,12 @@ const __m_library_scan = (() => {
 // entry in the library file, so a later rescan never overrides what the person chose.
 // When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
 //
+// Import details (spec rows I2, I5): the first time a photo is read with its Takeout JSON, its
+// date, place, caption and people go to lib.setMeta, which saves them in the library file
+// (libfile.js `meta`). From then on the JSON is not read again: the scanner applies the saved
+// `meta` instead, by the same rule (only where EXIF and XMP have none), so a rebuild or full
+// rescan restores them without the JSON. iCloud CSV dates (icloud.js) are saved and applied the same way.
+//
 // Apple Live Photos (row M7): a HEIC or JPEG and a MOV with the same stem in the same folder
 // (IMG_1234.HEIC + IMG_1234.MOV) are one photo. The MOV gets no record of its own; the photo
 // record carries `liveVideo: '<relative path of the MOV>'`. A MOV with no such photo stays a video.
@@ -11649,6 +11801,8 @@ const sidecarNames = __m_library_xmp.sidecarNames;
 const parseXmp = __m_library_xmp.parseXmp;
 const matchSidecars = __m_library_takeout.matchSidecars;
 const readTakeoutJson = __m_library_takeout.readTakeoutJson;
+const metaTaken = __m_library_libfile.metaTaken;
+const metaTime = __m_library_libfile.metaTime;
 
 const BATCH = 500;
 
@@ -11714,11 +11868,12 @@ async function scanRoot(lib, root, { full = false } = {}) {
     const old = lib.get(id);
     const sideOpen = sidecarFor(entry.path);
     const side = sideOpen ? await sideOpen() : null;
+    const meta = lib.meta?.get(id) ?? null;
     const tjOpen = takeoutFor.get(entry.path);
     const tj = tjOpen ? await tjOpen() : null;
     const liveVideo = live.get(entry.path) ?? null;
     const sideChanged = old && ((old.liveVideo ?? null) !== liveVideo || !!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
-      || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
+      || !!tj !== !!old.takeout || (tj && !meta && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
       if (old.thumb == null) thumbless.push(old);
@@ -11728,9 +11883,14 @@ async function scanRoot(lib, root, { full = false } = {}) {
     Object.assign(rec, await readMetadata(file, rec));
     if (liveVideo) rec.liveVideo = liveVideo;
     if (side) applySidecar(rec, parseXmp(await side.text()));
-    if (tj) {
+    if (meta) {
+      applyMeta(rec, meta);
+      if (tj) { rec.takeout = true; takeout.matched++; }
+    } else if (tj) {
       const t = readTakeoutJson(await tj.text());
       applyTakeout(rec, t);
+      const m = takeoutMeta(t);
+      if (m) lib.setMeta?.(id, m);
       takeout.matched++;
       if (t && !old && !lib.choices.has(id)) {
         if (t.favorited) fromTakeout.fav.push(id);
@@ -11789,12 +11949,29 @@ function applySidecar(rec, x) {
 // Takeout fills in only what EXIF and XMP left empty; see the header.
 function applyTakeout(rec, t) {
   rec.takeout = true;
-  if (!t) return rec;
-  if (t.time != null && rec.timeSource === 'file') { rec.time = t.time; rec.timeSource = 'takeout'; }
-  if (rec.lat == null && t.lat != null && t.lon != null) { rec.lat = t.lat; rec.lon = t.lon; }
-  if (t.description) rec.description = t.description;
-  if (t.people?.length) {
-    const tags = t.people.map(p => `people/${p.replace(/\//g, '-')}`);
+  const m = takeoutMeta(t);
+  return m ? applyMeta(rec, m) : rec;
+}
+
+// The library-file `meta` for what a Takeout JSON says (null when it says nothing to keep).
+function takeoutMeta(t) {
+  if (!t) return null;
+  const m = {};
+  if (t.time != null) m.taken = metaTaken(t.time);
+  if (t.lat != null && t.lon != null) { m.lat = t.lat; m.lon = t.lon; }
+  if (t.description) m.caption = t.description;
+  if (t.people?.length) m.people = [...t.people];
+  return Object.keys(m).length ? { ...m, source: 'takeout' } : null;
+}
+
+// Saved import details (libfile.js `meta`) fill in only what EXIF and XMP left empty.
+function applyMeta(rec, m) {
+  const time = m.taken != null ? metaTime(m.taken) : null;
+  if (time != null && rec.timeSource === 'file') { rec.time = time; rec.timeSource = m.source; }
+  if (rec.lat == null && m.lat != null && m.lon != null) { rec.lat = m.lat; rec.lon = m.lon; }
+  if (m.caption) rec.description = m.caption;
+  if (m.people?.length) {
+    const tags = m.people.map(p => `people/${p.replace(/\//g, '-')}`);
     rec.xmpTags = [...new Set([...(rec.xmpTags || []), ...tags])];
   }
   return rec;
@@ -11874,7 +12051,7 @@ function runJobs(jobs, kind, items, fn) {
   });
 }
 
-return { BATCH, scanRoot, pairLivePhotos, applySidecar, applyTakeout };
+return { BATCH, scanRoot, pairLivePhotos, applySidecar, applyTakeout, takeoutMeta, applyMeta };
 })();
 
 const __m_library_thumbs = (() => {
@@ -13482,6 +13659,10 @@ const __m_library_icloud = (() => {
 // Dates: the CSV gives an instant in GMT and Slate stores a wall clock as if it were UTC
 // (schema.wallClockToTime), so the GMT wall clock is stored, as takeout.js does. A CSV date
 // fills a record's time only when the file had no date of its own (timeSource 'file').
+// Each date applied is also saved in the library file (libfile.js `meta`, source 'icloud'), so
+// a rebuild or full rescan restores it without the CSV (scan.applyMeta).
+
+const metaTaken = __m_library_libfile.metaTaken;
 
 function parseCsv(text) {
   const s = String(text ?? '').replace(/^﻿/, '');
@@ -13635,8 +13816,13 @@ async function applyICloudCsv(lib, rootId, csvTexts, { dryRun = false } = {}) {
   }
   if (times.size) {
     const before = [...times.keys()].map(id => ({ id, time: lib.get(id).time, timeSource: lib.get(id).timeSource }));
+    const metaBefore = new Map([...times.keys()].map(id => [id, lib.meta.get(id) ?? null]));
     await lib.patchRecords([...times].map(([id, time]) => ({ id, time, timeSource: 'icloud' })), 'icloud');
-    tokens.push(lib.rememberUndo('icloud-dates', () => lib.patchRecords(before.filter(b => lib.get(b.id)), 'undo')));
+    for (const [id, time] of times) lib.setMeta(id, { ...metaBefore.get(id), taken: metaTaken(time), source: 'icloud' });
+    tokens.push(lib.rememberUndo('icloud-dates', async () => {
+      for (const [id, m] of metaBefore) lib.setMeta(id, m);
+      await lib.patchRecords(before.filter(b => lib.get(b.id)), 'undo');
+    }));
   }
   const list = tokens.filter(Boolean);
   const undo = list.length ? lib.rememberUndo('icloud', async () => {
@@ -16247,8 +16433,11 @@ const __m_ui_library_dupes = (() => {
 // trash the rest" trashes one group; "Trash all suggested" does every group on
 // the page. Both go through runCommand('photo.trash') and offer Undo.
 //
-// initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
-// 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
+// initDupes(lib, ui) registers the view. Exact copies take two passes on
+// lib.jobs as kind 'dupes': a sampled fingerprint (first and last 1 MB plus the
+// size) for files that share a size, then a chunked byte comparison of files
+// whose fingerprints match, so no whole large video is read into memory.
+// Similar-photo fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
 // them for photos thumbnailed before Slate took them.
 // "Also use meaning (CLIP)" (row D4) adds a third pass over the vectors that
 // Search by meaning keeps (lib.services.clip, clip.js): photos whose cosine is
@@ -16257,10 +16446,13 @@ const __m_ui_library_dupes = (() => {
 const runCommand = __m_library_commands.runCommand;
 const esc = __m_core_html.esc;
 const exactGroups = __m_library_dupes.exactGroups;
+const fingerprintCandidates = __m_library_dupes.fingerprintCandidates;
+const splitByBytes = __m_library_dupes.splitByBytes;
+const sampleFingerprint = __m_library_dupes.sampleFingerprint;
+const sameBytes = __m_library_dupes.sameBytes;
 const nearGroupsAsync = __m_library_dupes.nearGroupsAsync;
 const clipGroupsAsync = __m_library_dupes.clipGroupsAsync;
 const sizeCollisions = __m_library_dupes.sizeCollisions;
-const sha256Hex = __m_library_dupes.sha256Hex;
 const dropCoveredNear = __m_library_dupes.dropCoveredNear;
 const runOnJobs = __m_library_dupes.runOnJobs;
 const DEFAULT_MAX_DISTANCE = __m_library_dupes.DEFAULT_MAX_DISTANCE;
@@ -16274,7 +16466,7 @@ const UNDO_TOAST_MS = 6000;
 const PAGE = 40;               // groups drawn at a time
 const RECOMPUTE_MS = 1200;
 const THRESHOLD_KEY = 'slate.dupes.threshold';
-const SHA_PATCH_BATCH = 200;
+const FP_PATCH_BATCH = 200;
 const CLIP_ON_KEY = 'slate.dupes.clip';
 const CLIP_MIN_KEY = 'slate.dupes.clipmin';
 
@@ -16300,7 +16492,8 @@ function initDupes(lib, ui) {
   const clip = () => lib.services.clip ?? null;
   const clipReady = () => !!(clip()?.enabled() && clip().count());
 
-  const sha = new Map();       // id -> content hash found this session (also patched onto the record)
+  const fp = new Map();        // id -> sampled fingerprint found this session (also patched onto the record)
+  const same = new Map();      // 'idA|idB|fingerprint' -> byte comparison result this session
   const keep = new Map();      // group key -> Set of ids marked to keep
   let exact = [], near = [], byMeaning = [];
   let computed = false, stale = true, busy = false, again = false;
@@ -16312,7 +16505,16 @@ function initDupes(lib, ui) {
     isTrashed: (r) => !!lib.choice(r.id).trashed,
     choiceOf: (id) => ({ fav: lib.choice(id).fav, rating: lib.rating(id) }),
   });
-  const hashOf = (r) => sha.get(r.id) ?? r.sha256 ?? null;
+  // Records written before 2026-11-17 carry a whole-file `sha256`; it is a
+  // different hash, so it is ignored and the fingerprint is made afresh.
+  const fingerprintOf = (r) => fp.get(r.id) ?? r.fingerprint ?? null;
+  const pairKey = (a, b) => `${a.id}|${b.id}|${fingerprintOf(a)}`;
+  const sameOf = async (a, b, signal) => {
+    const k = pairKey(a, b);
+    if (!same.has(k)) same.set(k, await sameBytes(await lib.getFile(a.id), await lib.getFile(b.id), { signal }));
+    return same.get(k);
+  };
+  const knownSame = (a, b) => same.get(pairKey(a, b)) ?? false;
 
   function say(message, level = 'info') { ui.toast?.(message, level); }
 
@@ -16366,24 +16568,33 @@ function initDupes(lib, ui) {
         try { await lib.services.thumbs.rehash(noHash); } finally { off(); }
       }
 
-      // 2. Content hashes, only for files whose size another file shares.
-      const todo = sizeCollisions(all, o).filter(r => !hashOf(r));
+      // 2a. Sampled fingerprints, only for files whose size another file shares.
+      const todo = sizeCollisions(all, o).filter(r => !fingerprintOf(r));
       if (todo.length) {
-        const off = trackJobs(`Comparing the contents of ${plural(todo.length, 'file')} that share a size`, todo.length);
+        const off = trackJobs(`Fingerprinting ${plural(todo.length, 'file')} that share a size`, todo.length);
         let patches = [];
         const flush = () => { const l = patches; patches = []; return l.length ? lib.patchRecords(l, 'dupes').catch(() => {}) : null; };
         try {
           await runOnJobs(lib.jobs, 'dupes', todo, async (rec, signal) => {
             const file = await lib.getFile(rec.id);
             if (signal.aborted) return;
-            const h = await sha256Hex(file);
-            sha.set(rec.id, h);
-            patches.push({ id: rec.id, sha256: h });
-            if (patches.length >= SHA_PATCH_BATCH) flush();
+            const h = await sampleFingerprint(file);
+            fp.set(rec.id, h);
+            patches.push({ id: rec.id, fingerprint: h });
+            if (patches.length >= FP_PATCH_BATCH) flush();
           });
         } finally { off(); await flush(); }
       }
-      exact = await exactGroups(all, hashOf, o);
+      // 2b. Byte comparison of files whose fingerprints match, one job per set.
+      const candidates = [...(await fingerprintCandidates(all, fingerprintOf, o)).values()]
+        .filter(list => list.slice(1).some(r => !same.has(pairKey(list[0], r))));
+      if (candidates.length) {
+        const off = trackJobs(`Comparing the bytes of ${plural(candidates.length, 'set')} of matching files`, candidates.length);
+        try {
+          await runOnJobs(lib.jobs, 'dupes', candidates, (list, signal) => splitByBytes(list, (a, b) => sameOf(a, b, signal)));
+        } finally { off(); }
+      }
+      exact = await exactGroups(all, fingerprintOf, knownSame, o);
 
       // 3. Similar photos by fingerprint.
       const hashed = all.filter(r => r.dhash).length;
