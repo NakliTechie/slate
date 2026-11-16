@@ -1,7 +1,7 @@
 // Every third-party package Slate uses, for the Licences section in Help.
 // `bundled` packages are vendored under src/vendor/ and built into index.html, so their
 // licence text ships here and in the vendored file's header. `esm.sh` packages are
-// fetched from esm.sh the first time a matching file is opened (see SECURITY.md), and
+// fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
 // carry their own licence in what esm.sh serves.
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
@@ -77,5 +77,6 @@ SOFTWARE.` },
   { name: 'wasm-feature-detect', version: '1.x', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Fetched with @jsquash/jxl', source: 'https://github.com/GoogleChromeLabs/wasm-feature-detect' },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
+  { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];

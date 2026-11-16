@@ -14,6 +14,7 @@ import { buildLayout, visibleRows, itemRect, hitTest, lassoIndices, moveIndex, m
 import { createPhotoViewer, formatDuration, formatTaken } from './photo-viewer.js';
 import { openStoragePanel, needsDownload } from './storage.js';
 import { downloadLibFile } from '../../library/persist.js';
+import { openImportDialog } from './import.js';
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
 const PAD = 12;              // grid padding, px
@@ -483,6 +484,7 @@ export function initLibraryView(lib) {
       emptyEl.innerHTML = `<div class="lib-empty-inner"><h2>Add a folder of photos</h2>
         <p>Slate reads the photos where they are. Nothing is uploaded or copied, and your choices are saved in the folder.</p>
         <button class="btn btn-primary" data-act="add-folder">Add folder</button>
+        ${hasDirPicker ? '<button class="btn" data-act="import-takeout">Import Google Takeout…</button>' : ''}
         ${hasDirPicker ? '' : `<p class="lib-note">${BROWSE_ONLY_NOTE}</p>`}</div>`;
       return;
     }
@@ -534,6 +536,7 @@ export function initLibraryView(lib) {
       html += '</div>';
     }
     html += `<button class="btn lib-add" data-act="add-folder">${icon('folder').replace('class="icon"', 'class="icon icon-sm"')} Add folder</button>`;
+    if (hasDirPicker) html += `<button class="btn lib-add" data-act="import-takeout">Import Google Takeout…</button>`;
     if (!hasDirPicker) html += `<p class="lib-side-note">${BROWSE_ONLY_NOTE}</p>`;
     html += `</div><div class="lib-side-sec lib-side-end">
       ${viewBtn('hidden', 'Hidden', c.hidden)}
@@ -621,6 +624,7 @@ export function initLibraryView(lib) {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (!a) return;
     if (a === 'add-folder') addFolder();
+    if (a === 'import-takeout') openImportDialog();
     else if (a === 'editor') hideLibrary();
     else if (a === 'filters') toggleFilters();
     else if (a === 'zoom-in') setZoom(zoom + 1);

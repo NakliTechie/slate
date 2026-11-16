@@ -32,7 +32,7 @@ const MAKE = (name, hue) => `const c=new OffscreenCanvas(400,300); const g=c.get
 
 try {
   T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
-  await raw('Target.activateTarget', { targetId: T });
+  await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await until('return !!window.__slate', 15000);
   await ev(`try{localStorage.setItem('slate.v2.tour-complete','1')}catch{} document.querySelector('.tour-skip')?.click();

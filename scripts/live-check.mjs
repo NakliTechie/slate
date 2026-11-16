@@ -64,7 +64,7 @@ const finish = () => finishing ??= cleanup();
 
 try {
   T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
-  await raw('Target.activateTarget', { targetId: T });
+  await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   // Chrome slows timers and media in a tab that is not in front, and this is the person's everyday Chrome.
   // Keep the test tab active and focused for the whole run.
   await raw('Page.enable');

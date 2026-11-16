@@ -18,7 +18,7 @@ const check = (rows, what, ok, detail = '') => { results.push(ok); console.log(`
 const click = async ([x, y]) => { for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await raw('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 }); await sleep(100); };
 try {
   T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
-  await raw('Target.activateTarget', { targetId: T }); await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront'); await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await until('return !!window.__slate', 15000);
   await ev(`localStorage.setItem('slate.v2.tour-complete','1'); document.querySelector('.tour-skip')?.click();
     const c=new OffscreenCanvas(1200,360); const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1200,360); g.fillStyle='#111';

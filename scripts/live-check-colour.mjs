@@ -31,7 +31,7 @@ const PIX = `return __pix()`;
 
 try {
   T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
-  await raw('Target.activateTarget', { targetId: T });
+  await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await until('return !!window.__slate', 15000);
   await ev(`window.__pix=()=>{ const w=__slate.state.image.working; return Array.from(w.getContext('2d').getImageData(0,0,w.width,w.height).data); }; window.__lcWarn=[]; const w0=console.warn; console.warn=(...a)=>{__lcWarn.push(a.join(' ')); w0(...a)}; window.__lcErr=[]; addEventListener('error',e=>__lcErr.push(String(e.message))); return 1`);

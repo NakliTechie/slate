@@ -1,7 +1,7 @@
 // Thumbnails: 256 px (long edge) WebP files in OPFS under slate-thumbs/.
 // See docs/architecture.md "Thumbnails".
 //
-//   createThumbs(lib) -> { enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes() }
+//   createThumbs(lib) -> { enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes(), rehash(records) }
 //
 // Order of sources for a photo: the embedded EXIF thumbnail (JPEG, TIFF, RAW),
 // then createImageBitmap in a worker for formats the browser opens natively,
@@ -9,9 +9,14 @@
 // to the worker (as batch.js does). Videos: seek to 10% and draw a frame.
 // The worker scales, encodes and writes the file into OPFS. All work runs on
 // lib.jobs as kind 'thumbs', so it pauses with the queue and is counted.
+//
+// The worker also takes a 64-bit dHash (dupes.js) of the picture it drew and
+// the record gets it as `dhash`. rehash(records) fills `dhash` for records
+// thumbnailed before that, from the stored thumbnail (kind 'dupes').
 
 import { thumbnail } from '../vendor/exifr.mjs';
 import { decode, isSupportedFile } from '../decode/registry.js';
+import { dhashRGBA, runOnJobs } from './dupes.js';
 
 export const THUMB_DIR = 'slate-thumbs';
 export const EDGE = 256;
@@ -86,12 +91,15 @@ export function createThumbs(lib) {
     catch { return null; }
   };
 
+  const flush = () => {
+    clearTimeout(patchTimer); patchTimer = null;
+    const list = patches; patches = [];
+    if (!list.length) return Promise.resolve();
+    return lib.patchRecords(list, 'thumb').catch(e => console.warn('[slate library] thumbnail state not saved', e));
+  };
   const patch = (p) => {
     patches.push(p);
-    if (!patchTimer) patchTimer = setTimeout(() => {
-      const list = patches; patches = []; patchTimer = null;
-      lib.patchRecords(list, 'thumb').catch(e => console.warn('[slate library] thumbnail state not saved', e));
-    }, PATCH_DELAY_MS);
+    if (!patchTimer) patchTimer = setTimeout(flush, PATCH_DELAY_MS);
   };
 
   const toWorker = (msg, transfer = []) => {
@@ -108,8 +116,8 @@ export function createThumbs(lib) {
     const name = thumbName(rec.id);
     if (rec.kind === 'video') {
       const v = await videoFrame(file);
-      await toWorker({ name, src: v.bitmap }, [v.bitmap]);
-      return { w: v.w, h: v.h, dur: v.dur };
+      const r = await toWorker({ name, src: v.bitmap }, [v.bitmap]);
+      return { w: v.w, h: v.h, dur: v.dur, dhash: r?.dhash };
     }
     // The embedded thumbnail says nothing about the photo's size, so use it only when EXIF gave w and h.
     if (EMBEDDED_EXTS.has(rec.ext) && rec.w && rec.h) {
@@ -138,6 +146,7 @@ export function createThumbs(lib) {
       const p = { id: rec.id, thumb: r ? 'ok' : 'none' };
       if (r && (!rec.w || !rec.h) && r.w && r.h) { p.w = r.w; p.h = r.h; }
       if (r?.dur) p.dur = r.dur;
+      if (r?.dhash) p.dhash = r.dhash;
       cache.delete(rec.id); // the next url() reads the new file
       patch(p);
     } catch (e) {
@@ -193,6 +202,19 @@ export function createThumbs(lib) {
       cache.clear();
       const root = await navigator.storage.getDirectory();
       await root.removeEntry(THUMB_DIR, { recursive: true }).catch(() => {});
+    },
+
+    // dHash for records that have a thumbnail but no hash, read from OPFS
+    // (the original is not decoded again). Resolves when all are done.
+    async rehash(records) {
+      const list = records.filter(r => r && r.thumb === 'ok' && !r.dhash);
+      await runOnJobs(lib.jobs, 'dupes', list, async (rec, signal) => {
+        const f = await readThumb(rec.id);
+        if (!f || signal.aborted) return;
+        const r = await toWorker({ op: 'hash', src: f });
+        if (r?.dhash && !signal.aborted) patch({ id: rec.id, dhash: r.dhash });
+      });
+      await flush();
     },
 
     async sizeBytes() {
@@ -262,9 +284,12 @@ function makePool(size) {
 
 // Worker: decode (or take a transferred bitmap), apply EXIF orientation when asked,
 // scale to the long edge, encode WebP and write it into OPFS slate-thumbs/<name>.
-// Replies { id, w, h } with the oriented size of what it decoded, or { id, error }.
+// Replies { id, w, h, dhash } with the oriented size of what it decoded, or { id, error }.
+// With op 'hash' it only draws the picture and replies { id, dhash }.
 const WORKER_SRC = `
 const DIR = ${JSON.stringify(THUMB_DIR)};
+${dhashRGBA.toString()}
+function hashOf(ctx, W, H) { return dhashRGBA(ctx.getImageData(0, 0, W, H).data, W, H); }
 function orient(ctx, o, W, H) {
   switch (o) {
     case 2: ctx.transform(-1, 0, 0, 1, W, 0); break;
@@ -290,9 +315,16 @@ async function write(name, blob) {
   finally { ah.close(); }
 }
 self.onmessage = async (e) => {
-  const { id, name, src, orient: o = 1, w = 0, h = 0, edge } = e.data;
+  const { id, op, name, src, orient: o = 1, w = 0, h = 0, edge } = e.data;
   let bmp = null;
   try {
+    if (op === 'hash') {
+      bmp = await createImageBitmap(src);
+      const c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d', { willReadFrequently: true });
+      c.drawImage(bmp, 0, 0);
+      self.postMessage({ id, dhash: hashOf(c, bmp.width, bmp.height) });
+      return;
+    }
     if (src instanceof ImageBitmap) bmp = src;
     else if (o !== 1) bmp = await createImageBitmap(src, { imageOrientation: 'none' });
     else if (w && h) bmp = await createImageBitmap(src, w >= h ? { resizeWidth: Math.min(edge, w), resizeQuality: 'medium' } : { resizeHeight: Math.min(edge, h), resizeQuality: 'medium' });
@@ -306,9 +338,11 @@ self.onmessage = async (e) => {
     ctx.imageSmoothingQuality = 'high';
     orient(ctx, o, W, H);
     ctx.drawImage(bmp, 0, 0, o >= 5 ? H : W, o >= 5 ? W : H);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dhash = hashOf(ctx, W, H);
     const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.8 });
     await write(name, blob);
-    self.postMessage({ id, w: ow, h: oh });
+    self.postMessage({ id, w: ow, h: oh, dhash });
   } catch (err) {
     self.postMessage({ id, error: err && err.message || String(err) });
   } finally {

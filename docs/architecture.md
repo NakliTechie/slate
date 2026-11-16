@@ -81,7 +81,7 @@ Events: `lib.on('records' | 'choices' | 'albums' | 'roots' | 'saved' | 'error', 
 
 ## Thumbnails (thumbs.js)
 
-`createThumbs(lib)` returns `{ enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes() }`.
+`createThumbs(lib)` returns `{ enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes(), rehash(records) }`. Each thumbnail also yields a 64-bit dHash on the record (`dhash`) for duplicate detection; `rehash` makes it from stored thumbnails.
 
 - Store each thumbnail as one file in OPFS under `slate-thumbs/`, named from a hash of the record id. Write it from a worker where the browser allows; read it with `getFile()`.
 - Try the embedded thumbnail first (`exifr.thumbnail`, for JPEG and RAW). If there is none, use `createImageBitmap(file, { resizeWidth })` in a worker for native formats. Rarer formats (HEIC off Safari, TIFF, JPEG XL, PSD, TGA, DDS, RAW without a preview) go through `decode()` from `src/decode/registry.js` on the main thread, and the bitmap is transferred, as `batch.js` does.

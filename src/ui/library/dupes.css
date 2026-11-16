@@ -1,0 +1,62 @@
+/* ── Library duplicates view (ui/library/dupes.js) ───────────────────────── */
+
+.lib-panel:has(> .dup-root) { flex: 1; min-width: 0; overflow-y: auto; }
+.dup-root { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
+
+.dup-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.dup-status { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--fg-0); }
+.dup-status .btn { padding: 2px var(--space-2); font-size: 12px; }
+.dup-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.dup-threshold { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--fg-1); }
+.dup-threshold input { width: 140px; }
+.dup-thr-value { min-width: 2ch; color: var(--fg-0); font-variant-numeric: tabular-nums; }
+.dup-note { margin: 0; font-size: 12px; color: var(--fg-2); }
+.dup-controls .btn-danger { margin-left: auto; }
+.dup-controls .btn[disabled], .dup-ghead .btn[disabled] { opacity: 0.45; cursor: default; }
+
+.dup-section { margin: var(--space-3) 0 0; font-size: 14px; font-weight: 600; color: var(--fg-0); }
+.dup-empty { color: var(--fg-1); }
+.dup-more { align-self: flex-start; margin-top: var(--space-2); }
+
+.dup-group { border: 1px solid var(--bg-3); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+.dup-ghead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.dup-ghead h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg-1); flex: 1; min-width: 0; }
+.dup-ghead .btn { padding: 2px var(--space-2); font-size: 12px; }
+
+.dup-tiles { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: var(--space-1); }
+.dup-tile {
+  position: relative;
+  flex: 0 0 168px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.dup-tile.is-keep { border-color: var(--ok); opacity: 1; }
+.dup-thumb { display: flex; align-items: center; justify-content: center; height: 128px; background: var(--bg-0); border-radius: var(--radius-sm); overflow: hidden; }
+.dup-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.dup-meta { display: flex; flex-direction: column; font-size: 11px; color: var(--fg-1); min-width: 0; }
+.dup-name { color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-keep { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 12px; color: var(--fg-0); }
+.dup-badge {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--ok);
+  color: #04120a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .dup-tile { flex-basis: 132px; }
+  .dup-thumb { height: 100px; }
+  .dup-controls .btn-danger { margin-left: 0; }
+}

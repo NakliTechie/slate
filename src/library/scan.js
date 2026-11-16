@@ -1,15 +1,23 @@
 // Walks a root folder and feeds lib.applyScan. See docs/architecture.md "Scan".
 //
-//   scanRoot(lib, root, { full }) -> { added, changed, unchanged, missing, failed }
+//   scanRoot(lib, root, { full }) -> { added, changed, unchanged, missing, failed, takeout }
 //
 // fsa roots are walked through their FileSystemDirectoryHandle; files roots
 // (browse-only) use root.files. Metadata and sidecar reads run on lib.jobs as
 // kind 'scan', so the status line counts them and pausing the queue pauses the scan.
+//
+// Google Takeout JSON (takeout.js) is read beside each photo. It fills the time and GPS only
+// where EXIF and XMP had none (timeSource 'takeout'), sets `description`, and adds each named
+// person as the tag `people/<name>`. Its favourite, archived and trashed values become choices
+// (favourite, hidden, and the reject flag) once: only for a photo new to the index that has no
+// entry in the library file, so a later rescan never overrides what the person chose.
+// When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
 
 import { isSkippedDir, kindOf, extOf, makeId, newRecord, unchanged, folderOf, SIDECAR_EXT } from './schema.js';
 import { relPathOf } from './library.js';
 import { readMetadata } from './metadata.js';
 import { sidecarNames, parseXmp } from './xmp.js';
+import { matchSidecars, readTakeoutJson } from './takeout.js';
 
 export const BATCH = 500;
 
@@ -19,13 +27,15 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   // 1. Walk: every photo and video, and every sidecar by folder.
   const found = [];               // [{ path, open: () => Promise<File> }]
   const sidecars = new Map();     // folder -> Map(lower-case name -> open)
+  const jsons = new Map();        // folder -> Map(name -> open), Takeout candidates
   const walk = { failed: 0 };
   const add = (path, open) => {
     const name = path.slice(path.lastIndexOf('/') + 1);
-    if (extOf(name) === SIDECAR_EXT) {
-      const dir = folderOf(path);
-      if (!sidecars.has(dir)) sidecars.set(dir, new Map());
-      sidecars.get(dir).set(name.toLowerCase(), open);
+    const ext = extOf(name);
+    if (ext === SIDECAR_EXT || (ext === 'json' && !name.startsWith('.'))) {
+      const dir = folderOf(path), into = ext === 'json' ? jsons : sidecars;
+      if (!into.has(dir)) into.set(dir, new Map());
+      into.get(dir).set(ext === 'json' ? name : name.toLowerCase(), open);
     } else if (kindOf(name)) found.push({ path, open });
   };
   if (root.handle) await walkDir(root.handle, '', add, walk);
@@ -36,7 +46,11 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   }
 
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
+  const takeout = { matched: 0, favourites: 0, hidden: 0, rejected: 0 };
   const res = { added: 0, changed: 0, unchanged: 0, missing: 0, failed: walk.failed };
+  const takeoutFor = matchTakeout(found, jsons); // media path -> open
+  if (takeoutFor.size) res.takeout = takeout;
+  const fromTakeout = { fav: [], hidden: [], reject: [] };
 
   // 2. Read each new or changed file on the job queue, flushing every BATCH records.
   let buf = [], thumbless = [], chain = Promise.resolve();
@@ -66,7 +80,10 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     const old = lib.get(id);
     const sideOpen = sidecarFor(entry.path);
     const side = sideOpen ? await sideOpen() : null;
-    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed));
+    const tjOpen = takeoutFor.get(entry.path);
+    const tj = tjOpen ? await tjOpen() : null;
+    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
+      || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
       if (old.thumb == null) thumbless.push(old);
@@ -75,6 +92,16 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     const rec = newRecord(root.id, entry.path, file);
     Object.assign(rec, await readMetadata(file, rec));
     if (side) applySidecar(rec, parseXmp(await side.text()));
+    if (tj) {
+      const t = readTakeoutJson(await tj.text());
+      applyTakeout(rec, t);
+      takeout.matched++;
+      if (t && !old && !lib.choices.has(id)) {
+        if (t.favorited) fromTakeout.fav.push(id);
+        if (t.archived) fromTakeout.hidden.push(id);
+        if (t.trashed) fromTakeout.reject.push(id);
+      }
+    }
     if (old) res.changed++; else res.added++;
     buf.push(rec);
     if (buf.length >= BATCH) await flush();
@@ -87,6 +114,7 @@ export async function scanRoot(lib, root, { full = false } = {}) {
 
   // 3. Final call with `seen`, unless part of the folder could not be read.
   await flush(walk.failed ? {} : { seen });
+  await applyTakeoutChoices(lib, fromTakeout, takeout);
   for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
   return res;
 }
@@ -100,6 +128,48 @@ export function applySidecar(rec, x) {
   if (x.time != null) { rec.time = x.time; rec.timeSource = 'xmp'; }
   if (x.lat != null && x.lon != null) { rec.lat = x.lat; rec.lon = x.lon; }
   return rec;
+}
+
+// Takeout fills in only what EXIF and XMP left empty; see the header.
+export function applyTakeout(rec, t) {
+  rec.takeout = true;
+  if (!t) return rec;
+  if (t.time != null && rec.timeSource === 'file') { rec.time = t.time; rec.timeSource = 'takeout'; }
+  if (rec.lat == null && t.lat != null && t.lon != null) { rec.lat = t.lat; rec.lon = t.lon; }
+  if (t.description) rec.description = t.description;
+  if (t.people?.length) {
+    const tags = t.people.map(p => `people/${p.replace(/\//g, '-')}`);
+    rec.xmpTags = [...new Set([...(rec.xmpTags || []), ...tags])];
+  }
+  return rec;
+}
+
+// Media path -> open() of its Takeout JSON, folder by folder.
+function matchTakeout(found, jsons) {
+  const out = new Map();
+  if (!jsons.size) return out;
+  const byDir = new Map();
+  for (const e of found) {
+    const dir = folderOf(e.path);
+    if (!jsons.has(dir)) continue;
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push(e.path.slice(e.path.lastIndexOf('/') + 1));
+  }
+  for (const [dir, media] of byDir) {
+    const js = jsons.get(dir);
+    for (const [m, j] of matchSidecars([...media, ...js.keys()])) out.set(dir ? `${dir}/${m}` : m, js.get(j));
+  }
+  return out;
+}
+
+async function applyTakeoutChoices(lib, ids, counts) {
+  const ok = list => list.filter(id => lib.records.has(id) && !lib.choices.has(id));
+  const fav = ok(ids.fav), hidden = ok(ids.hidden), reject = ok(ids.reject);
+  try {
+    if (fav.length) counts.favourites = (await lib.setFavourite(fav, true)).changed;
+    if (hidden.length) counts.hidden = (await lib.setHidden(hidden, true)).changed;
+    if (reject.length) counts.rejected = (await lib.setFlag(reject, 'reject')).changed;
+  } catch (e) { console.warn('[slate library] could not apply Takeout choices', e); }
 }
 
 async function ensurePermission(handle) {

@@ -2573,6 +2573,86 @@ kbd {
 }
 
 
+/* ui/library/dupes.css */
+/* ── Library duplicates view (ui/library/dupes.js) ───────────────────────── */
+
+.lib-panel:has(> .dup-root) { flex: 1; min-width: 0; overflow-y: auto; }
+.dup-root { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
+
+.dup-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.dup-status { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--fg-0); }
+.dup-status .btn { padding: 2px var(--space-2); font-size: 12px; }
+.dup-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.dup-threshold { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--fg-1); }
+.dup-threshold input { width: 140px; }
+.dup-thr-value { min-width: 2ch; color: var(--fg-0); font-variant-numeric: tabular-nums; }
+.dup-note { margin: 0; font-size: 12px; color: var(--fg-2); }
+.dup-controls .btn-danger { margin-left: auto; }
+.dup-controls .btn[disabled], .dup-ghead .btn[disabled] { opacity: 0.45; cursor: default; }
+
+.dup-section { margin: var(--space-3) 0 0; font-size: 14px; font-weight: 600; color: var(--fg-0); }
+.dup-empty { color: var(--fg-1); }
+.dup-more { align-self: flex-start; margin-top: var(--space-2); }
+
+.dup-group { border: 1px solid var(--bg-3); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+.dup-ghead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.dup-ghead h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg-1); flex: 1; min-width: 0; }
+.dup-ghead .btn { padding: 2px var(--space-2); font-size: 12px; }
+
+.dup-tiles { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: var(--space-1); }
+.dup-tile {
+  position: relative;
+  flex: 0 0 168px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.dup-tile.is-keep { border-color: var(--ok); opacity: 1; }
+.dup-thumb { display: flex; align-items: center; justify-content: center; height: 128px; background: var(--bg-0); border-radius: var(--radius-sm); overflow: hidden; }
+.dup-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.dup-meta { display: flex; flex-direction: column; font-size: 11px; color: var(--fg-1); min-width: 0; }
+.dup-name { color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-keep { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 12px; color: var(--fg-0); }
+.dup-badge {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--ok);
+  color: #04120a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .dup-tile { flex-basis: 132px; }
+  .dup-thumb { height: 100px; }
+  .dup-controls .btn-danger { margin-left: 0; }
+}
+
+
+/* ui/library/import.css */
+/* ── Library: import from Google Takeout ─────────────────────────────────── */
+
+.imp-dialog { width: min(480px, 95vw); }
+.imp-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.imp-text { margin: 0; color: var(--fg-1); }
+.imp-warn { margin: 0; color: var(--danger); }
+.imp-label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 12px; color: var(--fg-1); }
+.imp-row { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
+.imp-dest-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-1); font-size: 12px; }
+.imp-progress { display: flex; flex-direction: column; gap: var(--space-1); }
+.imp-bar { width: 100%; }
+.imp-status { margin: 0; font-size: 12px; color: var(--fg-1); overflow-wrap: anywhere; }
+
+
 /* ui/library/library.css */
 /* ── Photo library mode (src/ui/library/view.js) ─────────────────────────── */
 
@@ -2887,6 +2967,10 @@ kbd {
 
 .org-toast { pointer-events: auto; }
 .org-undo { padding: 2px var(--space-2); font-size: 12px; color: var(--accent); }
+
+/* Storage panel: the XMP sidecar setting (storage.js) */
+.lib-storage-xmp { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--fg-0); margin-top: var(--space-3); }
+.lib-storage-xmp + .lib-note { margin-top: var(--space-1); }
 
 
 /* ui/theme.css */
@@ -6357,7 +6441,7 @@ const __m_library_licences = (() => {
 // Every third-party package Slate uses, for the Licences section in Help.
 // `bundled` packages are vendored under src/vendor/ and built into index.html, so their
 // licence text ships here and in the vendored file's header. `esm.sh` packages are
-// fetched from esm.sh the first time a matching file is opened (see SECURITY.md), and
+// fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
 // carry their own licence in what esm.sh serves.
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
@@ -6433,6 +6517,7 @@ SOFTWARE.` },
   { name: 'wasm-feature-detect', version: '1.x', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Fetched with @jsquash/jxl', source: 'https://github.com/GoogleChromeLabs/wasm-feature-detect' },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
+  { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];
 
@@ -7782,7 +7867,7 @@ function folderOf(path) {
  * @property {number} size      bytes
  * @property {number} mtime     File.lastModified, ms
  * @property {number} time      capture time, ms since epoch (local wall clock read as UTC; see note)
- * @property {'exif'|'xmp'|'file'} timeSource
+ * @property {'exif'|'xmp'|'takeout'|'file'} timeSource
  * @property {number} w         pixel width after orientation (0 when unknown)
  * @property {number} h         pixel height after orientation (0 when unknown)
  * @property {number} orient    EXIF orientation 1..8 (1 when unknown)
@@ -7795,6 +7880,10 @@ function folderOf(path) {
  * @property {boolean} sidecar  an XMP sidecar was found and read
  * @property {string[]} xmpTags keywords read from XMP or embedded metadata (choices.tags adds to these)
  * @property {number} xmpRating rating read from XMP (0 when none)
+ * @property {string} [description] caption from a Google Takeout JSON (searchable)
+ * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
+ * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
+ * @property {string} [sha256]   content hash, computed only for files whose size another file shares
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *
@@ -8071,7 +8160,7 @@ function tokenMatcher(token, albumNamesOf) {
 }
 
 function hay(r, c, albumNamesOf) {
-  return [r.path, r.camera, r.lens, ...(r.xmpTags || []), ...(c.tags || []), ...albumNamesOf(r.id)].join('\u0001').toLowerCase();
+  return [r.path, r.camera, r.lens, r.description || '', ...(r.xmpTags || []), ...(c.tags || []), ...albumNamesOf(r.id)].join('\u0001').toLowerCase();
 }
 
 /**
@@ -9226,6 +9315,7 @@ const __m_library_xmp = (() => {
 // parseXmp(text) -> { tags: string[], rating: number, label: string|null,
 //                     time: number|null, lat: number|null, lon: number|null }
 // sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
+// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
 
 const normTag = __m_library_schema.normTag;
 const wallClockToTime = __m_library_schema.wallClockToTime;
@@ -9325,17 +9415,274 @@ function sidecarNames(name) {
   return full === stem ? [full] : [full, stem];
 }
 
-return { parseXmpDate, parseXmpGps, parseXmp, sidecarNames };
+// ── writing ─────────────────────────────────────────────────────────────────
+// buildXmp({ rating, flag, label, tags, existing }) writes the four properties
+// Slate owns and nothing else:
+//   xmp:Rating               0 to 5; a rejected photo writes -1
+//   xmp:Label                the colour label, when `label` is a string;
+//                            undefined leaves an existing label alone, null removes it
+//   dc:subject (rdf:Bag)     the leaf of every tag ('trips/goa' gives 'goa')
+//   lr:hierarchicalSubject   every tag in full, with '|' for '/' (Lightroom's form)
+// Flag mapping: Slate's choices have no colour label, so flags never become a
+// label. Only reject is written, as xmp:Rating -1, the convention Lightroom,
+// digiKam and darktable read. A pick writes nothing beyond its rating.
+// With `existing` (a sidecar's text), only these four properties are replaced,
+// in attribute or element form; every other property and namespace stays.
+
+const NS = {
+  xmp: 'http://ns.adobe.com/xap/1.0/',
+  dc: 'http://purl.org/dc/elements/1.1/',
+  lr: 'http://ns.adobe.com/lightroom/1.0/',
+};
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
+
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function removeProp(text, qname) {
+  const q = reEsc(qname);
+  return text
+    .replace(new RegExp(`\\s+${q}\\s*=\\s*(?:"[^"]*"|'[^']*')`, 'g'), '')
+    .replace(new RegExp(`[ \\t]*<${q}(?:\\s[^>]*)?(?:/>|>[\\s\\S]*?</${q}\\s*>)[ \\t]*\\r?\\n?`, 'g'), '');
+}
+
+function bag(qname, items, pad) {
+  return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
+}
+
+function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
+  const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  const clean = [...new Set(tags.map(normTag).filter(Boolean))];
+  const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
+  const keepLabel = label === undefined && existing ? single(existing, 'xmp:Label') : null;
+  const lab = typeof label === 'string' && label ? label : keepLabel;
+
+  const pad = '   ';
+  let props = `${pad}<xmp:Rating>${r}</xmp:Rating>\n`;
+  if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
+  if (leaves.length) props += bag('dc:subject', leaves, pad);
+  if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
+
+  let text = existing ? String(existing) : '';
+  const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
+  if (!open) {
+    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Slate">
+ <rdf:RDF xmlns:rdf="${RDF_NS}">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="${NS.xmp}"
+    xmlns:dc="${NS.dc}"
+    xmlns:lr="${NS.lr}">
+${props}  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
+`;
+  }
+  for (const q of OWNED) text = removeProp(text, q);
+  const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
+  let attrs = m[1];
+  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
+  const head = `<rdf:Description${attrs}>\n${props}`;
+  const tail = m[2] ? '  </rdf:Description>' : '';
+  return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');
+}
+
+return { parseXmpDate, parseXmpGps, parseXmp, sidecarNames, buildXmp };
+})();
+
+const __m_library_takeout = (() => {
+// Google Takeout JSON: match each photo to its JSON file and read what the JSON says.
+// Pure functions; scan.js applies the result. See spec rows I2 and I3.
+//
+//   matchSidecars(names) -> Map(mediaName -> jsonName)   names: every file name in one folder
+//   readTakeoutJson(text) -> { time, lat, lon, description, people, favorited, archived, trashed } | null
+//
+// Takeout is undocumented. The naming rules below come from the Timelinize source, gpth and
+// user reports (research report S4.1):
+//   IMG_1.jpg           IMG_1.jpg.json, IMG_1.json (older exports)
+//                       IMG_1.jpg.supplemental-metadata.json, and any cut of that suffix
+//                       (IMG_1.jpg.supplemen.json, IMG_1.jpg.s.json, IMG_1.jpg..json)
+//   IMG(1).jpg          IMG.jpg(1).json, IMG.jpg.supplemental-metadata(1).json
+//   IMG-edited.jpg      shares IMG.jpg's JSON
+//   long names          the JSON name is cut to 51 characters with ".json" (the media name to
+//                       47 characters before its extension), so the JSON base is a prefix
+//   fuzzy fallback      a JSON base one character away, or the same stem with another
+//                       extension (IMG.HEIC.json for IMG.jpg or IMG.MP4), when only one fits
+// Takeout replaces '&' and '?' in titles with '_'; both sides are compared that way, ignoring case.
+//
+// Time: Takeout's photoTakenTime is a true instant (Unix seconds), while Slate stores the EXIF
+// wall clock as if it were UTC (schema.wallClockToTime). Slate has no zone for the photo, so the
+// instant is stored as its UTC wall clock: a photo taken at 09:00 in India (UTC+05:30) groups
+// under 03:30. scan.js uses it only when the photo has no EXIF or XMP time.
+
+const kindOf = __m_library_schema.kindOf;
+
+const SUPPLEMENTAL = 'supplemental-metadata';
+// Suffixes Google adds to edited copies, by export language.
+const EDITED = ['-edited', '-modifié', '-bearbeitet', '-editado', '-modificato', '-bewerkt'];
+// A JSON base this long that is a prefix of a media name is a cut name, not a different photo.
+const MIN_PREFIX = 30;
+
+const norm = s => s.replace(/[&?]/g, '_').toLowerCase();
+const stemOf = n => { const i = n.lastIndexOf('.'); return i <= 0 ? n : n.slice(0, i); };
+const extPart = n => { const i = n.lastIndexOf('.'); return i <= 0 ? '' : n.slice(i); };
+
+// "IMG(1).jpg" -> { name: 'IMG.jpg', n: 1 }; "IMG.jpg" -> { name: 'IMG.jpg', n: 0 }.
+function splitMediaCounter(name) {
+  const m = /^(.*)\((\d+)\)(\.[^.]*)?$/.exec(name);
+  return m ? { name: m[1] + (m[3] || ''), n: Number(m[2]) } : { name, n: 0 };
+}
+
+// The bases one JSON name stands for: [{ base, n }], counter removed, suffix cut removed.
+function jsonBases(jsonName) {
+  let base = jsonName.slice(0, -5); // ".json"
+  let n = 0;
+  const c = /^(.*)\((\d+)\)$/.exec(base);
+  if (c) { base = c[1]; n = Number(c[2]); }
+  const out = [{ base, n }];
+  const dot = base.lastIndexOf('.');
+  if (dot > 0) {
+    const tail = base.slice(dot + 1).toLowerCase();
+    if (SUPPLEMENTAL.startsWith(tail) && !kindOf(base)) {
+      let b = base.slice(0, dot), k = n;
+      const c2 = !k && /^(.*)\((\d+)\)$/.exec(b); // IMG.jpg(1).supplemental-metadata.json
+      if (c2) { b = c2[1]; k = Number(c2[2]); }
+      out.push({ base: b, n: k });
+    }
+  }
+  return out;
+}
+
+function editedOriginal(name) {
+  const stem = stemOf(name), ext = extPart(name), low = stem.toLowerCase();
+  for (const s of EDITED) if (low.endsWith(s)) return stem.slice(0, -s.length) + ext;
+  return null;
+}
+
+// One edit at most between a and b (insert, delete or replace a character).
+function withinOne(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+
+function matchSidecars(names) {
+  const jsons = names.filter(n => n.toLowerCase().endsWith('.json'));
+  const media = names.filter(n => kindOf(n));
+  const out = new Map();
+  if (!jsons.length) return out;
+
+  // key "n|base" -> json name; entries: every (base, n, json) for the prefix and fuzzy passes.
+  const exact = new Map(), entries = [];
+  for (const j of jsons) {
+    for (const { base, n } of jsonBases(j)) {
+      const key = `${n}|${norm(base)}`;
+      if (!exact.has(key)) exact.set(key, j);
+      entries.push({ base: norm(base), n, json: j });
+    }
+  }
+
+  const find = (name) => {
+    const { name: orig, n } = splitMediaCounter(name);
+    const o = norm(orig), whole = norm(name);
+    // 1. Exact: the full name, the stem, or the literal name with its counter.
+    for (const key of [`${n}|${o}`, `${n}|${norm(stemOf(orig))}`, `0|${whole}`]) {
+      if (exact.has(key)) return exact.get(key);
+    }
+    // 2. Cut names: the longest JSON base that is a prefix of the media name.
+    let best = null;
+    for (const e of entries) {
+      if (e.n !== n || e.base.length < MIN_PREFIX || !o.startsWith(e.base)) continue;
+      if (!best || e.base.length > best.base.length) best = e;
+    }
+    return best?.json ?? null;
+  };
+
+  const fuzzy = (name) => {
+    const { name: orig, n } = splitMediaCounter(name);
+    const o = norm(orig), stem = norm(stemOf(orig));
+    const hits = new Set();
+    for (const e of entries) {
+      if (e.n !== n || !kindOf(e.base)) continue;
+      if (withinOne(e.base, o) || norm(stemOf(e.base)) === stem) hits.add(e.json);
+    }
+    return hits.size === 1 ? [...hits][0] : null;
+  };
+
+  // Originals first, so an edited copy can borrow its original's JSON.
+  for (const m of media) {
+    if (editedOriginal(m)) continue;
+    const j = find(m);
+    if (j) out.set(m, j);
+  }
+  for (const m of media) {
+    const orig = editedOriginal(m);
+    if (!orig) continue;
+    const j = find(m) ?? out.get(media.find(x => x.toLowerCase() === orig.toLowerCase())) ?? find(orig);
+    if (j) out.set(m, j);
+  }
+  // Fuzzy last, and only when one photo and one JSON point at each other.
+  const claims = new Map();
+  for (const m of media) {
+    if (out.has(m)) continue;
+    const j = fuzzy(editedOriginal(m) ?? m);
+    if (j) claims.set(m, j);
+  }
+  const per = new Map();
+  for (const j of claims.values()) per.set(j, (per.get(j) || 0) + 1);
+  for (const [m, j] of claims) if (per.get(j) === 1) out.set(m, j);
+  return out;
+}
+
+function readTakeoutJson(text) {
+  let j;
+  try { j = JSON.parse(text); } catch { return null; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+  const out = { time: null, lat: null, lon: null, description: '', people: [], favorited: false, archived: false, trashed: false };
+
+  const secs = Number(j.photoTakenTime?.timestamp ?? NaN);
+  const made = Number(j.creationTime?.timestamp ?? NaN);
+  const s = Number.isFinite(secs) && secs > 0 ? secs : Number.isFinite(made) && made > 0 ? made : null;
+  if (s != null) out.time = s * 1000; // the instant, read as the UTC wall clock (see the header)
+
+  for (const g of [j.geoData, j.geoDataExif]) {
+    const lat = Number(g?.latitude), lon = Number(g?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)
+      && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) { out.lat = lat; out.lon = lon; break; }
+  }
+
+  if (typeof j.description === 'string') out.description = j.description.trim();
+  if (Array.isArray(j.people)) {
+    out.people = [...new Set(j.people.map(p => (typeof p?.name === 'string' ? p.name.trim() : '')).filter(Boolean))];
+  }
+  out.favorited = j.favorited === true;
+  out.archived = j.archived === true;
+  out.trashed = j.trashed === true;
+  return out;
+}
+
+return { matchSidecars, readTakeoutJson };
 })();
 
 const __m_library_scan = (() => {
 // Walks a root folder and feeds lib.applyScan. See docs/architecture.md "Scan".
 //
-//   scanRoot(lib, root, { full }) -> { added, changed, unchanged, missing, failed }
+//   scanRoot(lib, root, { full }) -> { added, changed, unchanged, missing, failed, takeout }
 //
 // fsa roots are walked through their FileSystemDirectoryHandle; files roots
 // (browse-only) use root.files. Metadata and sidecar reads run on lib.jobs as
 // kind 'scan', so the status line counts them and pausing the queue pauses the scan.
+//
+// Google Takeout JSON (takeout.js) is read beside each photo. It fills the time and GPS only
+// where EXIF and XMP had none (timeSource 'takeout'), sets `description`, and adds each named
+// person as the tag `people/<name>`. Its favourite, archived and trashed values become choices
+// (favourite, hidden, and the reject flag) once: only for a photo new to the index that has no
+// entry in the library file, so a later rescan never overrides what the person chose.
+// When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
 
 const isSkippedDir = __m_library_schema.isSkippedDir;
 const kindOf = __m_library_schema.kindOf;
@@ -9349,6 +9696,8 @@ const relPathOf = __m_library_library.relPathOf;
 const readMetadata = __m_library_metadata.readMetadata;
 const sidecarNames = __m_library_xmp.sidecarNames;
 const parseXmp = __m_library_xmp.parseXmp;
+const matchSidecars = __m_library_takeout.matchSidecars;
+const readTakeoutJson = __m_library_takeout.readTakeoutJson;
 
 const BATCH = 500;
 
@@ -9358,13 +9707,15 @@ async function scanRoot(lib, root, { full = false } = {}) {
   // 1. Walk: every photo and video, and every sidecar by folder.
   const found = [];               // [{ path, open: () => Promise<File> }]
   const sidecars = new Map();     // folder -> Map(lower-case name -> open)
+  const jsons = new Map();        // folder -> Map(name -> open), Takeout candidates
   const walk = { failed: 0 };
   const add = (path, open) => {
     const name = path.slice(path.lastIndexOf('/') + 1);
-    if (extOf(name) === SIDECAR_EXT) {
-      const dir = folderOf(path);
-      if (!sidecars.has(dir)) sidecars.set(dir, new Map());
-      sidecars.get(dir).set(name.toLowerCase(), open);
+    const ext = extOf(name);
+    if (ext === SIDECAR_EXT || (ext === 'json' && !name.startsWith('.'))) {
+      const dir = folderOf(path), into = ext === 'json' ? jsons : sidecars;
+      if (!into.has(dir)) into.set(dir, new Map());
+      into.get(dir).set(ext === 'json' ? name : name.toLowerCase(), open);
     } else if (kindOf(name)) found.push({ path, open });
   };
   if (root.handle) await walkDir(root.handle, '', add, walk);
@@ -9375,7 +9726,11 @@ async function scanRoot(lib, root, { full = false } = {}) {
   }
 
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
+  const takeout = { matched: 0, favourites: 0, hidden: 0, rejected: 0 };
   const res = { added: 0, changed: 0, unchanged: 0, missing: 0, failed: walk.failed };
+  const takeoutFor = matchTakeout(found, jsons); // media path -> open
+  if (takeoutFor.size) res.takeout = takeout;
+  const fromTakeout = { fav: [], hidden: [], reject: [] };
 
   // 2. Read each new or changed file on the job queue, flushing every BATCH records.
   let buf = [], thumbless = [], chain = Promise.resolve();
@@ -9405,7 +9760,10 @@ async function scanRoot(lib, root, { full = false } = {}) {
     const old = lib.get(id);
     const sideOpen = sidecarFor(entry.path);
     const side = sideOpen ? await sideOpen() : null;
-    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed));
+    const tjOpen = takeoutFor.get(entry.path);
+    const tj = tjOpen ? await tjOpen() : null;
+    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
+      || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
       if (old.thumb == null) thumbless.push(old);
@@ -9414,6 +9772,16 @@ async function scanRoot(lib, root, { full = false } = {}) {
     const rec = newRecord(root.id, entry.path, file);
     Object.assign(rec, await readMetadata(file, rec));
     if (side) applySidecar(rec, parseXmp(await side.text()));
+    if (tj) {
+      const t = readTakeoutJson(await tj.text());
+      applyTakeout(rec, t);
+      takeout.matched++;
+      if (t && !old && !lib.choices.has(id)) {
+        if (t.favorited) fromTakeout.fav.push(id);
+        if (t.archived) fromTakeout.hidden.push(id);
+        if (t.trashed) fromTakeout.reject.push(id);
+      }
+    }
     if (old) res.changed++; else res.added++;
     buf.push(rec);
     if (buf.length >= BATCH) await flush();
@@ -9426,6 +9794,7 @@ async function scanRoot(lib, root, { full = false } = {}) {
 
   // 3. Final call with `seen`, unless part of the folder could not be read.
   await flush(walk.failed ? {} : { seen });
+  await applyTakeoutChoices(lib, fromTakeout, takeout);
   for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
   return res;
 }
@@ -9439,6 +9808,48 @@ function applySidecar(rec, x) {
   if (x.time != null) { rec.time = x.time; rec.timeSource = 'xmp'; }
   if (x.lat != null && x.lon != null) { rec.lat = x.lat; rec.lon = x.lon; }
   return rec;
+}
+
+// Takeout fills in only what EXIF and XMP left empty; see the header.
+function applyTakeout(rec, t) {
+  rec.takeout = true;
+  if (!t) return rec;
+  if (t.time != null && rec.timeSource === 'file') { rec.time = t.time; rec.timeSource = 'takeout'; }
+  if (rec.lat == null && t.lat != null && t.lon != null) { rec.lat = t.lat; rec.lon = t.lon; }
+  if (t.description) rec.description = t.description;
+  if (t.people?.length) {
+    const tags = t.people.map(p => `people/${p.replace(/\//g, '-')}`);
+    rec.xmpTags = [...new Set([...(rec.xmpTags || []), ...tags])];
+  }
+  return rec;
+}
+
+// Media path -> open() of its Takeout JSON, folder by folder.
+function matchTakeout(found, jsons) {
+  const out = new Map();
+  if (!jsons.size) return out;
+  const byDir = new Map();
+  for (const e of found) {
+    const dir = folderOf(e.path);
+    if (!jsons.has(dir)) continue;
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push(e.path.slice(e.path.lastIndexOf('/') + 1));
+  }
+  for (const [dir, media] of byDir) {
+    const js = jsons.get(dir);
+    for (const [m, j] of matchSidecars([...media, ...js.keys()])) out.set(dir ? `${dir}/${m}` : m, js.get(j));
+  }
+  return out;
+}
+
+async function applyTakeoutChoices(lib, ids, counts) {
+  const ok = list => list.filter(id => lib.records.has(id) && !lib.choices.has(id));
+  const fav = ok(ids.fav), hidden = ok(ids.hidden), reject = ok(ids.reject);
+  try {
+    if (fav.length) counts.favourites = (await lib.setFavourite(fav, true)).changed;
+    if (hidden.length) counts.hidden = (await lib.setHidden(hidden, true)).changed;
+    if (reject.length) counts.rejected = (await lib.setFlag(reject, 'reject')).changed;
+  } catch (e) { console.warn('[slate library] could not apply Takeout choices', e); }
 }
 
 async function ensurePermission(handle) {
@@ -9487,14 +9898,257 @@ function runJobs(jobs, kind, items, fn) {
   });
 }
 
-return { BATCH, scanRoot, applySidecar };
+return { BATCH, scanRoot, applySidecar, applyTakeout };
+})();
+
+const __m_library_dupes = (() => {
+// Duplicates: exact copies (same size, same SHA-256) and near copies (64-bit
+// dHash within a Hamming distance). Pure, so Node runs every part of it.
+//
+//   dhashRGBA(data, w, h)            -> 16 hex chars; data is RGBA bytes of a w x h picture
+//   hamming(a, b)                    -> bits that differ between two 16-hex hashes
+//   sizeCollisions(records, opts)    -> records whose size another record shares
+//   exactGroups(records, hashOf, opts)        -> Promise<Group[]>
+//   nearGroups(records, opts)                 -> Group[]
+//   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
+//   rankKeeper(records, opts)        -> records sorted best keeper first
+//
+// Group = { kind: 'exact'|'near', key, ids, keeper }; ids are best keeper first.
+// opts.isTrashed(record) excludes a record (default: record.trashed);
+// opts.choiceOf(id) -> { fav, rating } feeds the keeper ranking.
+//
+// Near grouping splits the 64 bits into 4 blocks of 16. Two hashes within
+// distance d agree to within floor(d / 4) bits in at least one block, so each
+// hash looks up only the bucket values that close to its own blocks. With
+// d <= 11 that is at most 4 x 299 bucket probes per hash, never all pairs.
+// Matches are joined into groups (union-find), so a burst chains together.
+
+const DEFAULT_MAX_DISTANCE = 6;
+const MAX_DISTANCE_LIMIT = 11;
+
+// dHash: average the picture down to 9 x 8 grey cells (area average, so the
+// result does not depend on how the browser scales), then set one bit per
+// cell pair where the left cell is brighter than its right neighbour.
+// Self-contained: thumbs.js copies its source into the thumbnail worker.
+function dhashRGBA(data, w, h) {
+  const GW = 9, GH = 8;
+  const grey = new Float64Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++) {
+    const y0 = Math.floor(gy * h / GH), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * h / GH));
+    for (let gx = 0; gx < GW; gx++) {
+      const x0 = Math.floor(gx * w / GW), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * w / GW));
+      let sum = 0, n = 0;
+      for (let y = y0; y < y1 && y < h; y++) {
+        for (let x = x0; x < x1 && x < w; x++) {
+          const i = (y * w + x) * 4;
+          sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          n++;
+        }
+      }
+      grey[gy * GW + gx] = n ? sum / n : 0;
+    }
+  }
+  let hex = '';
+  for (let gy = 0; gy < GH; gy++) {
+    let byte = 0;
+    for (let gx = 0; gx < 8; gx++) byte = (byte << 1) | (grey[gy * GW + gx] > grey[gy * GW + gx + 1] ? 1 : 0);
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+const pop32 = (x) => {
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return (Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24);
+};
+
+function hamming(a, b) {
+  return pop32((parseInt(a.slice(0, 8), 16) ^ parseInt(b.slice(0, 8), 16)) >>> 0)
+    + pop32((parseInt(a.slice(8, 16), 16) ^ parseInt(b.slice(8, 16), 16)) >>> 0);
+}
+
+const defaultTrashed = (r) => !!r.trashed;
+const live = (records, opts = {}) => {
+  const isTrashed = opts.isTrashed ?? defaultTrashed;
+  const out = [];
+  for (const r of records) if (r && !r.missing && !isTrashed(r)) out.push(r);
+  return out;
+};
+
+// Best keeper first: most pixels, then favourite, then higher rating, then the
+// oldest file (lowest mtime), then id so the order is stable.
+function rankKeeper(records, opts = {}) {
+  const choiceOf = opts.choiceOf ?? (() => ({}));
+  const score = new Map(records.map(r => {
+    const c = choiceOf(r.id) ?? {};
+    return [r.id, { px: (r.w || 0) * (r.h || 0), fav: c.fav ? 1 : 0, rating: c.rating || 0 }];
+  }));
+  return [...records].sort((a, b) => {
+    const sa = score.get(a.id), sb = score.get(b.id);
+    return (sb.px - sa.px) || (sb.fav - sa.fav) || (sb.rating - sa.rating)
+      || ((a.mtime || 0) - (b.mtime || 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+}
+
+function toGroup(kind, key, members, opts) {
+  const ranked = rankKeeper(members, opts);
+  return { kind, key, ids: ranked.map(r => r.id), keeper: ranked[0].id };
+}
+
+// Records that share their byte size with another live record: the only ones
+// whose content hash is worth computing.
+function sizeCollisions(records, opts = {}) {
+  const bySize = new Map();
+  for (const r of live(records, opts)) {
+    if (!(r.size > 0)) continue;
+    const list = bySize.get(r.size);
+    if (list) list.push(r); else bySize.set(r.size, [r]);
+  }
+  const out = [];
+  for (const list of bySize.values()) if (list.length > 1) out.push(...list);
+  return out;
+}
+
+// hashOf(record) -> content hash (or a Promise of one); null or a throw leaves the record out.
+async function exactGroups(records, hashOf, opts = {}) {
+  const groups = new Map();
+  for (const r of sizeCollisions(records, opts)) {
+    let h = null;
+    try { h = await hashOf(r); } catch { h = null; }
+    if (!h) continue;
+    const key = `${r.size}:${h}`;
+    const list = groups.get(key);
+    if (list) list.push(r); else groups.set(key, [r]);
+  }
+  const out = [];
+  for (const [key, list] of groups) if (list.length > 1) out.push(toGroup('exact', key, list, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+// SHA-256 of a File, Blob or ArrayBuffer, as hex (browser and Node 20+).
+async function sha256Hex(data) {
+  const buf = data instanceof ArrayBuffer || ArrayBuffer.isView(data) ? data : await data.arrayBuffer();
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+  let hex = '';
+  for (const b of d) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
+
+// ── near grouping ─────────────────────────────────────────────────────────
+
+// Every 16-bit value within `r` bits of v.
+function neighbours(v, r) {
+  const out = [v];
+  if (r >= 1) for (let i = 0; i < 16; i++) out.push(v ^ (1 << i));
+  if (r >= 2) for (let i = 0; i < 16; i++) for (let j = i + 1; j < 16; j++) out.push(v ^ (1 << i) ^ (1 << j));
+  return out;
+}
+
+function* nearSteps(records, opts = {}) {
+  const d = Math.max(0, Math.min(MAX_DISTANCE_LIMIT, Math.floor(opts.maxDistance ?? DEFAULT_MAX_DISTANCE)));
+  const list = live(records, opts).filter(r => typeof r.dhash === 'string' && /^[0-9a-f]{16}$/.test(r.dhash));
+  const n = list.length;
+  const hi = new Uint32Array(n), lo = new Uint32Array(n);
+  for (let i = 0; i < n; i++) { hi[i] = parseInt(list[i].dhash.slice(0, 8), 16); lo[i] = parseInt(list[i].dhash.slice(8), 16); }
+  const block = (i, b) => b === 0 ? hi[i] >>> 16 : b === 1 ? hi[i] & 0xffff : b === 2 ? lo[i] >>> 16 : lo[i] & 0xffff;
+
+  // 4 bucket tables: block value -> indices.
+  const tables = [0, 1, 2, 3].map(() => new Map());
+  for (let i = 0; i < n; i++) {
+    for (let b = 0; b < 4; b++) {
+      const t = tables[b], v = block(i, b), s = t.get(v);
+      if (s) s.push(i); else t.set(v, [i]);
+    }
+  }
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const r = Math.floor(d / 4);
+  const STEP = 2000;
+  for (let i = 0; i < n; i++) {
+    for (let b = 0; b < 4; b++) {
+      for (const v of neighbours(block(i, b), r)) {
+        const s = tables[b].get(v);
+        if (!s) continue;
+        for (const j of s) {
+          if (j <= i) continue;
+          if (pop32((hi[i] ^ hi[j]) >>> 0) + pop32((lo[i] ^ lo[j]) >>> 0) > d) continue;
+          const a = find(i), c = find(j);
+          if (a !== c) parent[a] = c;
+        }
+      }
+    }
+    if ((i + 1) % STEP === 0) yield { done: i + 1, total: n };
+  }
+
+  const comps = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i), c = comps.get(root);
+    if (c) c.push(list[i]); else comps.set(root, [list[i]]);
+  }
+  const out = [];
+  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('near', members.map(m => m.id).sort()[0], members, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+function nearGroups(records, opts = {}) {
+  const it = nearSteps(records, opts);
+  for (;;) { const s = it.next(); if (s.done) return s.value; }
+}
+
+// The same result, handing the page back every 2,000 hashes. opts.onProgress({ done, total }),
+// opts.signal (AbortSignal) stops it with an AbortError.
+async function nearGroupsAsync(records, opts = {}) {
+  const it = nearSteps(records, opts);
+  for (;;) {
+    const s = it.next();
+    if (s.done) return s.value;
+    opts.onProgress?.(s.value);
+    await new Promise(res => setTimeout(res, 0));
+    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  }
+}
+
+// Near groups that only repeat an exact group add nothing; drop them.
+function dropCoveredNear(near, exact) {
+  const groupOf = new Map();
+  exact.forEach((g, i) => { for (const id of g.ids) groupOf.set(id, i); });
+  return near.filter(g => {
+    const first = groupOf.get(g.ids[0]);
+    return first === undefined || !g.ids.every(id => groupOf.get(id) === first);
+  });
+}
+
+// Run items on a JobQueue (lib.jobs) and resolve when every item of this call
+// has finished or the kind is cancelled. fn(item, signal) as for JobQueue.add.
+function runOnJobs(jobs, kind, items, fn) {
+  if (!items.length) return Promise.resolve();
+  return new Promise((resolve) => {
+    let left = items.length, off = null, ended = false;
+    const finish = () => { if (ended) return; ended = true; off?.(); resolve(); };
+    // cancel() drops pending items without calling fn, so also finish when the
+    // queue's count for this kind says nothing of it is left.
+    off = jobs.onProgress?.((p) => {
+      const c = p.kinds?.[kind];
+      if (c && c.done + c.failed >= c.total) finish();
+    }) ?? null;
+    jobs.add(kind, items, async (item, signal) => {
+      try { return await fn(item, signal); }
+      finally { if (--left === 0) finish(); }
+    });
+  });
+}
+
+return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs };
 })();
 
 const __m_library_thumbs = (() => {
 // Thumbnails: 256 px (long edge) WebP files in OPFS under slate-thumbs/.
 // See docs/architecture.md "Thumbnails".
 //
-//   createThumbs(lib) -> { enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes() }
+//   createThumbs(lib) -> { enqueue(records), url(id), dataUrl(id), remove(ids), clear(), sizeBytes(), rehash(records) }
 //
 // Order of sources for a photo: the embedded EXIF thumbnail (JPEG, TIFF, RAW),
 // then createImageBitmap in a worker for formats the browser opens natively,
@@ -9502,10 +10156,16 @@ const __m_library_thumbs = (() => {
 // to the worker (as batch.js does). Videos: seek to 10% and draw a frame.
 // The worker scales, encodes and writes the file into OPFS. All work runs on
 // lib.jobs as kind 'thumbs', so it pauses with the queue and is counted.
+//
+// The worker also takes a 64-bit dHash (dupes.js) of the picture it drew and
+// the record gets it as `dhash`. rehash(records) fills `dhash` for records
+// thumbnailed before that, from the stored thumbnail (kind 'dupes').
 
 const thumbnail = __m_vendor_exifr.thumbnail;
 const decode = __m_decode_registry.decode;
 const isSupportedFile = __m_decode_registry.isSupportedFile;
+const dhashRGBA = __m_library_dupes.dhashRGBA;
+const runOnJobs = __m_library_dupes.runOnJobs;
 
 const THUMB_DIR = 'slate-thumbs';
 const EDGE = 256;
@@ -9580,12 +10240,15 @@ function createThumbs(lib) {
     catch { return null; }
   };
 
+  const flush = () => {
+    clearTimeout(patchTimer); patchTimer = null;
+    const list = patches; patches = [];
+    if (!list.length) return Promise.resolve();
+    return lib.patchRecords(list, 'thumb').catch(e => console.warn('[slate library] thumbnail state not saved', e));
+  };
   const patch = (p) => {
     patches.push(p);
-    if (!patchTimer) patchTimer = setTimeout(() => {
-      const list = patches; patches = []; patchTimer = null;
-      lib.patchRecords(list, 'thumb').catch(e => console.warn('[slate library] thumbnail state not saved', e));
-    }, PATCH_DELAY_MS);
+    if (!patchTimer) patchTimer = setTimeout(flush, PATCH_DELAY_MS);
   };
 
   const toWorker = (msg, transfer = []) => {
@@ -9602,8 +10265,8 @@ function createThumbs(lib) {
     const name = thumbName(rec.id);
     if (rec.kind === 'video') {
       const v = await videoFrame(file);
-      await toWorker({ name, src: v.bitmap }, [v.bitmap]);
-      return { w: v.w, h: v.h, dur: v.dur };
+      const r = await toWorker({ name, src: v.bitmap }, [v.bitmap]);
+      return { w: v.w, h: v.h, dur: v.dur, dhash: r?.dhash };
     }
     // The embedded thumbnail says nothing about the photo's size, so use it only when EXIF gave w and h.
     if (EMBEDDED_EXTS.has(rec.ext) && rec.w && rec.h) {
@@ -9632,6 +10295,7 @@ function createThumbs(lib) {
       const p = { id: rec.id, thumb: r ? 'ok' : 'none' };
       if (r && (!rec.w || !rec.h) && r.w && r.h) { p.w = r.w; p.h = r.h; }
       if (r?.dur) p.dur = r.dur;
+      if (r?.dhash) p.dhash = r.dhash;
       cache.delete(rec.id); // the next url() reads the new file
       patch(p);
     } catch (e) {
@@ -9687,6 +10351,19 @@ function createThumbs(lib) {
       cache.clear();
       const root = await navigator.storage.getDirectory();
       await root.removeEntry(THUMB_DIR, { recursive: true }).catch(() => {});
+    },
+
+    // dHash for records that have a thumbnail but no hash, read from OPFS
+    // (the original is not decoded again). Resolves when all are done.
+    async rehash(records) {
+      const list = records.filter(r => r && r.thumb === 'ok' && !r.dhash);
+      await runOnJobs(lib.jobs, 'dupes', list, async (rec, signal) => {
+        const f = await readThumb(rec.id);
+        if (!f || signal.aborted) return;
+        const r = await toWorker({ op: 'hash', src: f });
+        if (r?.dhash && !signal.aborted) patch({ id: rec.id, dhash: r.dhash });
+      });
+      await flush();
     },
 
     async sizeBytes() {
@@ -9756,9 +10433,12 @@ function makePool(size) {
 
 // Worker: decode (or take a transferred bitmap), apply EXIF orientation when asked,
 // scale to the long edge, encode WebP and write it into OPFS slate-thumbs/<name>.
-// Replies { id, w, h } with the oriented size of what it decoded, or { id, error }.
+// Replies { id, w, h, dhash } with the oriented size of what it decoded, or { id, error }.
+// With op 'hash' it only draws the picture and replies { id, dhash }.
 const WORKER_SRC = `
 const DIR = ${JSON.stringify(THUMB_DIR)};
+${dhashRGBA.toString()}
+function hashOf(ctx, W, H) { return dhashRGBA(ctx.getImageData(0, 0, W, H).data, W, H); }
 function orient(ctx, o, W, H) {
   switch (o) {
     case 2: ctx.transform(-1, 0, 0, 1, W, 0); break;
@@ -9784,9 +10464,16 @@ async function write(name, blob) {
   finally { ah.close(); }
 }
 self.onmessage = async (e) => {
-  const { id, name, src, orient: o = 1, w = 0, h = 0, edge } = e.data;
+  const { id, op, name, src, orient: o = 1, w = 0, h = 0, edge } = e.data;
   let bmp = null;
   try {
+    if (op === 'hash') {
+      bmp = await createImageBitmap(src);
+      const c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d', { willReadFrequently: true });
+      c.drawImage(bmp, 0, 0);
+      self.postMessage({ id, dhash: hashOf(c, bmp.width, bmp.height) });
+      return;
+    }
     if (src instanceof ImageBitmap) bmp = src;
     else if (o !== 1) bmp = await createImageBitmap(src, { imageOrientation: 'none' });
     else if (w && h) bmp = await createImageBitmap(src, w >= h ? { resizeWidth: Math.min(edge, w), resizeQuality: 'medium' } : { resizeHeight: Math.min(edge, h), resizeQuality: 'medium' });
@@ -9800,9 +10487,11 @@ self.onmessage = async (e) => {
     ctx.imageSmoothingQuality = 'high';
     orient(ctx, o, W, H);
     ctx.drawImage(bmp, 0, 0, o >= 5 ? H : W, o >= 5 ? W : H);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dhash = hashOf(ctx, W, H);
     const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.8 });
     await write(name, blob);
-    self.postMessage({ id, w: ow, h: oh });
+    self.postMessage({ id, w: ow, h: oh, dhash });
   } catch (err) {
     self.postMessage({ id, error: err && err.message || String(err) });
   } finally {
@@ -10554,15 +11243,114 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
 return { formatBytes, formatDuration, formatTaken, createPhotoViewer };
 })();
 
+const __m_library_xmpwrite = (() => {
+// Writing XMP sidecars (spec row M5): when the setting "Write XMP sidecars" is
+// on, Slate writes `<photo name>.xmp` (the full-name form, `IMG_1.jpg.xmp`)
+// beside each photo whose choices change, so Lightroom, digiKam and darktable
+// see the same rating, reject and tags. The original photo is never opened for
+// writing. Browse-only folders and folders without write permission are skipped.
+//
+// initXmpWrite(lib, { delay }) -> { enabled(), setEnabled(on), flush(), ready }
+//   Also sets lib.services.xmpWrite to that object, so the storage panel can
+//   show and change the setting. The setting lives in lib.store kv under
+//   'setting:xmpWrite' (default off).
+//
+// What is written: buildXmp() from xmp.js with the photo's rating as the
+// library shows it, reject as -1, and every tag (from the files and from
+// Slate). An existing sidecar is merged: only those properties change. When
+// only the stem form (`IMG_1.xmp`) exists, its text seeds the new full-name file.
+
+const buildXmp = __m_library_xmp.buildXmp;
+const sidecarNames = __m_library_xmp.sidecarNames;
+
+const XMP_SETTING_KEY = 'setting:xmpWrite';
+const DELAY_MS = 1500;
+
+async function readText(dir, name) {
+  try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
+  catch (e) { if (e?.name === 'NotFoundError' || e?.name === 'TypeMismatchError') return null; throw e; }
+}
+
+function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
+  let on = false;
+  const pending = new Set();
+  let timer = null;
+
+  const ready = Promise.resolve(lib.store?.getKv?.(XMP_SETTING_KEY)).then(v => { on = v === true; }).catch(() => {});
+
+  lib.on('choices', ({ ids } = {}) => {
+    // ids is null for a library-file load or a moved-file rematch; those are not edits.
+    if (!on || !Array.isArray(ids) || !ids.length) return;
+    for (const id of ids) pending.add(id);
+    clearTimeout(timer);
+    timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not write XMP sidecars: ${e.message}` })); }, delay);
+  });
+
+  async function writeOne(id, perms) {
+    const r = lib.get(id);
+    if (!r || r.missing) return false;
+    const c = lib.choice(id);
+    if (c.trashed) return false;
+    const root = lib.roots.get(r.rootId);
+    if (!root || root.mode !== 'fsa' || !root.handle) return false;
+    if (!perms.has(root.id)) {
+      const p = root.handle.queryPermission ? await root.handle.queryPermission({ mode: 'readwrite' }) : 'granted';
+      perms.set(root.id, p === 'granted');
+    }
+    if (!perms.get(root.id)) return false;
+    const dir = await lib.getHandle(id, { parent: true });
+    const [full, stem] = sidecarNames(r.name);
+    const existing = (await readText(dir, full)) ?? (stem ? await readText(dir, stem) : null);
+    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing });
+    if (text === existing) return false;
+    const fh = await dir.getFileHandle(full, { create: true });
+    const w = await fh.createWritable();
+    await w.write(text);
+    await w.close();
+    return true;
+  }
+
+  const api = {
+    ready,
+    enabled: () => on,
+    async setEnabled(v) {
+      on = !!v;
+      if (!on) { clearTimeout(timer); pending.clear(); }
+      await lib.store?.setKv?.(XMP_SETTING_KEY, on);
+    },
+    // Write every pending sidecar now. Returns the number of files written.
+    async flush() {
+      clearTimeout(timer);
+      timer = null;
+      const ids = [...pending];
+      pending.clear();
+      const perms = new Map();
+      let written = 0;
+      for (const id of ids) {
+        try { if (await writeOne(id, perms)) written++; }
+        catch (e) { lib.emit('error', { message: `Could not write the XMP sidecar for ${lib.get(id)?.path ?? id}: ${e.message}` }); }
+      }
+      return written;
+    },
+  };
+  lib.services.xmpWrite = api;
+  return api;
+}
+
+return { XMP_SETTING_KEY, initXmpWrite };
+})();
+
 const __m_ui_library_storage = (() => {
 // Storage panel: how big the index and thumbnails are, the browser's quota,
 // a request to keep the data (navigator.storage.persist), library file
-// downloads for browse-only folders, and Rebuild index with a confirmation.
+// downloads for browse-only folders, the "Write XMP sidecars" setting, and
+// Rebuild index with a confirmation.
 
 const emit = __m_core_events.emit;
 const esc = __m_core_html.esc;
 const downloadLibFile = __m_library_persist.downloadLibFile;
 const formatBytes = __m_ui_library_photo_viewer.formatBytes;
+const XMP_SETTING_KEY = __m_library_xmpwrite.XMP_SETTING_KEY;
 
 // A root whose library file stays in the browser: browse-only, or not writable.
 function needsDownload(lib, root) {
@@ -10583,6 +11371,8 @@ function openStoragePanel(lib, dlg) {
       <dt>Kept by the browser</dt><dd data-s="persisted">Checking</dd>
     </dl>
     <p class="lib-note">The index and thumbnails can be rebuilt from your folders at any time. Your choices and albums are kept in each folder's library file.</p>
+    <label class="lib-storage-xmp"><input type="checkbox" data-s-xmp> Write XMP sidecars for ratings, labels and tags</label>
+    <p class="lib-note">Slate writes a photo.jpg.xmp file beside each photo you rate, reject or tag, so Lightroom, digiKam and darktable see the same choices. Your photos are never changed.</p>
     ${browseOnly.length ? `<div class="lib-storage-files"><p class="lib-note">Slate cannot write the library file into these folders, so their choices are kept in this browser. Download the library file and put it in the folder to keep a copy.</p>
       ${browseOnly.map(r => `<button class="btn" data-s-download="${esc(r.id)}">Download library file for ${esc(r.name)}</button>`).join('')}</div>` : ''}
     <div class="lib-storage-confirm" hidden>
@@ -10605,6 +11395,18 @@ function openStoragePanel(lib, dlg) {
   } else set('quota', 'Not reported by this browser');
   if (navigator.storage?.persisted) navigator.storage.persisted().then(p => set('persisted', p ? 'Yes' : 'No')).catch(() => set('persisted', 'Unknown'));
   else set('persisted', 'Not supported');
+
+  const xmpBox = dlg.querySelector('[data-s-xmp]');
+  const xmp = lib.services.xmpWrite;
+  Promise.resolve(xmp ? xmp.ready?.then(() => xmp.enabled()) : lib.store?.getKv?.(XMP_SETTING_KEY))
+    .then(v => { xmpBox.checked = v === true; }).catch(() => {});
+  xmpBox.onchange = async () => {
+    const v = xmpBox.checked;
+    try {
+      if (xmp) await xmp.setEnabled(v); else await lib.store?.setKv?.(XMP_SETTING_KEY, v);
+      emit('toast', { message: v ? 'Slate will write XMP sidecars for the photos you change.' : 'Slate will stop writing XMP sidecars.', level: 'ok' });
+    } catch (e) { emit('error', { message: `Could not save the setting: ${e.message}` }); }
+  };
 
   const confirmBox = dlg.querySelector('.lib-storage-confirm');
   const footer = dlg.querySelector('[data-s="footer"]');
@@ -10635,6 +11437,199 @@ function openStoragePanel(lib, dlg) {
 }
 
 return { needsDownload, openStoragePanel };
+})();
+
+const __m_ui_library_import = (() => {
+// Import from Google Takeout zips (spec row I3): read the takeout-*.zip parts one at a time,
+// one entry at a time, write the photos, videos and their JSON into a folder the person picks,
+// keeping the album folders, then add that folder to the library (scan.js reads the JSON).
+//
+//   initImport(lib, ui)        call once; the view then shows a control that calls openImportDialog()
+//   openImportDialog()         the dialog: zip parts, destination folder, progress, final count
+//   importTakeoutZips(opts)    the work, without DOM; tests drive it with a fake zip module
+//
+// zip.js loads from esm.sh at a pinned version on first use (SECURITY.md). Memory stays near
+// one entry's size: each entry streams into its file, and nothing is held for the whole zip.
+
+const kindOf = __m_library_schema.kindOf;
+const extOf = __m_library_schema.extOf;
+const esc = __m_core_html.esc;
+
+const ZIP_URL = 'https://esm.sh/@zip.js/zip.js@2.24.0';
+const IMPORT_LABEL = 'Import Google Takeout…';
+
+let zipPromise = null;
+function loadZip() {
+  zipPromise ??= import(ZIP_URL).then((z) => { z.configure?.({ useWebWorkers: false }); return z; })
+    .catch((e) => { zipPromise = null; throw new Error(`Could not load zip.js from esm.sh: ${e.message}`); });
+  return zipPromise;
+}
+
+let _lib = null, _ui = null;
+function initImport(lib, ui) { _lib = lib; _ui = ui; return { openImportDialog, label: IMPORT_LABEL }; }
+
+// "Takeout/Google Photos/Trip 2024/IMG_1.jpg" -> ['Trip 2024', 'IMG_1.jpg']. The product folder
+// name is localised (Google Fotos, Google Photos), so the segment after "Takeout" is dropped
+// whatever it says. Returns null for entries Slate does not import, or unsafe paths.
+function destPath(entryName) {
+  let segs = String(entryName).replace(/\\/g, '/').split('/').filter(s => s && s !== '.');
+  if (segs.some(s => s === '..')) return null;
+  if (segs[0]?.toLowerCase() === 'takeout') segs = segs.slice(2);
+  if (!segs.length) return null;
+  const name = segs[segs.length - 1];
+  if (name.startsWith('.') || segs.slice(0, -1).some(s => s.startsWith('.'))) return null;
+  if (!kindOf(name) && extOf(name) !== 'json') return null;
+  return segs.map(s => s.replace(/[\\:*?"<>|\u0000-\u001f]/g, '_'));
+}
+
+async function sizeIfExists(dir, name) {
+  try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch { return -1; }
+}
+
+// zips: File[]; dest: FileSystemDirectoryHandle (readwrite); zipLib: the zip.js module.
+// onProgress({ part, parts, entry, entries, name, written, skipped, failed }).
+// Returns { written, skipped, failed, bytes }.
+async function importTakeoutZips({ zips, dest, zipLib, onProgress = () => {}, signal } = {}) {
+  const res = { written: 0, skipped: 0, failed: 0, bytes: 0 };
+  const dirs = new Map([['', dest]]);
+  const dirFor = async (segs) => {
+    let path = '', dir = dest;
+    for (const s of segs) {
+      path = path ? `${path}/${s}` : s;
+      if (!dirs.has(path)) dirs.set(path, await dir.getDirectoryHandle(s, { create: true }));
+      dir = dirs.get(path);
+    }
+    return dir;
+  };
+
+  for (let p = 0; p < zips.length; p++) {
+    if (signal?.aborted) break;
+    const reader = new zipLib.ZipReader(new zipLib.BlobReader(zips[p]));
+    try {
+      const entries = await reader.getEntries();
+      for (let i = 0; i < entries.length; i++) {
+        if (signal?.aborted) break;
+        const e = entries[i];
+        const segs = e.directory ? null : destPath(e.filename);
+        onProgress({ part: p + 1, parts: zips.length, entry: i + 1, entries: entries.length, name: e.filename, ...res });
+        if (!segs) continue;
+        const name = segs[segs.length - 1];
+        let w = null;
+        try {
+          const dir = await dirFor(segs.slice(0, -1));
+          if (await sizeIfExists(dir, name) === e.uncompressedSize) { res.skipped++; continue; }
+          w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+          await e.getData(w, { signal, preventClose: true });
+          await w.close();
+          w = null;
+          res.written++;
+          res.bytes += e.uncompressedSize || 0;
+        } catch (err) {
+          if (w) await w.abort?.().catch(() => {});
+          if (signal?.aborted) break;
+          console.warn('[slate library] could not import', e.filename, err);
+          res.failed++;
+        }
+      }
+    } finally {
+      await reader.close?.();
+    }
+  }
+  return res;
+}
+
+// ── dialog ──────────────────────────────────────────────────────────────────
+function openImportDialog() {
+  if (typeof document === 'undefined') return;
+  const canWrite = typeof window.showDirectoryPicker === 'function';
+  const prev = document.activeElement;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'imp-dialog';
+  dlg.setAttribute('aria-labelledby', 'imp-title');
+  dlg.innerHTML = `<div class="modal-header"><h2 id="imp-title">${esc('Import Google Takeout')}</h2></div>
+    <div class="imp-body">
+      <p class="imp-text">Choose the takeout zip parts and an empty folder. Slate copies the photos, videos and their Google JSON into the folder, keeping the album folders, then adds it to the library. The zips stay as they are.</p>
+      ${canWrite ? '' : '<p class="imp-warn">Importing needs a browser that can write to folders, such as Chrome or Edge.</p>'}
+      <label class="imp-label">Takeout zip parts
+        <input type="file" class="imp-zips" accept=".zip,application/zip" multiple${canWrite ? '' : ' disabled'}></label>
+      <div class="imp-row"><button type="button" class="btn imp-dest"${canWrite ? '' : ' disabled'}>Choose folder…</button>
+        <span class="imp-dest-name">No folder chosen</span></div>
+      <div class="imp-progress" hidden><progress class="imp-bar" max="1" value="0"></progress>
+        <p class="imp-status" role="status" aria-live="polite"></p></div>
+      <div class="modal-footer"><button type="button" class="btn imp-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary imp-go" disabled>Import</button></div>
+    </div>`;
+  document.body.appendChild(dlg);
+
+  const $ = s => dlg.querySelector(s);
+  const zipsEl = $('.imp-zips'), goEl = $('.imp-go'), cancelEl = $('.imp-cancel'), statusEl = $('.imp-status'), barEl = $('.imp-bar');
+  let dest = null, ctl = null, running = false;
+  const ready = () => { goEl.disabled = running || !dest || !zipsEl.files.length; };
+  const say = (m, level = 'info') => (_ui?.toast ? _ui.toast(m, level) : console.log(m));
+
+  zipsEl.addEventListener('change', ready);
+  $('.imp-dest').addEventListener('click', async () => {
+    try { dest = await window.showDirectoryPicker({ mode: 'readwrite', id: 'slate-takeout' }); }
+    catch (e) { if (e?.name !== 'AbortError') say(`Could not open that folder: ${e.message}`, 'error'); return; }
+    $('.imp-dest-name').textContent = dest.name;
+    ready();
+  });
+  cancelEl.addEventListener('click', () => { if (running) ctl?.abort(); else dlg.close(); });
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); if (running) ctl?.abort(); else dlg.close(); });
+  dlg.addEventListener('keydown', e => e.stopPropagation()); // keys typed here never reach the grid
+  dlg.addEventListener('close', () => { dlg.remove(); prev?.focus?.(); });
+
+  goEl.addEventListener('click', async () => {
+    const zips = [...zipsEl.files].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+    running = true; ready(); zipsEl.disabled = true; $('.imp-dest').disabled = true;
+    cancelEl.textContent = 'Stop';
+    $('.imp-progress').hidden = false;
+    statusEl.textContent = 'Loading zip.js…';
+    ctl = new AbortController();
+    let res = null;
+    try {
+      const zipLib = await loadZip();
+      res = await importTakeoutZips({
+        zips, dest, zipLib, signal: ctl.signal,
+        onProgress: (p) => {
+          barEl.value = ((p.part - 1) + p.entry / Math.max(1, p.entries)) / p.parts;
+          statusEl.textContent = `Part ${p.part} of ${p.parts}: ${p.written.toLocaleString('en-GB')} copied, ${p.skipped.toLocaleString('en-GB')} already there`;
+        },
+      });
+    } catch (e) {
+      statusEl.textContent = e.message;
+      say(e.message, 'error');
+    }
+    running = false;
+    cancelEl.textContent = 'Close';
+    if (!res) return;
+    const stopped = ctl.signal.aborted ? 'Stopped. ' : '';
+    const msg = `${stopped}Copied ${res.written.toLocaleString('en-GB')} files, skipped ${res.skipped.toLocaleString('en-GB')} already there${res.failed ? `, ${res.failed.toLocaleString('en-GB')} could not be copied` : ''}.`;
+    barEl.value = 1;
+    statusEl.textContent = `${msg} Adding the folder to the library…`;
+    try {
+      if (_lib) await addOrRescan(_lib, dest);
+      statusEl.textContent = msg;
+      say(msg, res.failed ? 'warn' : 'ok');
+    } catch (e) {
+      statusEl.textContent = `${msg} Could not add the folder: ${e.message}`;
+    }
+  });
+
+  dlg.showModal();
+  zipsEl.focus();
+}
+
+// addRoot returns an existing root without scanning it, so a second import into the
+// same folder rescans that root instead.
+async function addOrRescan(lib, handle) {
+  for (const r of lib.roots.values()) {
+    if (r.handle && await r.handle.isSameEntry?.(handle)) return lib.rescan(r.id);
+  }
+  return lib.addRoot({ handle });
+}
+
+return { ZIP_URL, IMPORT_LABEL, initImport, destPath, importTakeoutZips, openImportDialog };
 })();
 
 const __m_ui_library_view = (() => {
@@ -10672,6 +11667,7 @@ const formatTaken = __m_ui_library_photo_viewer.formatTaken;
 const openStoragePanel = __m_ui_library_storage.openStoragePanel;
 const needsDownload = __m_ui_library_storage.needsDownload;
 const downloadLibFile = __m_library_persist.downloadLibFile;
+const openImportDialog = __m_ui_library_import.openImportDialog;
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
 const PAD = 12;              // grid padding, px
@@ -11141,6 +12137,7 @@ function initLibraryView(lib) {
       emptyEl.innerHTML = `<div class="lib-empty-inner"><h2>Add a folder of photos</h2>
         <p>Slate reads the photos where they are. Nothing is uploaded or copied, and your choices are saved in the folder.</p>
         <button class="btn btn-primary" data-act="add-folder">Add folder</button>
+        ${hasDirPicker ? '<button class="btn" data-act="import-takeout">Import Google Takeout…</button>' : ''}
         ${hasDirPicker ? '' : `<p class="lib-note">${BROWSE_ONLY_NOTE}</p>`}</div>`;
       return;
     }
@@ -11192,6 +12189,7 @@ function initLibraryView(lib) {
       html += '</div>';
     }
     html += `<button class="btn lib-add" data-act="add-folder">${icon('folder').replace('class="icon"', 'class="icon icon-sm"')} Add folder</button>`;
+    if (hasDirPicker) html += `<button class="btn lib-add" data-act="import-takeout">Import Google Takeout…</button>`;
     if (!hasDirPicker) html += `<p class="lib-side-note">${BROWSE_ONLY_NOTE}</p>`;
     html += `</div><div class="lib-side-sec lib-side-end">
       ${viewBtn('hidden', 'Hidden', c.hidden)}
@@ -11279,6 +12277,7 @@ function initLibraryView(lib) {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (!a) return;
     if (a === 'add-folder') addFolder();
+    if (a === 'import-takeout') openImportDialog();
     else if (a === 'editor') hideLibrary();
     else if (a === 'filters') toggleFilters();
     else if (a === 'zoom-in') setZoom(zoom + 1);
@@ -11743,10 +12742,90 @@ function initLibraryView(lib) {
 return { initLibraryView };
 })();
 
+const __m_library_export = (() => {
+// Export (spec row I4): copy the original files of a selection or an album into
+// a folder the person picks. Originals only, byte for byte; nothing is re-encoded.
+// A name that is already taken in the destination gets " (2)", " (3)" and so on.
+// Progress runs on lib.jobs as kind 'export', so the status line counts it.
+//
+// exportFiles(lib, ids, destDir) -> Promise<{ copied, failed, total }>
+//   destDir is a FileSystemDirectoryHandle with write permission.
+// albumExportIds(lib, albumId) -> ids of the album's photos that are not trashed or missing
+// pickExportFolder() -> FileSystemDirectoryHandle, or null when cancelled
+//   Call it straight from a click: the browser needs the user gesture.
+
+function uniqueName(name, taken) {
+  const lower = (s) => s.toLowerCase();
+  if (!taken.has(lower(name))) { taken.add(lower(name)); return name; }
+  const i = name.lastIndexOf('.');
+  const stem = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
+  for (let n = 2; ; n++) {
+    const next = `${stem} (${n})${ext}`;
+    if (!taken.has(lower(next))) { taken.add(lower(next)); return next; }
+  }
+}
+
+async function pickExportFolder() {
+  if (typeof window === 'undefined' || !window.showDirectoryPicker) {
+    throw new Error('This browser cannot pick a folder to export to. Use Chrome or Edge.');
+  }
+  try { return await window.showDirectoryPicker({ id: 'slate-export', mode: 'readwrite' }); }
+  catch (e) { if (e?.name === 'AbortError') return null; throw e; }
+}
+
+function albumExportIds(lib, albumId) {
+  const al = lib.albums.get(albumId);
+  if (!al) throw new Error(`no album ${albumId}`);
+  return [...al.items].filter(id => { const r = lib.get(id); return r && !r.missing && !lib.choice(id).trashed; });
+}
+
+async function copyInto(file, dir, name) {
+  const fh = await dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  try {
+    if (typeof file.stream === 'function') { await file.stream().pipeTo(w); return; } // pipeTo closes w
+    await w.write(file);
+    await w.close();
+  } catch (e) {
+    try { await w.abort?.(); } catch { /* already closed */ }
+    throw e;
+  }
+}
+
+async function exportFiles(lib, ids, destDir) {
+  const list = [...new Set(ids)].filter(id => lib.get(id));
+  if (!list.length) return { copied: 0, failed: 0, total: 0 };
+  // Names are reserved up front, so parallel copies never race for one name.
+  const taken = new Set();
+  for await (const [n] of destDir.entries()) taken.add(n.toLowerCase());
+  const items = list.map(id => ({ id, name: uniqueName(lib.get(id).name, taken) }));
+
+  let copied = 0, failed = 0;
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; resolve({ copied, failed, total: items.length }); } };
+    const tick = () => { if (copied + failed === items.length) finish(); };
+    lib.jobs.add('export', items, async (item, signal) => {
+      try {
+        if (signal?.aborted) throw new Error('cancelled');
+        await copyInto(await lib.getFile(item.id), destDir, item.name);
+        copied++;
+      } catch (e) { failed++; throw e; }
+      finally { tick(); }
+    });
+    // Cancelling drops pending items without running them; report what was copied.
+    lib.jobs.controllers?.get('export')?.signal.addEventListener('abort', () => setTimeout(finish, 0));
+  });
+}
+
+return { uniqueName, pickExportFolder, albumExportIds, exportFiles };
+})();
+
 const __m_ui_library_organise = (() => {
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
-// and the Trash view actions. Every action goes through runCommand(), so the
+// the Trash view actions, and Export (copy the originals of the selection or an
+// album into a folder). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
 // initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
@@ -11757,6 +12836,9 @@ const MAX_WRITE_IDS = __m_library_commands.MAX_WRITE_IDS;
 const emit = __m_core_events.emit;
 const on = __m_core_events.on;
 const esc = __m_core_html.esc;
+const exportFiles = __m_library_export.exportFiles;
+const pickExportFolder = __m_library_export.pickExportFolder;
+const albumExportIds = __m_library_export.albumExportIds;
 
 const TRASH_CAP = 5000;      // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -12120,11 +13202,28 @@ function initOrganise(lib, ui) {
         if (!id) { say('Focus a photo in this album first', 'warn'); return; }
         try { const r = await run('album.cover', { album: albumId, id }); done(`Set the cover of ${al.name}`, [r.undo]); } catch (e) { fail(e); }
       } },
+      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`) },
       { label: 'Delete album', danger: true, run: async () => {
         try { const r = await run('album.delete', { album: albumId }); done(`Deleted the album ${al.name}; its photos stay in the library`, [r.undo]); } catch (e) { fail(e); }
       } },
     ]);
   };
+
+  // ── export ─────────────────────────────────────────────────────────────
+  // The folder picker opens first, inside the click, as the browser requires.
+  async function exportTo(getIds, what) {
+    let dest;
+    try { dest = await pickExportFolder(); } catch (e) { fail(e); return; }
+    if (!dest) return;
+    try {
+      const ids = getIds();
+      if (!ids.length) { say('There is nothing to export', 'warn'); return; }
+      say(`Exporting ${plural(ids.length, 'file')} to ${dest.name}`);
+      const r = await exportFiles(lib, ids, dest);
+      const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}`;
+      say(r.failed ? `${msg}; ${r.failed} could not be copied` : msg, r.failed ? 'warn' : 'ok');
+    } catch (e) { fail(e); }
+  }
 
   // ── trash view ─────────────────────────────────────────────────────────
   async function restore(ids) {
@@ -12181,7 +13280,8 @@ function initOrganise(lib, ui) {
       <button type="button" class="btn" data-act="trash" title="Move to trash (Delete)"${off}>Move to trash</button>
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
-      <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>`;
+      <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>`;
   }
 
   bar.addEventListener('click', (e) => {
@@ -12208,6 +13308,7 @@ function initOrganise(lib, ui) {
       }
       case 'batch': emit('library:batch', { ids }); break;
       case 'gallery': emit('library:gallery', { ids }); break;
+      case 'export': exportTo(() => ids, ''); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }
@@ -12226,6 +13327,422 @@ function initOrganise(lib, ui) {
 }
 
 return { keyAction, initOrganise };
+})();
+
+const __m_library_memories = (() => {
+// Memories (spec row B10): "On this day", the photos taken on today's month and
+// day in earlier years. A date query over the index; no model.
+//
+// onThisDay(records, choices, today = new Date())
+//   -> { offset, date: Date, groups: [{ year, ids }], ids }
+//   Capture times use the UTC wall clock (see the note in schema.js); `today`
+//   is the person's own calendar day, so it uses local getters.
+//   Hidden and trashed photos are left out. A photo taken on 29 February shows
+//   on 28 February in years that have no 29 February.
+//   When today has no photos, the nearest day within 7 days that has some is
+//   used instead (yesterday before tomorrow); `offset` says how many days away.
+//   Groups are newest year first; `ids` is every id in that order.
+//
+// initMemories(lib, ui) registers the "On this day" sidebar view; the grid
+// shows its photos under its own day headers.
+
+const choiceOf = __m_library_query.choiceOf;
+
+const FALLBACK_DAYS = 7;
+const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+const key = (m, d) => m * 100 + d; // month 1..12, day 1..31
+
+function onThisDay(records, choices, today = new Date()) {
+  const byDay = new Map(); // key(month, day) -> records
+  for (const r of records) {
+    if (r.time == null || !Number.isFinite(r.time)) continue;
+    const c = choiceOf(choices, r.id);
+    if (c.hidden || c.trashed) continue;
+    const t = new Date(r.time);
+    const k = key(t.getUTCMonth() + 1, t.getUTCDate());
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(r);
+  }
+
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const offsets = [0];
+  for (let i = 1; i <= FALLBACK_DAYS; i++) offsets.push(-i, i);
+  for (const offset of offsets) {
+    const date = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
+    const y = date.getFullYear(), m = date.getMonth() + 1, d = date.getDate();
+    const keys = [key(m, d)];
+    if (m === 2 && d === 28 && !isLeap(y)) keys.push(key(2, 29));
+    const hits = keys.flatMap(k => byDay.get(k) ?? []).filter(r => new Date(r.time).getUTCFullYear() < y);
+    if (!hits.length) continue;
+    hits.sort((a, b) => b.time - a.time || (a.id < b.id ? -1 : 1));
+    const groups = [];
+    for (const r of hits) {
+      const year = new Date(r.time).getUTCFullYear();
+      if (groups.at(-1)?.year !== year) groups.push({ year, ids: [] });
+      groups.at(-1).ids.push(r.id);
+    }
+    return { offset, date, groups, ids: hits.map(r => r.id) };
+  }
+  return { offset: 0, date: base, groups: [], ids: [] };
+}
+
+function initMemories(lib, ui) {
+  let cache = null, cacheDay = '';
+  const dayNow = () => { const t = new Date(); return `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`; };
+  const result = () => {
+    const d = dayNow();
+    if (!cache || cacheDay !== d) { cache = onThisDay(lib.records.values(), lib.choices); cacheDay = d; }
+    return cache;
+  };
+  const invalidate = () => { cache = null; };
+  lib.on('records', invalidate);
+  lib.on('choices', invalidate);
+  ui.registerView({
+    id: 'memories',
+    label: 'On this day',
+    count: () => result().ids.length,
+    ids: () => result().ids,
+  });
+  return { result };
+}
+
+return { onThisDay, initMemories };
+})();
+
+const __m_ui_library_dupes = (() => {
+// The Duplicates view: exact copies first, then similar photos, each group as
+// a row of thumbnails with the suggested keeper marked. "Keep the marked one,
+// trash the rest" trashes one group; "Trash all suggested" does every group on
+// the page. Both go through runCommand('photo.trash') and offer Undo.
+//
+// initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
+// 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
+// them for photos thumbnailed before Slate took them.
+
+const runCommand = __m_library_commands.runCommand;
+const esc = __m_core_html.esc;
+const exactGroups = __m_library_dupes.exactGroups;
+const nearGroupsAsync = __m_library_dupes.nearGroupsAsync;
+const sizeCollisions = __m_library_dupes.sizeCollisions;
+const sha256Hex = __m_library_dupes.sha256Hex;
+const dropCoveredNear = __m_library_dupes.dropCoveredNear;
+const runOnJobs = __m_library_dupes.runOnJobs;
+const DEFAULT_MAX_DISTANCE = __m_library_dupes.DEFAULT_MAX_DISTANCE;
+const MAX_DISTANCE_LIMIT = __m_library_dupes.MAX_DISTANCE_LIMIT;
+
+const TRASH_CAP = 5000;        // photo.trash takes at most this many ids per call
+const UNDO_TOAST_MS = 6000;
+const PAGE = 40;               // groups drawn at a time
+const RECOMPUTE_MS = 1200;
+const THRESHOLD_KEY = 'slate.dupes.threshold';
+const SHA_PATCH_BATCH = 200;
+
+const n = (x) => x.toLocaleString('en-GB');
+const plural = (c, one, many = one + 's') => `${n(c)} ${c === 1 ? one : many}`;
+const chunks = (list, k) => { const out = []; for (let i = 0; i < list.length; i += k) out.push(list.slice(i, i + k)); return out; };
+function formatBytes(b) {
+  if (!(b > 0)) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b >= 10 || i === 0 ? Math.round(b) : b.toFixed(1)} ${u[i]}`;
+}
+const dateOf = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+function initDupes(lib, ui) {
+  let threshold = DEFAULT_MAX_DISTANCE;
+  try { const t = Number(localStorage.getItem(THRESHOLD_KEY)); if (t >= 1 && t <= MAX_DISTANCE_LIMIT) threshold = t; } catch { /* storage blocked */ }
+
+  const sha = new Map();       // id -> content hash found this session (also patched onto the record)
+  const keep = new Map();      // group key -> Set of ids marked to keep
+  let exact = [], near = [];
+  let computed = false, stale = true, busy = false, again = false;
+  let status = '', unhashed = 0, lastCount = null;
+  let shown = PAGE;
+  let host = null, scrollTop = 0, recomputeTimer = null, observer = null;
+
+  const opts = () => ({
+    isTrashed: (r) => !!lib.choice(r.id).trashed,
+    choiceOf: (id) => ({ fav: lib.choice(id).fav, rating: lib.rating(id) }),
+  });
+  const hashOf = (r) => sha.get(r.id) ?? r.sha256 ?? null;
+
+  function say(message, level = 'info') { ui.toast?.(message, level); }
+
+  // A toast with an Undo button that undoes every token, newest first (as organise.js does).
+  function done(message, tokens) {
+    tokens = tokens.filter(Boolean);
+    if (!tokens.length || typeof document === 'undefined') { say(message, 'ok'); return; }
+    const box = document.getElementById('toasts') || document.body;
+    const el = document.createElement('div');
+    el.className = 'toast ok org-toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span>${esc(message)}</span><button type="button" class="btn org-undo">Undo</button>`;
+    const timer = setTimeout(() => el.remove(), UNDO_TOAST_MS);
+    el.querySelector('button').addEventListener('click', async () => {
+      clearTimeout(timer);
+      el.remove();
+      try { for (const t of [...tokens].reverse()) await runCommand(lib, 'library.undo', { token: t }, { ui }); say('Undone', 'ok'); }
+      catch (e) { say(e?.message ?? String(e), 'error'); }
+    });
+    box.appendChild(el);
+  }
+
+  // Progress of this run's 'dupes' jobs, from the queue's running count for the kind.
+  function trackJobs(label, total) {
+    const base = (() => { const c = lib.jobs.status().kinds.dupes; return c ? c.done + c.failed : 0; })();
+    setStatus(`${label}: 0 of ${n(total)}`);
+    return lib.jobs.onProgress((p) => {
+      const c = p.kinds?.dupes; if (!c) return;
+      setStatus(`${label}: ${n(Math.min(total, c.done + c.failed - base))} of ${n(total)}`);
+    });
+  }
+
+  function setStatus(s) {
+    status = s;
+    const el = host?.querySelector('.dup-status-text');
+    if (el) el.textContent = s;
+  }
+
+  async function compute() {
+    if (busy) { again = true; return; }
+    busy = true; stale = false;
+    drawHeader();
+    try {
+      const o = opts();
+      const all = [...lib.records.values()];
+
+      // 1. Fingerprints for photos thumbnailed before dHash existed.
+      const noHash = all.filter(r => r.thumb === 'ok' && !r.dhash && !r.missing && !o.isTrashed(r));
+      if (noHash.length && lib.services.thumbs?.rehash) {
+        const off = trackJobs(`Making fingerprints for ${plural(noHash.length, 'photo')}`, noHash.length);
+        try { await lib.services.thumbs.rehash(noHash); } finally { off(); }
+      }
+
+      // 2. Content hashes, only for files whose size another file shares.
+      const todo = sizeCollisions(all, o).filter(r => !hashOf(r));
+      if (todo.length) {
+        const off = trackJobs(`Comparing the contents of ${plural(todo.length, 'file')} that share a size`, todo.length);
+        let patches = [];
+        const flush = () => { const l = patches; patches = []; return l.length ? lib.patchRecords(l, 'dupes').catch(() => {}) : null; };
+        try {
+          await runOnJobs(lib.jobs, 'dupes', todo, async (rec, signal) => {
+            const file = await lib.getFile(rec.id);
+            if (signal.aborted) return;
+            const h = await sha256Hex(file);
+            sha.set(rec.id, h);
+            patches.push({ id: rec.id, sha256: h });
+            if (patches.length >= SHA_PATCH_BATCH) flush();
+          });
+        } finally { off(); await flush(); }
+      }
+      exact = await exactGroups(all, hashOf, o);
+
+      // 3. Similar photos by fingerprint.
+      const hashed = all.filter(r => r.dhash).length;
+      setStatus(`Comparing fingerprints of ${plural(hashed, 'photo')}`);
+      near = dropCoveredNear(await nearGroupsAsync(all, {
+        ...o, maxDistance: threshold,
+        onProgress: (p) => setStatus(`Comparing fingerprints: ${n(p.done)} of ${n(p.total)}`),
+      }), exact);
+      unhashed = all.filter(r => r.kind === 'photo' && !r.dhash && !r.missing && r.thumb == null && !o.isTrashed(r)).length;
+
+      const live = new Set([...exact, ...near].map(g => g.key));
+      for (const k of keep.keys()) if (!live.has(k)) keep.delete(k);
+      computed = true;
+      const groups = exact.length + near.length;
+      setStatus(groups
+        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos.`
+        : 'No duplicates found.');
+    } catch (e) {
+      setStatus(`Could not finish: ${e?.message ?? e}`);
+    } finally {
+      busy = false;
+    }
+    if (again) { again = false; return compute(); }
+    // A new count redraws the sidebar through refreshView, which also remounts
+    // the open panel; it would remount another view's panel too, so skip it then.
+    const count = exact.length + near.length;
+    const other = !isOpen() && ui.current?.().view === 'x';
+    if (count !== lastCount && !other) { lastCount = count; ui.refreshView?.(); if (isOpen()) return; }
+    draw();
+  }
+
+  const isOpen = () => !!host && host.isConnected;
+
+  function scheduleRecompute() {
+    stale = true;
+    if (!isOpen()) return;
+    clearTimeout(recomputeTimer);
+    recomputeTimer = setTimeout(() => compute(), RECOMPUTE_MS);
+  }
+  lib.on('records', (e) => { if (e?.reason !== 'dupes') scheduleRecompute(); });
+  lib.on('choices', () => scheduleRecompute());
+
+  // ── drawing ──────────────────────────────────────────────────────────────
+  const marked = (g) => {
+    if (!keep.has(g.key)) keep.set(g.key, new Set([g.keeper]));
+    return keep.get(g.key);
+  };
+  const visibleGroups = () => [...exact, ...near].slice(0, shown);
+  const suggestedTrash = (groups) => groups.flatMap(g => { const k = marked(g); return k.size ? g.ids.filter(id => !k.has(id)) : []; });
+
+  function drawHeader() {
+    const head = host?.querySelector('.dup-head');
+    if (!head) return;
+    const groups = visibleGroups();
+    const count = suggestedTrash(groups).length;
+    head.innerHTML = `
+      <div class="dup-status" role="status" aria-live="polite">
+        <span class="dup-status-text">${esc(status || 'Looking for duplicates')}</span>
+        ${busy ? '<button type="button" class="btn dup-stop">Stop</button>' : ''}
+      </div>
+      <div class="dup-controls">
+        <label class="dup-threshold">Similar photos: how close
+          <input type="range" min="1" max="${MAX_DISTANCE_LIMIT}" step="1" value="${threshold}" aria-describedby="dup-thr-note">
+          <span class="dup-thr-value">${threshold}</span>
+        </label>
+        <span id="dup-thr-note" class="dup-note">Lower finds only near copies; higher also finds bursts.</span>
+        <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested (${n(count)})</button>
+      </div>
+      ${unhashed ? `<p class="dup-note">${plural(unhashed, 'photo')} have no thumbnail yet, so they are not compared for similarity.</p>` : ''}`;
+  }
+
+  function tileHtml(g, id) {
+    const r = lib.get(id);
+    if (!r) return '';
+    const kept = marked(g).has(id);
+    return `<label class="dup-tile${kept ? ' is-keep' : ''}" data-id="${esc(id)}">
+      <span class="dup-thumb"><img alt="" data-id="${esc(id)}"></span>
+      <span class="dup-meta">
+        <span class="dup-name" title="${esc(r.path)}">${esc(r.name)}</span>
+        <span>${esc(formatBytes(r.size))}${r.w ? ` · ${n(r.w)} × ${n(r.h)}` : ''}</span>
+        <span>${esc(dateOf(r.time))}</span>
+      </span>
+      <span class="dup-keep"><input type="checkbox" ${kept ? 'checked' : ''} data-group="${esc(g.key)}" data-id="${esc(id)}"> Keep</span>
+      ${id === g.keeper ? '<span class="dup-badge">Suggested keeper</span>' : ''}
+    </label>`;
+  }
+
+  function groupHtml(g) {
+    const k = marked(g);
+    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
+    return `<section class="dup-group" data-key="${esc(g.key)}">
+      <header class="dup-ghead">
+        <h3>${esc(title)}</h3>
+        <button type="button" class="btn dup-trash-group" data-group="${esc(g.key)}" ${k.size && k.size < g.ids.length && !busy ? '' : 'disabled'}>Keep the marked one, trash the rest</button>
+      </header>
+      <div class="dup-tiles">${g.ids.map(id => tileHtml(g, id)).join('')}</div>
+    </section>`;
+  }
+
+  function draw() {
+    if (!isOpen()) return;
+    drawHeader();
+    const body = host.querySelector('.dup-body');
+    const all = [...exact, ...near];
+    const groups = all.slice(0, shown);
+    if (!computed) { body.innerHTML = ''; return; }
+    if (!all.length) { body.innerHTML = '<p class="dup-empty">No duplicates in the library.</p>'; return; }
+    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near');
+    body.innerHTML = `
+      ${exactShown.length ? `<h2 class="dup-section">Exact copies (${n(exact.length)})</h2>${exactShown.map(groupHtml).join('')}` : ''}
+      ${nearShown.length ? `<h2 class="dup-section">Similar photos (${n(near.length)})</h2>${nearShown.map(groupHtml).join('')}` : ''}
+      ${all.length > shown ? `<button type="button" class="btn dup-more">Show ${n(Math.min(PAGE, all.length - shown))} more of ${n(all.length - shown)}</button>` : ''}`;
+    observeThumbs(body);
+  }
+
+  function observeThumbs(body) {
+    observer?.disconnect();
+    const load = (img) => {
+      const p = lib.services.thumbs?.url(img.dataset.id);
+      p?.then(u => { if (u && img.isConnected) img.src = u; }).catch(() => {});
+    };
+    const imgs = body.querySelectorAll('img[data-id]');
+    if (typeof IntersectionObserver === 'undefined') { imgs.forEach(load); return; }
+    observer = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { observer.unobserve(e.target); load(e.target); }
+    }, { root: host.parentElement, rootMargin: '400px' });
+    imgs.forEach(img => observer.observe(img));
+  }
+
+  // ── actions ──────────────────────────────────────────────────────────────
+  async function trashIds(ids, what) {
+    if (!ids.length) return;
+    try {
+      const tokens = []; let changed = 0;
+      for (const part of chunks(ids, TRASH_CAP)) {
+        const r = await runCommand(lib, 'photo.trash', { ids: part }, { ui });
+        changed += r.changed; tokens.push(r.undo);
+      }
+      done(`Moved ${plural(changed, 'photo')} ${what} to the trash`, tokens);
+    } catch (e) { say(e?.message ?? String(e), 'error'); }
+  }
+
+  const groupByKey = (key) => [...exact, ...near].find(g => g.key === key);
+
+  function onClick(e) {
+    const t = e.target;
+    if (t.closest('.dup-stop')) { lib.jobs.cancel('dupes'); return; }
+    if (t.closest('.dup-more')) { shown += PAGE; draw(); return; }
+    const gb = t.closest('.dup-trash-group');
+    if (gb) {
+      const g = groupByKey(gb.dataset.group); if (!g) return;
+      const k = marked(g);
+      if (!k.size) { say('Mark at least one photo to keep.', 'warn'); return; }
+      trashIds(g.ids.filter(id => !k.has(id)), 'from the group');
+      return;
+    }
+    if (t.closest('.dup-trash-all')) { trashIds(suggestedTrash(visibleGroups()), 'from duplicate groups'); }
+  }
+
+  function onChange(e) {
+    const t = e.target;
+    if (t.matches('input[type="checkbox"][data-group]')) {
+      const g = groupByKey(t.dataset.group); if (!g) return;
+      const k = marked(g);
+      if (t.checked) k.add(t.dataset.id); else k.delete(t.dataset.id);
+      t.closest('.dup-tile')?.classList.toggle('is-keep', t.checked);
+      const btn = host.querySelector(`.dup-trash-group[data-group="${CSS.escape(g.key)}"]`);
+      if (btn) btn.disabled = !(k.size && k.size < g.ids.length) || busy;
+      drawHeader();
+    }
+  }
+
+  let thrTimer = null;
+  function onInput(e) {
+    const t = e.target;
+    if (!t.matches('.dup-threshold input')) return;
+    threshold = Number(t.value);
+    const v = host.querySelector('.dup-thr-value'); if (v) v.textContent = String(threshold);
+    try { localStorage.setItem(THRESHOLD_KEY, String(threshold)); } catch { /* storage blocked */ }
+    clearTimeout(thrTimer);
+    thrTimer = setTimeout(() => compute(), 250);
+  }
+
+  ui.registerView({
+    id: 'duplicates',
+    label: 'Duplicates',
+    count: () => (computed ? exact.length + near.length : null),
+    render(el) {
+      el.innerHTML = '<div class="dup-root"><div class="dup-head"></div><div class="dup-body"></div></div>';
+      host = el.querySelector('.dup-root');
+      host.addEventListener('click', onClick);
+      host.addEventListener('change', onChange);
+      host.addEventListener('input', onInput);
+      draw();
+      el.scrollTop = scrollTop;
+      if (stale && !busy) compute();
+      return () => {
+        scrollTop = el.scrollTop;
+        observer?.disconnect(); observer = null;
+        clearTimeout(recomputeTimer);
+        host = null;
+      };
+    },
+  });
+}
+
+return { formatBytes, initDupes };
 })();
 
 const __m_library_boot = (() => {
@@ -12247,6 +13764,13 @@ const createTrash = __m_library_trash.createTrash;
 const initDoor = __m_library_door.initDoor;
 const initLibraryView = __m_ui_library_view.initLibraryView;
 const initOrganise = __m_ui_library_organise.initOrganise;
+const initMemories = __m_library_memories.initMemories;
+const initXmpWrite = __m_library_xmpwrite.initXmpWrite;
+const initImport = __m_ui_library_import.initImport;
+const initDupes = __m_ui_library_dupes.initDupes;
+const importTakeoutZips = __m_ui_library_import.importTakeoutZips;
+const ZIP_URL = __m_ui_library_import.ZIP_URL;
+const exportFiles = __m_library_export.exportFiles;
 
 let _lib = null;
 function getLibrary() { return _lib; }
@@ -12266,6 +13790,10 @@ async function initLibrary() {
   const ui = initLibraryView(lib);
   lib.services.ui = ui;
   initOrganise(lib, ui);
+  initMemories(lib, ui);
+  initXmpWrite(lib);
+  initImport(lib, ui);
+  initDupes(lib, ui);
   initDoor(lib, ui);
 
   await lib.load();
@@ -12275,6 +13803,8 @@ async function initLibrary() {
     run: (name, args) => runCommand(lib, name, args, { ui }),
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
+    // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
+    mods: { importTakeoutZips, ZIP_URL, exportFiles },
   };
   return lib;
 }

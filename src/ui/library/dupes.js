@@ -1,0 +1,324 @@
+// The Duplicates view: exact copies first, then similar photos, each group as
+// a row of thumbnails with the suggested keeper marked. "Keep the marked one,
+// trash the rest" trashes one group; "Trash all suggested" does every group on
+// the page. Both go through runCommand('photo.trash') and offer Undo.
+//
+// initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
+// 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
+// them for photos thumbnailed before Slate took them.
+
+import { runCommand } from '../../library/commands.js';
+import { esc } from '../../core/html.js';
+import { exactGroups, nearGroupsAsync, sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT } from '../../library/dupes.js';
+
+const TRASH_CAP = 5000;        // photo.trash takes at most this many ids per call
+const UNDO_TOAST_MS = 6000;
+const PAGE = 40;               // groups drawn at a time
+const RECOMPUTE_MS = 1200;
+const THRESHOLD_KEY = 'slate.dupes.threshold';
+const SHA_PATCH_BATCH = 200;
+
+const n = (x) => x.toLocaleString('en-GB');
+const plural = (c, one, many = one + 's') => `${n(c)} ${c === 1 ? one : many}`;
+const chunks = (list, k) => { const out = []; for (let i = 0; i < list.length; i += k) out.push(list.slice(i, i + k)); return out; };
+export function formatBytes(b) {
+  if (!(b > 0)) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b >= 10 || i === 0 ? Math.round(b) : b.toFixed(1)} ${u[i]}`;
+}
+const dateOf = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+export function initDupes(lib, ui) {
+  let threshold = DEFAULT_MAX_DISTANCE;
+  try { const t = Number(localStorage.getItem(THRESHOLD_KEY)); if (t >= 1 && t <= MAX_DISTANCE_LIMIT) threshold = t; } catch { /* storage blocked */ }
+
+  const sha = new Map();       // id -> content hash found this session (also patched onto the record)
+  const keep = new Map();      // group key -> Set of ids marked to keep
+  let exact = [], near = [];
+  let computed = false, stale = true, busy = false, again = false;
+  let status = '', unhashed = 0, lastCount = null;
+  let shown = PAGE;
+  let host = null, scrollTop = 0, recomputeTimer = null, observer = null;
+
+  const opts = () => ({
+    isTrashed: (r) => !!lib.choice(r.id).trashed,
+    choiceOf: (id) => ({ fav: lib.choice(id).fav, rating: lib.rating(id) }),
+  });
+  const hashOf = (r) => sha.get(r.id) ?? r.sha256 ?? null;
+
+  function say(message, level = 'info') { ui.toast?.(message, level); }
+
+  // A toast with an Undo button that undoes every token, newest first (as organise.js does).
+  function done(message, tokens) {
+    tokens = tokens.filter(Boolean);
+    if (!tokens.length || typeof document === 'undefined') { say(message, 'ok'); return; }
+    const box = document.getElementById('toasts') || document.body;
+    const el = document.createElement('div');
+    el.className = 'toast ok org-toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span>${esc(message)}</span><button type="button" class="btn org-undo">Undo</button>`;
+    const timer = setTimeout(() => el.remove(), UNDO_TOAST_MS);
+    el.querySelector('button').addEventListener('click', async () => {
+      clearTimeout(timer);
+      el.remove();
+      try { for (const t of [...tokens].reverse()) await runCommand(lib, 'library.undo', { token: t }, { ui }); say('Undone', 'ok'); }
+      catch (e) { say(e?.message ?? String(e), 'error'); }
+    });
+    box.appendChild(el);
+  }
+
+  // Progress of this run's 'dupes' jobs, from the queue's running count for the kind.
+  function trackJobs(label, total) {
+    const base = (() => { const c = lib.jobs.status().kinds.dupes; return c ? c.done + c.failed : 0; })();
+    setStatus(`${label}: 0 of ${n(total)}`);
+    return lib.jobs.onProgress((p) => {
+      const c = p.kinds?.dupes; if (!c) return;
+      setStatus(`${label}: ${n(Math.min(total, c.done + c.failed - base))} of ${n(total)}`);
+    });
+  }
+
+  function setStatus(s) {
+    status = s;
+    const el = host?.querySelector('.dup-status-text');
+    if (el) el.textContent = s;
+  }
+
+  async function compute() {
+    if (busy) { again = true; return; }
+    busy = true; stale = false;
+    drawHeader();
+    try {
+      const o = opts();
+      const all = [...lib.records.values()];
+
+      // 1. Fingerprints for photos thumbnailed before dHash existed.
+      const noHash = all.filter(r => r.thumb === 'ok' && !r.dhash && !r.missing && !o.isTrashed(r));
+      if (noHash.length && lib.services.thumbs?.rehash) {
+        const off = trackJobs(`Making fingerprints for ${plural(noHash.length, 'photo')}`, noHash.length);
+        try { await lib.services.thumbs.rehash(noHash); } finally { off(); }
+      }
+
+      // 2. Content hashes, only for files whose size another file shares.
+      const todo = sizeCollisions(all, o).filter(r => !hashOf(r));
+      if (todo.length) {
+        const off = trackJobs(`Comparing the contents of ${plural(todo.length, 'file')} that share a size`, todo.length);
+        let patches = [];
+        const flush = () => { const l = patches; patches = []; return l.length ? lib.patchRecords(l, 'dupes').catch(() => {}) : null; };
+        try {
+          await runOnJobs(lib.jobs, 'dupes', todo, async (rec, signal) => {
+            const file = await lib.getFile(rec.id);
+            if (signal.aborted) return;
+            const h = await sha256Hex(file);
+            sha.set(rec.id, h);
+            patches.push({ id: rec.id, sha256: h });
+            if (patches.length >= SHA_PATCH_BATCH) flush();
+          });
+        } finally { off(); await flush(); }
+      }
+      exact = await exactGroups(all, hashOf, o);
+
+      // 3. Similar photos by fingerprint.
+      const hashed = all.filter(r => r.dhash).length;
+      setStatus(`Comparing fingerprints of ${plural(hashed, 'photo')}`);
+      near = dropCoveredNear(await nearGroupsAsync(all, {
+        ...o, maxDistance: threshold,
+        onProgress: (p) => setStatus(`Comparing fingerprints: ${n(p.done)} of ${n(p.total)}`),
+      }), exact);
+      unhashed = all.filter(r => r.kind === 'photo' && !r.dhash && !r.missing && r.thumb == null && !o.isTrashed(r)).length;
+
+      const live = new Set([...exact, ...near].map(g => g.key));
+      for (const k of keep.keys()) if (!live.has(k)) keep.delete(k);
+      computed = true;
+      const groups = exact.length + near.length;
+      setStatus(groups
+        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos.`
+        : 'No duplicates found.');
+    } catch (e) {
+      setStatus(`Could not finish: ${e?.message ?? e}`);
+    } finally {
+      busy = false;
+    }
+    if (again) { again = false; return compute(); }
+    // A new count redraws the sidebar through refreshView, which also remounts
+    // the open panel; it would remount another view's panel too, so skip it then.
+    const count = exact.length + near.length;
+    const other = !isOpen() && ui.current?.().view === 'x';
+    if (count !== lastCount && !other) { lastCount = count; ui.refreshView?.(); if (isOpen()) return; }
+    draw();
+  }
+
+  const isOpen = () => !!host && host.isConnected;
+
+  function scheduleRecompute() {
+    stale = true;
+    if (!isOpen()) return;
+    clearTimeout(recomputeTimer);
+    recomputeTimer = setTimeout(() => compute(), RECOMPUTE_MS);
+  }
+  lib.on('records', (e) => { if (e?.reason !== 'dupes') scheduleRecompute(); });
+  lib.on('choices', () => scheduleRecompute());
+
+  // ── drawing ──────────────────────────────────────────────────────────────
+  const marked = (g) => {
+    if (!keep.has(g.key)) keep.set(g.key, new Set([g.keeper]));
+    return keep.get(g.key);
+  };
+  const visibleGroups = () => [...exact, ...near].slice(0, shown);
+  const suggestedTrash = (groups) => groups.flatMap(g => { const k = marked(g); return k.size ? g.ids.filter(id => !k.has(id)) : []; });
+
+  function drawHeader() {
+    const head = host?.querySelector('.dup-head');
+    if (!head) return;
+    const groups = visibleGroups();
+    const count = suggestedTrash(groups).length;
+    head.innerHTML = `
+      <div class="dup-status" role="status" aria-live="polite">
+        <span class="dup-status-text">${esc(status || 'Looking for duplicates')}</span>
+        ${busy ? '<button type="button" class="btn dup-stop">Stop</button>' : ''}
+      </div>
+      <div class="dup-controls">
+        <label class="dup-threshold">Similar photos: how close
+          <input type="range" min="1" max="${MAX_DISTANCE_LIMIT}" step="1" value="${threshold}" aria-describedby="dup-thr-note">
+          <span class="dup-thr-value">${threshold}</span>
+        </label>
+        <span id="dup-thr-note" class="dup-note">Lower finds only near copies; higher also finds bursts.</span>
+        <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested (${n(count)})</button>
+      </div>
+      ${unhashed ? `<p class="dup-note">${plural(unhashed, 'photo')} have no thumbnail yet, so they are not compared for similarity.</p>` : ''}`;
+  }
+
+  function tileHtml(g, id) {
+    const r = lib.get(id);
+    if (!r) return '';
+    const kept = marked(g).has(id);
+    return `<label class="dup-tile${kept ? ' is-keep' : ''}" data-id="${esc(id)}">
+      <span class="dup-thumb"><img alt="" data-id="${esc(id)}"></span>
+      <span class="dup-meta">
+        <span class="dup-name" title="${esc(r.path)}">${esc(r.name)}</span>
+        <span>${esc(formatBytes(r.size))}${r.w ? ` · ${n(r.w)} × ${n(r.h)}` : ''}</span>
+        <span>${esc(dateOf(r.time))}</span>
+      </span>
+      <span class="dup-keep"><input type="checkbox" ${kept ? 'checked' : ''} data-group="${esc(g.key)}" data-id="${esc(id)}"> Keep</span>
+      ${id === g.keeper ? '<span class="dup-badge">Suggested keeper</span>' : ''}
+    </label>`;
+  }
+
+  function groupHtml(g) {
+    const k = marked(g);
+    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
+    return `<section class="dup-group" data-key="${esc(g.key)}">
+      <header class="dup-ghead">
+        <h3>${esc(title)}</h3>
+        <button type="button" class="btn dup-trash-group" data-group="${esc(g.key)}" ${k.size && k.size < g.ids.length && !busy ? '' : 'disabled'}>Keep the marked one, trash the rest</button>
+      </header>
+      <div class="dup-tiles">${g.ids.map(id => tileHtml(g, id)).join('')}</div>
+    </section>`;
+  }
+
+  function draw() {
+    if (!isOpen()) return;
+    drawHeader();
+    const body = host.querySelector('.dup-body');
+    const all = [...exact, ...near];
+    const groups = all.slice(0, shown);
+    if (!computed) { body.innerHTML = ''; return; }
+    if (!all.length) { body.innerHTML = '<p class="dup-empty">No duplicates in the library.</p>'; return; }
+    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near');
+    body.innerHTML = `
+      ${exactShown.length ? `<h2 class="dup-section">Exact copies (${n(exact.length)})</h2>${exactShown.map(groupHtml).join('')}` : ''}
+      ${nearShown.length ? `<h2 class="dup-section">Similar photos (${n(near.length)})</h2>${nearShown.map(groupHtml).join('')}` : ''}
+      ${all.length > shown ? `<button type="button" class="btn dup-more">Show ${n(Math.min(PAGE, all.length - shown))} more of ${n(all.length - shown)}</button>` : ''}`;
+    observeThumbs(body);
+  }
+
+  function observeThumbs(body) {
+    observer?.disconnect();
+    const load = (img) => {
+      const p = lib.services.thumbs?.url(img.dataset.id);
+      p?.then(u => { if (u && img.isConnected) img.src = u; }).catch(() => {});
+    };
+    const imgs = body.querySelectorAll('img[data-id]');
+    if (typeof IntersectionObserver === 'undefined') { imgs.forEach(load); return; }
+    observer = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { observer.unobserve(e.target); load(e.target); }
+    }, { root: host.parentElement, rootMargin: '400px' });
+    imgs.forEach(img => observer.observe(img));
+  }
+
+  // ── actions ──────────────────────────────────────────────────────────────
+  async function trashIds(ids, what) {
+    if (!ids.length) return;
+    try {
+      const tokens = []; let changed = 0;
+      for (const part of chunks(ids, TRASH_CAP)) {
+        const r = await runCommand(lib, 'photo.trash', { ids: part }, { ui });
+        changed += r.changed; tokens.push(r.undo);
+      }
+      done(`Moved ${plural(changed, 'photo')} ${what} to the trash`, tokens);
+    } catch (e) { say(e?.message ?? String(e), 'error'); }
+  }
+
+  const groupByKey = (key) => [...exact, ...near].find(g => g.key === key);
+
+  function onClick(e) {
+    const t = e.target;
+    if (t.closest('.dup-stop')) { lib.jobs.cancel('dupes'); return; }
+    if (t.closest('.dup-more')) { shown += PAGE; draw(); return; }
+    const gb = t.closest('.dup-trash-group');
+    if (gb) {
+      const g = groupByKey(gb.dataset.group); if (!g) return;
+      const k = marked(g);
+      if (!k.size) { say('Mark at least one photo to keep.', 'warn'); return; }
+      trashIds(g.ids.filter(id => !k.has(id)), 'from the group');
+      return;
+    }
+    if (t.closest('.dup-trash-all')) { trashIds(suggestedTrash(visibleGroups()), 'from duplicate groups'); }
+  }
+
+  function onChange(e) {
+    const t = e.target;
+    if (t.matches('input[type="checkbox"][data-group]')) {
+      const g = groupByKey(t.dataset.group); if (!g) return;
+      const k = marked(g);
+      if (t.checked) k.add(t.dataset.id); else k.delete(t.dataset.id);
+      t.closest('.dup-tile')?.classList.toggle('is-keep', t.checked);
+      const btn = host.querySelector(`.dup-trash-group[data-group="${CSS.escape(g.key)}"]`);
+      if (btn) btn.disabled = !(k.size && k.size < g.ids.length) || busy;
+      drawHeader();
+    }
+  }
+
+  let thrTimer = null;
+  function onInput(e) {
+    const t = e.target;
+    if (!t.matches('.dup-threshold input')) return;
+    threshold = Number(t.value);
+    const v = host.querySelector('.dup-thr-value'); if (v) v.textContent = String(threshold);
+    try { localStorage.setItem(THRESHOLD_KEY, String(threshold)); } catch { /* storage blocked */ }
+    clearTimeout(thrTimer);
+    thrTimer = setTimeout(() => compute(), 250);
+  }
+
+  ui.registerView({
+    id: 'duplicates',
+    label: 'Duplicates',
+    count: () => (computed ? exact.length + near.length : null),
+    render(el) {
+      el.innerHTML = '<div class="dup-root"><div class="dup-head"></div><div class="dup-body"></div></div>';
+      host = el.querySelector('.dup-root');
+      host.addEventListener('click', onClick);
+      host.addEventListener('change', onChange);
+      host.addEventListener('input', onInput);
+      draw();
+      el.scrollTop = scrollTop;
+      if (stale && !busy) compute();
+      return () => {
+        scrollTop = el.scrollTop;
+        observer?.disconnect(); observer = null;
+        clearTimeout(recomputeTimer);
+        host = null;
+      };
+    },
+  });
+}

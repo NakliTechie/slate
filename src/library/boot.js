@@ -15,6 +15,12 @@ import { createTrash } from './trash.js';
 import { initDoor } from './door.js';
 import { initLibraryView } from '../ui/library/view.js';
 import { initOrganise } from '../ui/library/organise.js';
+import { initMemories } from './memories.js';
+import { initXmpWrite } from './xmpwrite.js';
+import { initImport } from '../ui/library/import.js';
+import { initDupes } from '../ui/library/dupes.js';
+import { importTakeoutZips, ZIP_URL } from '../ui/library/import.js';
+import { exportFiles } from './export.js';
 
 let _lib = null;
 export function getLibrary() { return _lib; }
@@ -34,6 +40,10 @@ export async function initLibrary() {
   const ui = initLibraryView(lib);
   lib.services.ui = ui;
   initOrganise(lib, ui);
+  initMemories(lib, ui);
+  initXmpWrite(lib);
+  initImport(lib, ui);
+  initDupes(lib, ui);
   initDoor(lib, ui);
 
   await lib.load();
@@ -43,6 +53,8 @@ export async function initLibrary() {
     run: (name, args) => runCommand(lib, name, args, { ui }),
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
+    // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
+    mods: { importTakeoutZips, ZIP_URL, exportFiles },
   };
   return lib;
 }

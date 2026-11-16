@@ -1,6 +1,7 @@
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
-// and the Trash view actions. Every action goes through runCommand(), so the
+// the Trash view actions, and Export (copy the originals of the selection or an
+// album into a folder). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
 // initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
@@ -9,6 +10,7 @@
 import { runCommand, MAX_WRITE_IDS } from '../../library/commands.js';
 import { emit, on } from '../../core/events.js';
 import { esc } from '../../core/html.js';
+import { exportFiles, pickExportFolder, albumExportIds } from '../../library/export.js';
 
 const TRASH_CAP = 5000;      // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -372,11 +374,28 @@ export function initOrganise(lib, ui) {
         if (!id) { say('Focus a photo in this album first', 'warn'); return; }
         try { const r = await run('album.cover', { album: albumId, id }); done(`Set the cover of ${al.name}`, [r.undo]); } catch (e) { fail(e); }
       } },
+      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`) },
       { label: 'Delete album', danger: true, run: async () => {
         try { const r = await run('album.delete', { album: albumId }); done(`Deleted the album ${al.name}; its photos stay in the library`, [r.undo]); } catch (e) { fail(e); }
       } },
     ]);
   };
+
+  // ── export ─────────────────────────────────────────────────────────────
+  // The folder picker opens first, inside the click, as the browser requires.
+  async function exportTo(getIds, what) {
+    let dest;
+    try { dest = await pickExportFolder(); } catch (e) { fail(e); return; }
+    if (!dest) return;
+    try {
+      const ids = getIds();
+      if (!ids.length) { say('There is nothing to export', 'warn'); return; }
+      say(`Exporting ${plural(ids.length, 'file')} to ${dest.name}`);
+      const r = await exportFiles(lib, ids, dest);
+      const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}`;
+      say(r.failed ? `${msg}; ${r.failed} could not be copied` : msg, r.failed ? 'warn' : 'ok');
+    } catch (e) { fail(e); }
+  }
 
   // ── trash view ─────────────────────────────────────────────────────────
   async function restore(ids) {
@@ -433,7 +452,8 @@ export function initOrganise(lib, ui) {
       <button type="button" class="btn" data-act="trash" title="Move to trash (Delete)"${off}>Move to trash</button>
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
-      <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>`;
+      <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>`;
   }
 
   bar.addEventListener('click', (e) => {
@@ -460,6 +480,7 @@ export function initOrganise(lib, ui) {
       }
       case 'batch': emit('library:batch', { ids }); break;
       case 'gallery': emit('library:gallery', { ids }); break;
+      case 'export': exportTo(() => ids, ''); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }

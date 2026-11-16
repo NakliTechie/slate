@@ -64,7 +64,7 @@ export function folderOf(path) {
  * @property {number} size      bytes
  * @property {number} mtime     File.lastModified, ms
  * @property {number} time      capture time, ms since epoch (local wall clock read as UTC; see note)
- * @property {'exif'|'xmp'|'file'} timeSource
+ * @property {'exif'|'xmp'|'takeout'|'file'} timeSource
  * @property {number} w         pixel width after orientation (0 when unknown)
  * @property {number} h         pixel height after orientation (0 when unknown)
  * @property {number} orient    EXIF orientation 1..8 (1 when unknown)
@@ -77,6 +77,10 @@ export function folderOf(path) {
  * @property {boolean} sidecar  an XMP sidecar was found and read
  * @property {string[]} xmpTags keywords read from XMP or embedded metadata (choices.tags adds to these)
  * @property {number} xmpRating rating read from XMP (0 when none)
+ * @property {string} [description] caption from a Google Takeout JSON (searchable)
+ * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
+ * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
+ * @property {string} [sha256]   content hash, computed only for files whose size another file shares
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *

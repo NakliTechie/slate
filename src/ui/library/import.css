@@ -1,0 +1,12 @@
+/* ── Library: import from Google Takeout ─────────────────────────────────── */
+
+.imp-dialog { width: min(480px, 95vw); }
+.imp-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.imp-text { margin: 0; color: var(--fg-1); }
+.imp-warn { margin: 0; color: var(--danger); }
+.imp-label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 12px; color: var(--fg-1); }
+.imp-row { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
+.imp-dest-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-1); font-size: 12px; }
+.imp-progress { display: flex; flex-direction: column; gap: var(--space-1); }
+.imp-bar { width: 100%; }
+.imp-status { margin: 0; font-size: 12px; color: var(--fg-1); overflow-wrap: anywhere; }

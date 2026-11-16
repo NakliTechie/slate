@@ -55,7 +55,7 @@ function tokenMatcher(token, albumNamesOf) {
 }
 
 function hay(r, c, albumNamesOf) {
-  return [r.path, r.camera, r.lens, ...(r.xmpTags || []), ...(c.tags || []), ...albumNamesOf(r.id)].join('\u0001').toLowerCase();
+  return [r.path, r.camera, r.lens, r.description || '', ...(r.xmpTags || []), ...(c.tags || []), ...albumNamesOf(r.id)].join('\u0001').toLowerCase();
 }
 
 /**

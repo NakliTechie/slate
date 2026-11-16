@@ -9,6 +9,7 @@
 // parseXmp(text) -> { tags: string[], rating: number, label: string|null,
 //                     time: number|null, lat: number|null, lon: number|null }
 // sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
+// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
 
 import { normTag, wallClockToTime } from './schema.js';
 
@@ -105,4 +106,77 @@ export function sidecarNames(name) {
   const i = name.lastIndexOf('.');
   const full = name + '.xmp', stem = (i < 0 ? name : name.slice(0, i)) + '.xmp';
   return full === stem ? [full] : [full, stem];
+}
+
+// ── writing ─────────────────────────────────────────────────────────────────
+// buildXmp({ rating, flag, label, tags, existing }) writes the four properties
+// Slate owns and nothing else:
+//   xmp:Rating               0 to 5; a rejected photo writes -1
+//   xmp:Label                the colour label, when `label` is a string;
+//                            undefined leaves an existing label alone, null removes it
+//   dc:subject (rdf:Bag)     the leaf of every tag ('trips/goa' gives 'goa')
+//   lr:hierarchicalSubject   every tag in full, with '|' for '/' (Lightroom's form)
+// Flag mapping: Slate's choices have no colour label, so flags never become a
+// label. Only reject is written, as xmp:Rating -1, the convention Lightroom,
+// digiKam and darktable read. A pick writes nothing beyond its rating.
+// With `existing` (a sidecar's text), only these four properties are replaced,
+// in attribute or element form; every other property and namespace stays.
+
+const NS = {
+  xmp: 'http://ns.adobe.com/xap/1.0/',
+  dc: 'http://purl.org/dc/elements/1.1/',
+  lr: 'http://ns.adobe.com/lightroom/1.0/',
+};
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
+
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function removeProp(text, qname) {
+  const q = reEsc(qname);
+  return text
+    .replace(new RegExp(`\\s+${q}\\s*=\\s*(?:"[^"]*"|'[^']*')`, 'g'), '')
+    .replace(new RegExp(`[ \\t]*<${q}(?:\\s[^>]*)?(?:/>|>[\\s\\S]*?</${q}\\s*>)[ \\t]*\\r?\\n?`, 'g'), '');
+}
+
+function bag(qname, items, pad) {
+  return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
+}
+
+export function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
+  const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  const clean = [...new Set(tags.map(normTag).filter(Boolean))];
+  const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
+  const keepLabel = label === undefined && existing ? single(existing, 'xmp:Label') : null;
+  const lab = typeof label === 'string' && label ? label : keepLabel;
+
+  const pad = '   ';
+  let props = `${pad}<xmp:Rating>${r}</xmp:Rating>\n`;
+  if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
+  if (leaves.length) props += bag('dc:subject', leaves, pad);
+  if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
+
+  let text = existing ? String(existing) : '';
+  const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
+  if (!open) {
+    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Slate">
+ <rdf:RDF xmlns:rdf="${RDF_NS}">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="${NS.xmp}"
+    xmlns:dc="${NS.dc}"
+    xmlns:lr="${NS.lr}">
+${props}  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
+`;
+  }
+  for (const q of OWNED) text = removeProp(text, q);
+  const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
+  let attrs = m[1];
+  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
+  const head = `<rdf:Description${attrs}>\n${props}`;
+  const tail = m[2] ? '  </rdf:Description>' : '';
+  return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');
 }
