@@ -72,6 +72,7 @@ export function initLibraryView(lib) {
             <div class="lib-scrub-bubble" hidden></div>
           </div>
           <div class="lib-empty" hidden></div>
+          <div class="lib-panel" hidden></div>
         </div>
       </main>
     </div>
@@ -88,6 +89,11 @@ export function initLibraryView(lib) {
   const scrub = $('.lib-scrub'), scrubMarks = $('.lib-scrub-marks'), scrubThumb = $('.lib-scrub-thumb'), scrubBubble = $('.lib-scrub-bubble');
   const emptyEl = $('.lib-empty'), countEl = $('.lib-count'), monthEl = $('.lib-month'), viewNameEl = $('.lib-viewname');
   const jobEl = $('.lib-job'), pauseBtn = $('.lib-pause'), storageDlg = $('.lib-storage');
+  const panelEl = $('.lib-panel');
+  // Views other modules add to the sidebar (ui.registerView): a view gives `ids()` to show
+  // those photos in the grid, or `render(el, ctx)` to draw its own panel (returning a cleanup).
+  const extraViews = new Map();
+  let panelCleanup = null;
 
   // ── state ────────────────────────────────────────────────────────────────
   let open = false;
@@ -117,6 +123,12 @@ export function initLibraryView(lib) {
     focusNext: () => moveFocusBy(1),
     focusPrev: () => moveFocusBy(-1),
     hooks: { albumMenu: null, onKey: null },
+    registerView(def) {
+      if (!def?.id || !def.label || (!def.ids && !def.render)) throw new Error('a view needs id, label and ids() or render()');
+      extraViews.set(def.id, def);
+      queueSidebar?.();
+    },
+    refreshView() { if (cur.view === 'x') { if (extraViews.get(cur.xview)?.render) mountPanel(); else scheduleRequery(); } queueSidebar?.(); },
     actionsEl: $('.lib-actions'),
     toast: (message, level = 'info') => emit('toast', { message, level }),
   };
@@ -182,6 +194,7 @@ export function initLibraryView(lib) {
     if (cur.albumId) out.albumId = cur.albumId;
     if (cur.rootId) out.rootId = cur.rootId;
     if (cur.folder != null) out.folder = cur.folder;
+    if (cur.xview) out.xview = cur.xview;
     return out;
   }
 
@@ -262,7 +275,10 @@ export function initLibraryView(lib) {
   function requery() {
     dirty = false;
     const keep = scrollAnchor();
+    const xdef = cur.view === 'x' ? extraViews.get(cur.xview) : null;
+    if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
     list = lib.search(currentOpts());
+    if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
@@ -450,6 +466,7 @@ export function initLibraryView(lib) {
       case 'folder': return `${lib.roots.get(cur.rootId)?.name ?? ''}${cur.folder ? '/' + cur.folder : ''}`;
       case 'hidden': return 'Hidden';
       case 'trash': return 'Trash';
+      case 'x': return extraViews.get(cur.xview)?.label ?? 'Library';
       default: return 'Timeline';
     }
   }
@@ -497,6 +514,7 @@ export function initLibraryView(lib) {
       ${viewBtn('timeline', 'Timeline', c.photos + c.videos)}
       ${viewBtn('favourites', 'Favourites', c.favourites)}
       ${viewBtn('videos', 'Videos', c.videos)}
+      ${[...extraViews.values()].map(d => viewBtn('x', d.label, d.count ? d.count() : null, { xview: d.id })).join('')}
     </div>
     <h2 class="lib-side-h">Albums</h2><div class="lib-side-sec">`;
     if (!albums.length) html += '<p class="lib-side-note">No albums yet.</p>';
@@ -571,12 +589,24 @@ export function initLibraryView(lib) {
     cur = { view: v };
     if (v === 'album') cur.albumId = b.dataset.album;
     if (v === 'folder') { cur.rootId = b.dataset.root; cur.folder = b.dataset.folder ?? ''; }
+    if (v === 'x') cur.xview = b.dataset.xview;
     switchView();
   });
+
+  function mountPanel() {
+    try { panelCleanup?.(); } catch { /* a view's cleanup never stops the switch */ }
+    panelCleanup = null;
+    const def = cur.view === 'x' ? extraViews.get(cur.xview) : null;
+    const usePanel = !!def?.render;
+    panelEl.hidden = !usePanel;
+    grid.hidden = usePanel;
+    if (usePanel) { scrub.hidden = true; emptyEl.hidden = true; panelEl.innerHTML = ''; panelCleanup = def.render(panelEl, { lib, ui, refresh: () => ui.refreshView() }) ?? null; }
+  }
 
   function switchView() {
     sel = new Set(); anchor = -1; focusId = null;
     viewer.close();
+    mountPanel();
     grid.scrollTop = 0;
     requery();
     grid.scrollTop = 0;

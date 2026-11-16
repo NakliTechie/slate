@@ -104,6 +104,8 @@ ui.showLibrary() / ui.hideLibrary() / ui.isOpen()
 ui.openInEditor(id)        load the file into the editor (fs.js); Escape in the editor returns to the grid at the same place
 ui.select(ids) / ui.selection() -> ids / ui.focused() -> id|null
 ui.current() -> { view: 'timeline'|'favourites'|'videos'|'album'|'folder'|'hidden'|'trash'|'search', albumId?, rootId?, folder?, opts }
+ui.registerView({ id, label, count?, ids? | render? })  adds a sidebar view: ids() shows those photos in the grid; render(el, { lib, ui, refresh }) draws a panel and may return a cleanup
+ui.refreshView()           re-render the current registered view
 ui.hooks.albumMenu(albumId, anchorEl)   set by organise.js; the view calls it from an album's menu button
 ui.hooks.onKey(event) -> handled?       set by organise.js; the view calls it for keys it does not handle
 ui.actionsEl                            an element in the library header where organise.js mounts its action bar
