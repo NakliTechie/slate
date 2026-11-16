@@ -1,14 +1,20 @@
 import { on } from '../core/events.js';
-import { showTour, TOUR_KEY } from './tour.js';
+import { showTour, showLibraryTour, setAsideEditorTour, TOUR_KEY } from './tour.js';
+import { LICENCES } from '../library/licences.js';
+import { esc } from '../core/html.js';
 
 const SEEN_KEY = 'slate.v1.help-seen';
 
 export function initHelp() {
   on('help:show', showHelp);
+  // The library view emits this when the Library opens; the first time, a short library tour runs.
+  // The editor tour points at editor controls, so it never sits on top of the Library.
+  on('library:shown', () => { setAsideEditorTour(); setTimeout(() => showLibraryTour(), 300); });
+  on('library:hidden', () => { if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => showTour(), 300); });
 
   if (!localStorage.getItem(TOUR_KEY)) {
     // Defer until the toolbar and empty-state actions are real tour targets.
-    setTimeout(() => showTour(), 500);
+    setTimeout(() => { if (!document.getElementById('app')?.classList.contains('library-open')) showTour(); }, 500);
   }
 }
 
@@ -29,7 +35,7 @@ export function showHelp() {
       </button>
     </div>
     <div class="help-tabs" role="tablist">
-      ${['Welcome','Quick Start','Tools','Saving','Shortcuts'].map((t,i) =>
+      ${['Welcome','Quick Start','Tools','Saving','Shortcuts','Library','Licences'].map((t,i) =>
         `<button class="help-tab-btn${i===0?' active':''}" role="tab" data-tab="${i}">${t}</button>`
       ).join('')}
     </div>
@@ -39,6 +45,8 @@ export function showHelp() {
       ${panel(2, tools() + adjustments())}
       ${panel(3, saving())}
       ${panel(4, shortcuts())}
+      ${panel(5, library())}
+      ${panel(6, licences())}
     </div>
     <div class="help-footer">
       <a class="help-footer-link" href="guide/" target="_blank" rel="noopener">Open full guide &rarr;</a>
@@ -284,4 +292,56 @@ function shortcuts() {
       </table>
     </div>
   `).join('');
+}
+
+function library() {
+  const keys = [
+    ['Ctrl+L', 'Open the Library'],
+    ['← → ↑ ↓', 'Move between photos'],
+    ['Enter', 'Open the photo full size'],
+    ['Escape', 'Go back (from the photo, the editor or a selection)'],
+    ['Space', 'Select or deselect the photo'],
+    ['/', 'Search'],
+    ['F', 'Favourite'],
+    ['0 to 5', 'Rate (0 clears the rating)'],
+    ['P', 'Flag as pick'],
+    ['X', 'Flag as reject'],
+    ['U', 'Clear the flag'],
+    ['H', 'Hide or show again'],
+    ['T', 'Tag'],
+    ['Delete', 'Move to trash'],
+    ['E', 'Open in the editor'],
+    ['Shift + key', 'Apply F, 0 to 5, P, X, U, H, T or Delete and move to the next photo'],
+  ];
+  return `
+    ${section('What the Library does', `
+      <p class="help-p">The Library shows every photo and video in the folders you add, sorted by the date they were taken. Slate reads your files where they are and uploads nothing.</p>
+      ${row('Library file', 'Favourites, ratings, flags, tags and albums are saved in a <code>.slate-library.json</code> file at the top of each added folder, so they travel with the folder. If Slate cannot write to the folder, it keeps them in this browser and offers the file as a download.')}
+      ${row('Trash', 'Move to trash puts the file in a <code>.slate-trash</code> folder inside its library folder. Restore puts it back. Only Empty trash deletes files, and it asks first.')}
+      ${row('Index and thumbnails', 'The photo index lives in this browser (IndexedDB) and the thumbnails in its private storage (OPFS). Rebuild index recreates both from your folders.')}
+      ${row('Batch and gallery', 'Select photos, then use Batch or Contact sheet / Gallery to run them on just the selection.')}
+    `)}
+    <div class="help-section">
+      <h3>Library keys</h3>
+      <table class="shortcut-table">
+        ${keys.map(([k, d]) => `<tr><td>${kbd(k)}</td><td>${d}</td></tr>`).join('')}
+      </table>
+    </div>
+  `;
+}
+
+function licences() {
+  const bundled = LICENCES.filter(l => l.loaded === 'bundled');
+  const fetched = LICENCES.filter(l => l.loaded !== 'bundled');
+  const line = l => row(`${esc(l.name)} ${esc(l.version)}`, `${esc(l.use)}. ${esc(l.licence)} licence. <a href="${esc(l.source)}" target="_blank" rel="noopener">Source</a>`);
+  return `
+    ${section('Built into Slate', `
+      <p class="help-p">These packages are part of this file. Their licence texts follow.</p>
+      ${bundled.map(l => line(l) + `<details class="help-licence"><summary>${esc(l.name)} licence</summary><pre class="help-p" style="white-space:pre-wrap;font-size:11px">${esc(l.text)}</pre></details>`).join('')}
+    `)}
+    ${section('Fetched on first use', `
+      <p class="help-p">These load from esm.sh, at a pinned version, the first time you open a file that needs them. Each carries its own licence.</p>
+      ${fetched.map(line).join('')}
+    `)}
+  `;
 }

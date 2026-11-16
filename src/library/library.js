@@ -354,7 +354,8 @@ export class Library {
       }
     }
     if (done.length) this.emit('choices', { ids: done, reason: 'restore' });
-    return { changed: done.length, undo: null };
+    const undo = done.length ? this.#remember('restore', () => this.trash(done)) : null;
+    return { changed: done.length, undo };
   }
 
   // Permanent: deletes the trashed files from disk and forgets them.

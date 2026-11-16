@@ -4,6 +4,7 @@ import { hasDirPicker } from '../core/fs.js';
 import { formatOf, isSupportedFile, decode } from '../decode/registry.js';
 import { parseExif } from '../exif.js';
 import { esc } from '../core/html.js';
+import { getLibrary } from '../library/boot.js';
 
 // Formats a batch worker can decode by itself with createImageBitmap. Everything
 // else (HEIC, TIFF, JXL, PSD, RAW, TGA, DDS) needs the decode registry, whose
@@ -28,6 +29,7 @@ let _sourceFolderHandle = null;
 let _destFolderHandle   = null;
 let _destMode = 'subfolder'; // 'subfolder' | 'picked' | 'overwrite'
 let _cancelled = false;
+let _sourceLabel = '';
 
 // Operation config — toggled by checkboxes in the modal
 const ops = {
@@ -42,14 +44,47 @@ const ops = {
 
 export function initBatch() {
   on('modal:batch', showBatchModal);
+  // Row O8: the library sends { ids } for the selected photos.
+  on('library:batch', async ({ ids } = {}) => {
+    const { files, skipped } = await libraryFiles(ids);
+    if (!files.length) { emit('toast', { message: 'None of the selected items can be batch processed.', level: 'warn' }); return; }
+    if (skipped) emit('toast', { message: `${skipped} selected item${skipped === 1 ? '' : 's'} skipped (videos, or files that could not be read).`, level: 'warn' });
+    openBatch(files, null, 'from the library selection');
+  });
+}
+
+// Resolve library ids to batch sources ({ name, size, file, handle: null }). Videos and
+// files that cannot be read are skipped and counted. Shared with gallery.js.
+export async function libraryFiles(ids) {
+  const lib = getLibrary();
+  const files = [];
+  let skipped = 0;
+  for (const id of ids || []) {
+    try {
+      const file = await lib.getFile(id);
+      if (isSupportedFile(file)) files.push({ name: file.name, size: file.size, file, handle: null });
+      else skipped++;
+    } catch { skipped++; }
+  }
+  return { files, skipped };
 }
 
 // ── Main modal ───────────────────────────────────────────────────────────────
 
 function showBatchModal() {
+  const folder = state.session.folderHandle || null;
+  openBatch(
+    state.session.files.map(f => ({ name: f.name, size: f.size, file: f.file, handle: f.handle })),
+    folder,
+    folder ? 'from current folder' : 'currently open',
+  );
+}
+
+function openBatch(sources, folderHandle, label) {
   // Reset per-invocation state
-  _sources = state.session.files.map(f => ({ name: f.name, size: f.size, file: f.file, handle: f.handle }));
-  _sourceFolderHandle = state.session.folderHandle || null;
+  _sources = sources;
+  _sourceFolderHandle = folderHandle;
+  _sourceLabel = label;
   _destFolderHandle = null;
   _destMode = _sourceFolderHandle ? 'subfolder' : 'picked';
 
@@ -65,7 +100,6 @@ function showBatchModal() {
 }
 
 function render(dlg) {
-  const hasFolderSrc = !!_sourceFolderHandle;
   const canSubfolder = !!_sourceFolderHandle;
 
   dlg.innerHTML = `
@@ -79,7 +113,7 @@ function render(dlg) {
       <section class="batch-section">
         <h3>Source</h3>
         <div class="batch-source-line">
-          <strong>${_sources.length}</strong> image${_sources.length === 1 ? '' : 's'} ${hasFolderSrc ? 'from current folder' : 'currently open'}
+          <strong>${_sources.length}</strong> image${_sources.length === 1 ? '' : 's'} ${_sourceLabel}
           ${hasDirPicker ? `<button class="btn btn-sm" data-batch="pick-src">Pick different folder…</button>` : ''}
         </div>
       </section>
@@ -241,6 +275,7 @@ async function pickSourceFolder(dlg) {
     }
     _sources.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     _sourceFolderHandle = dir;
+    _sourceLabel = 'from current folder';
     _destMode = 'subfolder';
     render(dlg);
   } catch (err) {

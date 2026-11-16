@@ -481,7 +481,7 @@
     {
       "name": "photo.bulk",
       "label": "Change many photos",
-      "description": "Apply one change (favourite, rate, flag, tag, hide, album add or remove) to more than 200 photos at once.",
+      "description": "Apply one change (favourite, rate, flag, tag, hide, album add or remove) to more than 200 photos at once. NakliOS asks the person first, because the change reaches many photos.",
       "scope": "destructive",
       "input": {
         "type": "object",

@@ -140,7 +140,7 @@ export const COMMANDS = [
   // ── destructive (staged for the person in NakliOS) ───────────────────────
   { name: 'photo.trash', label: 'Move to trash', description: 'Move photos into the trash folder (.slate-trash) inside their library folder. They can be restored until the trash is emptied.', scope: 'destructive', input: obj({ ids: ids(5000), dryRun }, ['ids']), shortcut: 'Delete',
     run: (lib, a) => lib.trash(capIds(a.ids, 5000), a) },
-  { name: 'photo.bulk', label: 'Change many photos', description: 'Apply one change (favourite, rate, flag, tag, hide, album add or remove) to more than 200 photos at once.', scope: 'destructive',
+  { name: 'photo.bulk', label: 'Change many photos', description: 'Apply one change (favourite, rate, flag, tag, hide, album add or remove) to more than 200 photos at once. NakliOS asks the person first, because the change reaches many photos.', scope: 'destructive',
     input: obj({ op: { type: 'string', enum: ['favourite', 'rate', 'flag', 'tag', 'hide', 'album_add', 'album_remove'] }, ids: ids(100000), value: { type: 'boolean' }, rating: { type: 'integer', minimum: 0, maximum: 5 }, flag: { type: 'string', enum: ['pick', 'reject', 'none'] }, add: { type: 'array', items: { type: 'string' } }, remove: { type: 'array', items: { type: 'string' } }, album: { type: 'string' }, dryRun }, ['op', 'ids']),
     run: (lib, a) => {
       const list = capIds(a.ids, 100000);

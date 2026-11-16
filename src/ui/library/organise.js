@@ -1,3 +1,478 @@
-// OWNER: organise agent. Albums, ratings, flags, tags, hide and trash UI.
-// export function initOrganise(lib, ui)
-export function initOrganise(lib, ui) {}
+// Organising the library: the action bar for the selection (or the focused
+// photo), the culling keys, the tag dialog, the album picker, the album menu
+// and the Trash view actions. Every action goes through runCommand(), so the
+// buttons, the keys and the agent face share one path and one undo log.
+//
+// initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
+// ui.focused(), ui.current(), ui.toast(); and ui.focusNext() when the view has it.
+
+import { runCommand, MAX_WRITE_IDS } from '../../library/commands.js';
+import { emit, on } from '../../core/events.js';
+import { esc } from '../../core/html.js';
+
+const TRASH_CAP = 5000;      // photo.trash takes at most this many ids per call
+const UNDO_TOAST_MS = 6000;
+
+const NAMES = { favourite: 'photo.favourite', rate: 'photo.rate', flag: 'photo.flag', tag: 'photo.tag', hide: 'photo.hide', album_add: 'album.add', album_remove: 'album.remove' };
+const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+const chunks = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
+
+// Map a keydown to an organise action, or null. Pure, so the tests can run it.
+//   { op: 'favourite'|'rate'|'flag'|'hide'|'tag'|'trash', rating?, flag?, advance }
+export function keyAction(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  const t = e.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? '') || t.isContentEditable)) return null;
+  const advance = !!e.shiftKey;
+  const digit = /^(?:Digit|Numpad)([0-5])$/.exec(e.code ?? '') ?? (/^[0-5]$/.test(e.key ?? '') ? [null, e.key] : null);
+  if (digit) return { op: 'rate', rating: +digit[1], advance };
+  switch ((e.key ?? '').toLowerCase()) {
+    case 'f': return { op: 'favourite', advance };
+    case 'p': return { op: 'flag', flag: 'pick', advance };
+    case 'x': return { op: 'flag', flag: 'reject', advance };
+    case 'u': return { op: 'flag', flag: 'none', advance };
+    case 'h': return { op: 'hide', advance };
+    case 't': return { op: 'tag', advance };
+    case 'delete': return { op: 'trash', advance };
+    default: return null;
+  }
+}
+
+export function initOrganise(lib, ui) {
+  ui.hooks ??= {};
+  const run = (name, args) => runCommand(lib, name, args, { ui });
+  const view = () => ui.current?.() ?? { view: 'timeline' };
+  const targets = () => {
+    const sel = ui.selection?.() ?? [];
+    if (sel.length) return [...sel];
+    const f = ui.focused?.();
+    return f ? [f] : [];
+  };
+
+  // ── toasts ─────────────────────────────────────────────────────────────
+  function say(message, level = 'info') {
+    if (ui.toast) ui.toast(message, level); else emit('toast', { message, level });
+  }
+  function fail(e) { say(e?.message ?? String(e), 'error'); }
+
+  // A toast with an Undo button that undoes every token, newest first.
+  function done(message, tokens) {
+    tokens = tokens.filter(Boolean);
+    if (!tokens.length || typeof document === 'undefined') { say(message, 'ok'); return; }
+    const box = document.getElementById('toasts') || document.body;
+    const el = document.createElement('div');
+    el.className = 'toast ok org-toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span>${esc(message)}</span><button type="button" class="btn org-undo">Undo</button>`;
+    const timer = setTimeout(() => el.remove(), UNDO_TOAST_MS);
+    el.querySelector('button').addEventListener('click', async () => {
+      clearTimeout(timer);
+      el.remove();
+      try { for (const t of [...tokens].reverse()) await lib.undo(t); say('Undone', 'ok'); }
+      catch (e) { fail(e); }
+    });
+    box.appendChild(el);
+  }
+
+  // ── writes ─────────────────────────────────────────────────────────────
+  // One choice or album write; more than 200 ids go through photo.bulk.
+  async function write(op, ids, extra = {}) {
+    if (ids.length > MAX_WRITE_IDS) return run('photo.bulk', { op, ids, ...extra });
+    return run(NAMES[op], { ids, ...extra });
+  }
+
+  async function act(a, ids) {
+    if (!ids.length) { say('Select a photo first', 'warn'); return false; }
+    const n = plural(ids.length, 'photo');
+    try {
+      switch (a.op) {
+        case 'favourite': {
+          const value = !ids.every(id => lib.choice(id).fav);
+          const r = await write('favourite', ids, { value });
+          done(value ? `Favourited ${n}` : `Removed ${n} from favourites`, [r.undo]);
+          break;
+        }
+        case 'rate': {
+          const r = await write('rate', ids, { rating: a.rating });
+          done(a.rating ? `Rated ${n} ${plural(a.rating, 'star')}` : `Cleared the rating of ${n}`, [r.undo]);
+          break;
+        }
+        case 'flag': {
+          const r = await write('flag', ids, { flag: a.flag });
+          done(a.flag === 'pick' ? `Picked ${n}` : a.flag === 'reject' ? `Rejected ${n}` : `Cleared the flag of ${n}`, [r.undo]);
+          break;
+        }
+        case 'hide': {
+          const value = !ids.every(id => lib.choice(id).hidden);
+          const r = await write('hide', ids, { value });
+          done(value ? `Hid ${n}` : `Unhid ${n}`, [r.undo]);
+          break;
+        }
+        case 'trash': {
+          const tokens = []; let changed = 0;
+          for (const part of chunks(ids, TRASH_CAP)) { const r = await run('photo.trash', { ids: part }); changed += r.changed; tokens.push(r.undo); }
+          done(`Moved ${plural(changed, 'photo')} to the trash`, tokens);
+          break;
+        }
+        case 'tag': tagDialog(ids, a.advance); return false; // the dialog advances on apply
+        default: return false;
+      }
+    } catch (e) { fail(e); return false; }
+    return true;
+  }
+
+  function focusNext(evt) {
+    if (ui.focusNext) { ui.focusNext(); return; }
+    evt?.target?.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }));
+  }
+
+  // ── culling keys ───────────────────────────────────────────────────────
+  ui.hooks.onKey = (e) => {
+    const a = keyAction(e);
+    if (!a || view().view === 'trash') return false;
+    e.preventDefault?.();
+    act(a, targets()).then(ok => { if (ok && a.advance) focusNext(e); });
+    return true;
+  };
+
+  // ── dialogs ────────────────────────────────────────────────────────────
+  let seq = 0;
+  const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function openDialog(title, build) {
+    const prev = document.activeElement;
+    const dlg = document.createElement('dialog');
+    const hid = `org-dlg-${++seq}`;
+    dlg.className = 'org-dialog';
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-modal', 'true');
+    dlg.setAttribute('aria-labelledby', hid);
+    dlg.innerHTML = `<div class="modal-header"><h2 id="${hid}">${esc(title)}</h2></div><div class="org-body"></div>`;
+    document.body.appendChild(dlg);
+    const close = () => { if (dlg.open) dlg.close(); };
+    dlg.addEventListener('close', () => { dlg.remove(); prev?.focus?.(); });
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+    dlg.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // keys typed here never reach the grid
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key !== 'Tab') return;
+      const f = [...dlg.querySelectorAll(FOCUSABLE)];
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    build(dlg.querySelector('.org-body'), close);
+    dlg.showModal();
+    (dlg.querySelector('[autofocus]') || dlg.querySelector(FOCUSABLE))?.focus();
+    return close;
+  }
+
+  function confirmDialog(title, text, okLabel) {
+    return new Promise((resolve) => {
+      let ok = false;
+      openDialog(title, (body, close) => {
+        body.innerHTML = `<p class="org-text">${esc(text)}</p>
+          <div class="modal-footer"><button type="button" class="btn" data-no autofocus>Cancel</button>
+          <button type="button" class="btn btn-danger" data-yes>${esc(okLabel)}</button></div>`;
+        body.querySelector('[data-no]').addEventListener('click', close);
+        body.querySelector('[data-yes]').addEventListener('click', () => { ok = true; close(); });
+        body.closest('dialog').addEventListener('close', () => resolve(ok));
+      });
+    });
+  }
+
+  function promptDialog(title, label, value, okLabel) {
+    return new Promise((resolve) => {
+      let out = null;
+      openDialog(title, (body, close) => {
+        body.innerHTML = `<form class="org-form"><label class="org-label">${esc(label)}
+          <input type="text" class="org-input" value="${esc(value)}" maxlength="200" autofocus></label>
+          <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+          <button type="submit" class="btn btn-primary">${esc(okLabel)}</button></div></form>`;
+        const inp = body.querySelector('input');
+        body.querySelector('[data-no]').addEventListener('click', close);
+        body.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); if (inp.value.trim()) { out = inp.value.trim(); close(); } });
+        body.closest('dialog').addEventListener('close', () => resolve(out));
+        setTimeout(() => inp.select(), 0);
+      });
+    });
+  }
+
+  // Tags: the photos' own tags with a remove button each, an input with
+  // suggestions from every tag in the library, and Apply as one undoable change.
+  function tagDialog(ids, advance = false) {
+    if (!ids.length) { say('Select a photo first', 'warn'); return; }
+    const own = new Map(); // tag -> how many of the photos carry it
+    for (const id of ids) for (const t of lib.choice(id).tags ?? []) own.set(t, (own.get(t) ?? 0) + 1);
+    const fromFile = [...new Set(ids.flatMap(id => lib.tagsOf(id)))].filter(t => ![...own.keys()].some(o => o.toLowerCase() === t.toLowerCase()));
+    const all = [...lib.tags()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+    const add = [], remove = new Set();
+    const lower = (t) => t.toLowerCase();
+
+    openDialog(`Tags for ${plural(ids.length, 'photo')}`, (body, close) => {
+      const listId = `org-tags-${seq}`;
+      body.innerHTML = `
+        <div class="org-chips" aria-label="Tags" role="list"></div>
+        ${fromFile.length ? `<p class="modal-info">From the photo files: ${esc(fromFile.join(', '))}</p>` : ''}
+        <form class="org-row">
+          <label class="visually-hidden" for="${listId}-in">New tag</label>
+          <input id="${listId}-in" class="org-input" list="${listId}" placeholder="Add a tag, e.g. trips/goa" autocomplete="off" autofocus>
+          <datalist id="${listId}">${all.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <div class="org-suggest" aria-label="Suggested tags"></div>
+        <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+        <button type="button" class="btn btn-primary" data-apply>Apply</button></div>`;
+      const chips = body.querySelector('.org-chips'), sugg = body.querySelector('.org-suggest'), inp = body.querySelector('input');
+
+      const current = () => [...[...own.keys()].filter(t => !remove.has(t)), ...add];
+      function render() {
+        const cur = current();
+        chips.innerHTML = cur.length
+          ? cur.map(t => `<span class="org-chip" role="listitem">${esc(t)}${own.has(t) && own.get(t) < ids.length ? ` <small>${own.get(t)}/${ids.length}</small>` : ''}<button type="button" class="org-chip-x" data-rm="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button></span>`).join('')
+          : '<span class="modal-info">No tags yet</span>';
+        const have = new Set(cur.map(lower));
+        const s = all.filter(t => !have.has(lower(t))).slice(0, 12);
+        sugg.innerHTML = s.map(t => `<button type="button" class="org-chip org-chip-add" data-add="${esc(t)}" aria-label="Add tag ${esc(t)}">+ ${esc(t)}</button>`).join('');
+      }
+      function addTag(t) {
+        t = t.trim();
+        if (!t || current().some(x => lower(x) === lower(t))) return;
+        const removed = [...remove].find(x => lower(x) === lower(t));
+        if (removed) remove.delete(removed); else add.push(t);
+        render();
+      }
+      chips.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-rm]')?.dataset.rm;
+        if (t == null) return;
+        const i = add.indexOf(t);
+        if (i >= 0) add.splice(i, 1); else remove.add(t);
+        render();
+        inp.focus();
+      });
+      sugg.addEventListener('click', (e) => { const t = e.target.closest('[data-add]')?.dataset.add; if (t != null) { addTag(t); inp.focus(); } });
+      body.querySelector('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (inp.value.trim()) { addTag(inp.value); inp.value = ''; } else apply();
+      });
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('[data-apply]').addEventListener('click', apply);
+      async function apply() {
+        if (inp.value.trim()) { addTag(inp.value); inp.value = ''; }
+        close();
+        if (!add.length && !remove.size) return;
+        try {
+          const r = await write('tag', ids, { add: [...add], remove: [...remove] });
+          done(`Updated the tags of ${plural(ids.length, 'photo')}`, [r.undo]);
+          if (advance) focusNext({ target: document.activeElement });
+        } catch (e) { fail(e); }
+      }
+      render();
+    });
+  }
+
+  // Album picker: the existing albums, plus New album.
+  function albumPicker(ids) {
+    if (!ids.length) { say('Select a photo first', 'warn'); return; }
+    const albums = [...lib.albums.values()].sort((a, b) => a.name.localeCompare(b.name));
+    openDialog(`Add ${plural(ids.length, 'photo')} to an album`, (body, close) => {
+      body.innerHTML = `
+        ${albums.length ? `<ul class="org-albums" aria-label="Albums">${albums.map(al => `<li><button type="button" class="btn org-album" data-album="${esc(al.id)}">${esc(al.name)} <small>${al.items.size}</small></button></li>`).join('')}</ul>` : '<p class="modal-info">No albums yet.</p>'}
+        <form class="org-row">
+          <label class="visually-hidden" for="org-new-album">New album name</label>
+          <input id="org-new-album" class="org-input" placeholder="New album name" maxlength="200" ${albums.length ? '' : 'autofocus'}>
+          <button type="submit" class="btn btn-primary">New album</button>
+        </form>
+        <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button></div>`;
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('.org-albums')?.addEventListener('click', async (e) => {
+        const albumId = e.target.closest('[data-album]')?.dataset.album;
+        if (!albumId) return;
+        close();
+        try {
+          const r = await write('album_add', ids, { album: albumId });
+          done(`Added ${plural(r.changed, 'photo')} to ${lib.albums.get(albumId)?.name ?? 'the album'}`, [r.undo]);
+        } catch (err) { fail(err); }
+      });
+      body.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = body.querySelector('input').value.trim();
+        if (!name) return;
+        close();
+        try {
+          const small = ids.length <= MAX_WRITE_IDS;
+          const c = await run('album.create', small ? { name, ids } : { name });
+          const tokens = [c.undo];
+          if (!small) tokens.push((await write('album_add', ids, { album: c.albumId })).undo);
+          done(`Made the album ${name} with ${plural(ids.length, 'photo')}`, tokens);
+        } catch (err) { fail(err); }
+      });
+    });
+  }
+
+  // ── menus ──────────────────────────────────────────────────────────────
+  let menuEl = null;
+  function closeMenu(refocus) {
+    if (!menuEl) return;
+    const { el, prev, outside } = menuEl;
+    menuEl = null;
+    el.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    if (refocus) prev?.focus?.();
+  }
+  function openMenu(anchor, label, items) {
+    closeMenu();
+    const prev = document.activeElement;
+    const el = document.createElement('div');
+    el.className = 'org-menu';
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', label);
+    el.innerHTML = items.map((it, i) => `<button type="button" role="menuitem" tabindex="-1" class="org-menu-item${it.danger ? ' org-danger' : ''}" data-i="${i}">${esc(it.label)}</button>`).join('');
+    document.body.appendChild(el);
+    const r = anchor?.getBoundingClientRect?.() ?? { left: 0, bottom: 0 };
+    const w = el.offsetWidth, h = el.offsetHeight;
+    el.style.left = `${Math.max(4, Math.min(r.left, innerWidth - w - 4))}px`;
+    el.style.top = `${r.bottom + h + 4 > innerHeight ? Math.max(4, r.top - h - 4) : r.bottom + 4}px`;
+    const btns = [...el.querySelectorAll('[role="menuitem"]')];
+    const outside = (e) => { if (!el.contains(e.target) && e.target !== anchor) closeMenu(false); };
+    document.addEventListener('pointerdown', outside, true);
+    menuEl = { el, prev, outside };
+    el.addEventListener('click', (e) => {
+      const i = e.target.closest('[data-i]')?.dataset.i;
+      if (i == null) return;
+      closeMenu(true);
+      items[+i].run();
+    });
+    el.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      const at = btns.indexOf(document.activeElement);
+      const go = (j) => { e.preventDefault(); btns[(j + btns.length) % btns.length].focus(); };
+      if (e.key === 'ArrowDown') go(at + 1);
+      else if (e.key === 'ArrowUp') go(at - 1);
+      else if (e.key === 'Home') go(0);
+      else if (e.key === 'End') go(btns.length - 1);
+      else if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
+      else if (e.key === 'Tab') closeMenu(false);
+    });
+    btns[0]?.focus();
+  }
+
+  ui.hooks.albumMenu = (albumId, anchorEl) => {
+    const al = lib.albums.get(albumId);
+    if (!al) return;
+    openMenu(anchorEl, `Album ${al.name}`, [
+      { label: 'Rename', run: async () => {
+        const name = await promptDialog('Rename album', 'Album name', al.name, 'Rename');
+        if (!name || name === al.name) return;
+        try { const r = await run('album.rename', { album: albumId, name }); done(`Renamed the album to ${name}`, [r.undo]); } catch (e) { fail(e); }
+      } },
+      { label: 'Set cover from the focused photo', run: async () => {
+        const id = ui.focused?.();
+        if (!id) { say('Focus a photo in this album first', 'warn'); return; }
+        try { const r = await run('album.cover', { album: albumId, id }); done(`Set the cover of ${al.name}`, [r.undo]); } catch (e) { fail(e); }
+      } },
+      { label: 'Delete album', danger: true, run: async () => {
+        try { const r = await run('album.delete', { album: albumId }); done(`Deleted the album ${al.name}; its photos stay in the library`, [r.undo]); } catch (e) { fail(e); }
+      } },
+    ]);
+  };
+
+  // ── trash view ─────────────────────────────────────────────────────────
+  async function restore(ids) {
+    if (!ids.length) { say('Select a photo in the trash first', 'warn'); return; }
+    let changed = 0;
+    try { for (const part of chunks(ids, MAX_WRITE_IDS)) changed += (await run('photo.restore', { ids: part })).changed; }
+    catch (e) { fail(e); }
+    if (changed) say(`Restored ${plural(changed, 'photo')}`, 'ok');
+  }
+
+  async function emptyTrash() {
+    const n = lib.counts().trashed;
+    if (!n) { say('The trash is empty'); return; }
+    const files = plural(n, 'file');
+    const ok = await confirmDialog('Empty trash', `Permanently delete ${files} in the trash? This cannot be undone.`, `Delete ${files}`);
+    if (!ok) return;
+    try { const r = await run('trash.empty', {}); say(`Deleted ${plural(r.changed, 'file')} permanently`, 'ok'); }
+    catch (e) { fail(e); }
+  }
+
+  // ── action bar ─────────────────────────────────────────────────────────
+  if (!ui.actionsEl || typeof document === 'undefined') return;
+  const bar = document.createElement('div');
+  bar.className = 'org-bar';
+  bar.setAttribute('role', 'toolbar');
+  bar.setAttribute('aria-label', 'Photo actions');
+  ui.actionsEl.appendChild(bar);
+
+  let sig = '';
+  function render() {
+    const v = view(), ids = targets(), n = ids.length;
+    const allFav = n > 0 && ids.every(id => lib.choice(id).fav);
+    const allHidden = n > 0 && ids.every(id => lib.choice(id).hidden);
+    const trashed = v.view === 'trash' ? lib.counts().trashed : 0;
+    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed].join('|');
+    if (next === sig) return;
+    sig = next;
+    const off = n ? '' : ' disabled';
+    const count = `<span class="org-count" aria-live="polite">${n ? `${plural(n, 'photo')}` : 'Nothing selected'}</span>`;
+    if (v.view === 'trash') {
+      bar.innerHTML = `${count}
+        <button type="button" class="btn" data-act="restore"${off}>Restore</button>
+        <button type="button" class="btn btn-danger" data-act="empty"${trashed ? '' : ' disabled'}>Empty trash</button>`;
+      return;
+    }
+    bar.innerHTML = `${count}
+      <button type="button" class="btn" data-act="favourite" aria-pressed="${allFav}" title="Favourite (F)"${off}>${allFav ? 'Unfavourite' : 'Favourite'}</button>
+      <button type="button" class="btn" data-act="rate" aria-haspopup="menu" title="Rate (0 to 5)"${off}>Rate</button>
+      <button type="button" class="btn" data-act="flag" aria-haspopup="menu" title="Pick (P), reject (X), clear (U)"${off}>Flag</button>
+      <button type="button" class="btn" data-act="tag" aria-haspopup="dialog" title="Tag (T)"${off}>Tag…</button>
+      <button type="button" class="btn" data-act="album" aria-haspopup="dialog"${off}>Add to album…</button>
+      ${v.view === 'album' && v.albumId ? `<button type="button" class="btn" data-act="unalbum"${off}>Remove from album</button>` : ''}
+      <button type="button" class="btn" data-act="hide" title="Hide (H)"${off}>${allHidden ? 'Unhide' : 'Hide'}</button>
+      <button type="button" class="btn" data-act="trash" title="Move to trash (Delete)"${off}>Move to trash</button>
+      <span class="separator" aria-hidden="true"></span>
+      <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
+      <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>`;
+  }
+
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn || btn.disabled) return;
+    const ids = targets();
+    switch (btn.dataset.act) {
+      case 'favourite': act({ op: 'favourite' }, ids); break;
+      case 'hide': act({ op: 'hide' }, ids); break;
+      case 'trash': act({ op: 'trash' }, ids); break;
+      case 'tag': tagDialog(ids); break;
+      case 'album': albumPicker(ids); break;
+      case 'rate': openMenu(btn, 'Rating', [0, 1, 2, 3, 4, 5].map(k => ({ label: k ? `${'★'.repeat(k)}  ${plural(k, 'star')}` : 'No rating', run: () => act({ op: 'rate', rating: k }, ids) }))); break;
+      case 'flag': openMenu(btn, 'Flag', [
+        { label: 'Pick', run: () => act({ op: 'flag', flag: 'pick' }, ids) },
+        { label: 'Reject', run: () => act({ op: 'flag', flag: 'reject' }, ids) },
+        { label: 'Clear flag', run: () => act({ op: 'flag', flag: 'none' }, ids) },
+      ]); break;
+      case 'unalbum': {
+        const albumId = view().albumId;
+        write('album_remove', ids, { album: albumId })
+          .then(r => done(`Removed ${plural(r.changed, 'photo')} from the album`, [r.undo])).catch(fail);
+        break;
+      }
+      case 'batch': emit('library:batch', { ids }); break;
+      case 'gallery': emit('library:gallery', { ids }); break;
+      case 'restore': restore(ids); break;
+      case 'empty': emptyTrash(); break;
+    }
+  });
+
+  // The view has no selection event, so the bar refreshes after any click or
+  // key, and on library changes; render() does nothing when nothing changed.
+  let pending = false;
+  const update = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; render(); }, 0); };
+  for (const t of ['choices', 'albums', 'records']) lib.on(t, update);
+  on('library:selection', update);
+  on('library:view', update);
+  document.addEventListener('click', update, true);
+  document.addEventListener('keyup', update, true);
+  render();
+}

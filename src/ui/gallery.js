@@ -2,6 +2,7 @@ import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { hasDirPicker } from '../core/fs.js';
 import { esc } from '../core/html.js';
+import { libraryFiles } from './batch.js';
 
 const cfg = {
   mode: 'gallery',  // 'gallery' | 'sheet'
@@ -13,8 +14,20 @@ const cfg = {
   sheetFormat: 'png' // 'png' | 'jpeg'
 };
 
+// What the next run uses: the open folder, or a library selection (saved as a download).
+let _files = [];
+let _dir = null;
+let _where = 'in this album';
+
 export function initGallery() {
   on('modal:gallery', showGalleryModal);
+  // Row O8: the library sends { ids } for the selected photos.
+  on('library:gallery', async ({ ids } = {}) => {
+    const { files, skipped } = await libraryFiles(ids);
+    if (!files.length) { emit('toast', { message: 'None of the selected items can go on a contact sheet.', level: 'warn' }); return; }
+    if (skipped) emit('toast', { message: `${skipped} selected item${skipped === 1 ? '' : 's'} skipped (videos, or files that could not be read).`, level: 'warn' });
+    openGallery(files, null, 'from the library selection');
+  });
 }
 
 function showGalleryModal() {
@@ -22,6 +35,13 @@ function showGalleryModal() {
     emit('toast', { message: 'Open a folder first.', level: 'warn' });
     return;
   }
+  openGallery(state.session.files, state.session.folderHandle, 'in this album');
+}
+
+function openGallery(files, dir, where) {
+  _files = files;
+  _dir = dir || null;
+  _where = where;
 
   let dlg = document.getElementById('dialog-gallery');
   if (!dlg) {
@@ -35,7 +55,7 @@ function showGalleryModal() {
 }
 
 function render(dlg) {
-  const count = state.session.files.length;
+  const count = _files.length;
   dlg.innerHTML = `
     <div class="modal-header">
       <h2>Contact Sheet / Gallery</h2>
@@ -81,7 +101,7 @@ function render(dlg) {
         </div>
       </section>
 
-      <p class="modal-info">${count} image${count===1?'':'s'} in this album.</p>
+      <p class="modal-info">${count} image${count===1?'':'s'} ${_where}.</p>
     </div>
     <div class="modal-footer batch-footer">
       <span class="batch-status" id="gal-status"></span>
@@ -119,7 +139,7 @@ function bind(dlg) {
 
 async function run(dlg) {
   const status = dlg.querySelector('#gal-status');
-  const files = state.session.files;
+  const files = _files;
 
   try {
     if (cfg.mode === 'gallery') {
@@ -146,7 +166,7 @@ async function run(dlg) {
 }
 
 async function saveArtifact(blob, name) {
-  const dir = state.session.folderHandle;
+  const dir = _dir;
   if (dir) {
     try {
       const fh = await dir.getFileHandle(name, { create: true });

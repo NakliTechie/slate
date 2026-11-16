@@ -22,6 +22,7 @@ the supply-chain risk is mitigated.
 | Photoshop (decode) | `ag-psd@30.1.1` | esm.sh | ~250 KB plus `pako` and `base64-js`. |
 | Targa (decode) | `tga-js@1.1.1` | **Vendored** at `src/vendor/tga-js.mjs` | 4 KB pure JS, no transitive deps. |
 | DDS textures (decode) | `dds-parser@1.0.1` | **Vendored** at `src/vendor/dds-parser.mjs` | 4 KB pure JS, no transitive deps. |
+| Photo library metadata (EXIF, XMP, embedded thumbnails) | `exifr@7.1.3` | **Vendored** at `src/vendor/exifr.mjs` | 75 KB pure JS (full ESM build), MIT, no transitive deps; one line break added before `export default` for the bundler. |
 
 **Inlined into `index.html` at build time:**
 the two vendored libraries above. After build, the single-file artifact
@@ -42,8 +43,9 @@ the hash below is the hash that ships in `index.html`.
 
 | File | SHA-256 |
 |---|---|
-| `src/vendor/tga-js.mjs` | `7751fbf0dcb846f0307d531da3aab99a1a2b1ef413868420c0c910a84046e720` |
-| `src/vendor/dds-parser.mjs` | `b4ef205b26e599b044bca448f4783bad4317dcda519a8b37a3c88ab7d6edad22` |
+| `src/vendor/tga-js.mjs` | `9c9b6fb90b1859e3f3a6f252fe7c433b6973bbb3979cecd4c17b575cfec99cd9` |
+| `src/vendor/dds-parser.mjs` | `50b138cfc3c95a4e233764868328a07b427d63092c9360172cd85c874a684da8` |
+| `src/vendor/exifr.mjs` | `7dcbbd1161038824bc8be0fa3cf09c5187efaa752ffdaa3bb34a1c2e92e2762a` |
 
 To re-verify: `shasum -a 256 src/vendor/*.mjs` from a freshly cloned tree.
 

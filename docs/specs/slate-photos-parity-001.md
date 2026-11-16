@@ -1,7 +1,7 @@
 # Slate Photos: photo library parity matrix
 
 **Doc ID:** slate-photos-parity-001
-**Status:** DRAFT for Chirag's approval (2026-11-16). Nothing is built. Chirag approves the v1 scope through the NakliOS session; the build then runs in its own session.
+**Status:** v1 APPROVED by Chirag (2026-11-16, "Approve, track src/ first") and BUILT (2026-11-16). `npm test` passes (8 test files) and `node scripts/live-check.mjs` passes 44 of 44 in Chrome over CDP, at 10,000 and at 300 synthetic photos. Each v1 row's note says how it was checked and what was not driven live.
 **Reference systems:** Google Photos and Apple Photos (the experience people expect), Lightroom Classic's Library module (culling and ratings over files that stay put), digiKam (folder-first, XMP sidecars), PhotoPrism and Immich (self-hosted libraries with on-device ML), Ente (encrypted, client-side ML).
 **Evidence:** the research run `naklios/plan/research/2026-11-16-slate-photo-library/` (8 units, 6,253 words, VERIFIED: all four gates pass; claim sample 5 supported, 5 partial, 0 unsupported). Rows marked R come from its architecture, limits or recommendation passages. Facts about Slate itself come from reading `src/` on 2026-11-16.
 
@@ -48,14 +48,14 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| L1 | Add one or more root folders; scan them recursively; remember them across visits and re-ask permission once per session | B R | v1 | Today's open is one level deep and forgets the folder; Chrome re-prompts after every tab of the origin closes (R) |
-| L2 | Index in IndexedDB `slate.library`, thumbnails as 256 px WebP in OPFS, written from workers | R | v1 | Rebuildable from the folder at any time |
-| L3 | Choices (albums, favourites, ratings, flags, hidden, tags) in `.slate-library.json` at each root | R | v1 | Keyed by relative path plus size; survives a cleared browser |
-| L4 | Rescan on open: new, changed (path, size, lastModified) and missing files; missing files marked, not dropped | R | v1 | A moved file is matched by name plus size before it is called missing |
-| L5 | Pausable background job queue with a visible count (scan, metadata, thumbnails) | I R | v1 | Library is usable while the queue runs; grid tiles fill in as thumbnails land |
-| L6 | Rebuild index: delete the index and thumbnails by name and rescan | R | v1 | Also the recovery path after eviction or Safari's seven-day cap |
-| L7 | Storage panel: index size, thumbnail size, `navigator.storage.persist()` request | R | v1 | Shows quota from `navigator.storage.estimate()` |
-| L8 | Browse-only mode on Firefox and Safari over a `webkitdirectory` pick | R | v1 | Choices kept in IndexedDB, exportable as the library file |
+| L1 | Add one or more root folders; scan them recursively; remember them across visits and re-ask permission once per session | B R | v1 | Built (scan.js). Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): a recursive OPFS folder of 10,006 files gave 10,004 records; tests/test-library-scan.mjs (permission refusal, remembered roots). The real folder picker is not driven (test seam) |
+| L2 | Index in IndexedDB `slate.library`, thumbnails as 256 px WebP in OPFS, written from workers | R | v1 | Built (store.js, thumbs.js). Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): 10,004 thumbnails written to OPFS, 0 failed |
+| L3 | Choices (albums, favourites, ratings, flags, hidden, tags) in `.slate-library.json` at each root | R | v1 | Built (persist.js, libfile.js). Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): the file in the folder holds the favourite, rating, flag, hidden, tags and album; tests/test-library-core.mjs and test-library-organise.mjs round trips |
+| L4 | Rescan on open: new, changed (path, size, lastModified) and missing files; missing files marked, not dropped | R | v1 | Built. Checked: tests/test-library-core.mjs (moved file keeps its choices) and test-library-scan.mjs (deleted file becomes missing); live check: dot-folders skipped |
+| L5 | Pausable background job queue with a visible count (scan, metadata, thumbnails) | I R | v1 | Built (jobs.js, status line with Pause). Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): first tiles after 534 ms while the queue ran; tests/test-library-core.mjs pause and resume |
+| L6 | Rebuild index: delete the index and thumbnails by name and rescan | R | v1 | Built. Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): Rebuild keeps every choice and album (v1 check 3) |
+| L7 | Storage panel: index size, thumbnail size, `navigator.storage.persist()` request | R | v1 | Built (storage.js). Checked: live check: the panel shows sizes and Rebuild index |
+| L8 | Browse-only mode on Firefox and Safari over a `webkitdirectory` pick | R | v1 | Built (webkitdirectory pick, library file kept in IndexedDB, Download library file). Checked: tests/test-library-organise.mjs kv fallback. Not driven in Firefox or Safari |
 | L9 | Watch for changes with `FileSystemObserver` where available | R | v1.x | Experimental and Chrome-only today |
 | L10 | Copy-in mode: import files into OPFS for browsers with no folder access | R | Waived | Duplicates the user's photos into browser storage that Safari may delete |
 
@@ -63,10 +63,10 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| M1 | Capture date, dimensions, orientation, camera, lens, GPS from EXIF, read from the file head with exifr | R | v1 | Falls back to lastModified when no date; covers JPEG, HEIC, TIFF, DNG and the RAW formats Slate reads |
-| M2 | Grid tiles from the embedded thumbnail where one exists; otherwise decode and resize in a worker | R | v1 | Uses Slate's 14-format decoder registry |
-| M3 | Videos (MP4, MOV, WebM) in the timeline with a poster frame and duration; play in a viewer | B | v1 | Poster by seek and draw; a codec the browser lacks shows a placeholder |
-| M4 | Read XMP sidecars: `dc:subject`, `xmp:Rating`, `xmp:Label`, date, GPS; both `photo.jpg.xmp` and `photo.xmp` | D R | v1 | Sidecar wins over embedded metadata when both exist |
+| M1 | Capture date, dimensions, orientation, camera, lens, GPS from EXIF, read from the file head with exifr | R | v1 | Built (metadata.js, exifr). Checked: live check: EXIF date, camera and GPS; tests/test-library-scan.mjs synthetic EXIF with orientation 6. HEIC, TIFF and RAW files not driven live (no synthetic encoder) |
+| M2 | Grid tiles from the embedded thumbnail where one exists; otherwise decode and resize in a worker | R | v1 | Built (thumbs.js). Checked: live check: tiles fill after scrolling. The embedded-preview path for RAW is not driven live |
+| M3 | Videos (MP4, MOV, WebM) in the timeline with a poster frame and duration; play in a viewer | B | v1 | Built (poster, duration, viewer playback). Checked: live check: two WebM clips get posters and durations. MP4 and MOV not driven |
+| M4 | Read XMP sidecars: `dc:subject`, `xmp:Rating`, `xmp:Label`, date, GPS; both `photo.jpg.xmp` and `photo.xmp` | D R | v1 | Built (xmp.js). Checked: live check: a sidecar's tags and rating applied; tests/test-library-organise.mjs Lightroom, digiKam and darktable samples |
 | M5 | Write XMP sidecars for rating, label and keywords, as `photo.ext.xmp`, behind a setting | D L R | v1.x | Never edits the original |
 | M6 | Google Motion Photos: play the MP4 embedded at the end of the JPEG | G R | v1.x | Located through the Container XMP item lengths |
 | M7 | Apple Live Photos: pair a HEIC and MOV by name and play the movie | A R | v1.x | Pairing by content identifier unverified in the research |
@@ -77,14 +77,14 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| B1 | Timeline grid by capture date, grouped by day and month, virtualised to 100,000 items | B | v1 | Only visible rows in the DOM |
-| B2 | Month and year scrubber that jumps the grid | G A I | v1 | Precomputed month-to-row table |
-| B3 | Zoom levels for the grid (3 tile sizes) | G A | v1 | Pinch and Ctrl+wheel |
-| B4 | Folder view mirroring the disk tree | D P I | v1 | |
-| B5 | Photo viewer: full size, arrow keys, info panel (EXIF, path, size), open in editor | B | v1 | Reuses Slate's viewer |
-| B6 | Multi-select with click, Shift-range, Ctrl, drag-lasso and select-all-in-day | B | v1 | |
-| B7 | Sort and filter bar: date range, file type, folder, camera, rating, flag, tag, favourite | L P | v1 | The v1 search (see section 5) |
-| B8 | Slideshow of any selection or album | B | v1 | Reuses Slate's slideshow |
+| B1 | Timeline grid by capture date, grouped by day and month, virtualised to 100,000 items | B | v1 | Built (view.js, grid-model.js). Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): 10,004 photos render 171 tiles; a 60-step fling over 100,304 rows leaves 120 visible tiles and 1,340 DOM nodes (v1 check 2) |
+| B2 | Month and year scrubber that jumps the grid | G A I | v1 | Built. Checked: live check: a scrubber click moves the grid |
+| B3 | Zoom levels for the grid (3 tile sizes) | G A | v1 | Built. Checked: live check: zoom in takes tiles from 90 px to 158 px. Pinch not driven |
+| B4 | Folder view mirroring the disk tree | D P I | v1 | Built (counts include subfolders). Checked: live check: the sidebar lists folders |
+| B5 | Photo viewer: full size, arrow keys, info panel (EXIF, path, size), open in editor | B | v1 | Built (photo-viewer.js). Checked: live check: Enter opens the viewer with camera and path; Escape closes it |
+| B6 | Multi-select with click, Shift-range, Ctrl, drag-lasso and select-all-in-day | B | v1 | Built. Checked: live check: click, Shift-click range (4), Cmd-click (5), Escape; tests/test-library-view.mjs lasso and day selection. Lasso and select-a-day not driven live |
+| B7 | Sort and filter bar: date range, file type, folder, camera, rating, flag, tag, favourite | L P | v1 | Built (filter bar). Checked: tests/test-library-core.mjs filters; the filter bar controls are not driven live |
+| B8 | Slideshow of any selection or album | B | v1 | Built (selection or view into the editor slideshow, at most 1,000 photos). Not driven live |
 | B9 | Stacks: group an edited version, bursts and RAW plus JPEG pairs under one tile | L I | v1.x | |
 | B10 | Memories: "On this day" and year-ago groups | G A I P | v1.x | A date query; no model needed |
 
@@ -92,14 +92,14 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| O1 | Favourite (heart), shown as its own view | B | v1 | Stored in the library file |
-| O2 | Star ratings 0 to 5 and pick, reject, unflag with Lightroom keys (0 to 5, P, X, U; Shift applies and advances) | L S | v1 | Slate's own backlog item from RAWmakase |
-| O3 | Albums: create, rename, delete, add, remove, cover photo; a photo can be in many | B | v1 | Virtual: albums hold references, never move files |
-| O4 | Tags (keywords), hierarchical with `/` | L D I | v1 | Read from XMP `dc:subject` too |
-| O5 | Hide: a hidden photo leaves the timeline and search, kept in a Hidden view | G A P I | v1 | |
-| O6 | Trash: delete moves the file into `.slate-trash/` under its root, with restore; empty trash is a separate confirmed action | G A I | v1 | Restore puts the file back at its path; permanent delete only from Trash |
-| O7 | Edit from the library: open in the editor, save as a new version beside the original | S R | v1 | Reuses Slate's workspace and sidecar save; the new file is indexed on save |
-| O8 | Batch from a selection: Slate's batch tools, contact sheet and gallery export run on the selected photos | S | v1 | Today these run on a whole folder |
+| O1 | Favourite (heart), shown as its own view | B | v1 | Built. Checked: live check: F favourites the focused photo |
+| O2 | Star ratings 0 to 5 and pick, reject, unflag with Lightroom keys (0 to 5, P, X, U; Shift applies and advances) | L S | v1 | Built. Checked: live check: 4 rates, P picks, X rejects, Shift+3 rates and moves on (the selection moves with the focus) |
+| O3 | Albums: create, rename, delete, add, remove, cover photo; a photo can be in many | B | v1 | Built. Checked: live check: a new album shows in the sidebar, opens with its 5 photos, and its menu offers rename, cover and delete; tests/test-library-organise.mjs |
+| O4 | Tags (keywords), hierarchical with `/` | L D I | v1 | Built. Checked: live check: hierarchical tags through the command face; the tag dialog is not driven live |
+| O5 | Hide: a hidden photo leaves the timeline and search, kept in a Hidden view | G A P I | v1 | Built. Checked: live check: H hides; the photo leaves the timeline |
+| O6 | Trash: delete moves the file into `.slate-trash/` under its root, with restore; empty trash is a separate confirmed action | G A I | v1 | Built (trash.js). Checked: live check: the file moves into .slate-trash and back; tests/test-library-core.mjs and test-library-organise.mjs empty trash and restore refusal. Empty trash not run live |
+| O7 | Edit from the library: open in the editor, save as a new version beside the original | S R | v1 | Built. Checked: live check: E opens the photo in the editor; Escape returns to the Library. Saving beside the original not driven live |
+| O8 | Batch from a selection: Slate's batch tools, contact sheet and gallery export run on the selected photos | S | v1 | Built (batch.js, gallery.js take a selection). Not driven live |
 | O9 | Locked folder: hidden photos behind a passphrase, encrypted at rest | G I | v1.x | Needs an encryption design; hide (O5) covers the common case |
 | O10 | Bulk rename and move between folders | D | v1.x | Destructive; through review |
 
@@ -107,7 +107,7 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| Q1 | Search box over filename, folder, tag, album, camera and date words ("2024", "March", "Canon") | B | v1 | Text match over index fields |
+| Q1 | Search box over filename, folder, tag, album, camera and date words ("2024", "March", "Canon") | B | v1 | Built. Checked: live check: / focuses search; "canon 2024" filters to 2,501 |
 | Q2 | Text search by meaning with CLIP-style embeddings in a worker (WebGPU, WASM fallback); model downloaded on opt-in | G A I E R | v1.x | First candidates MobileCLIP2-S2 or CLIP ViT-B/32; licence check first; gate is brute-force latency at 100,000 vectors |
 | Q3 | Find similar photos to this one | I D | v1.x | Same vectors as Q2 |
 | Q4 | Hindi and other Indic queries | R | v1.x | Only NLLB-CLIP models measured well, at about 4.7 GB class; or translate the query first |
@@ -143,7 +143,7 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| I1 | Apple Photos: open an osxphotos export folder; its embedded keywords, GPS and album folders come in | A R | v1 | It is a folder like any other; Apple's native export drops most metadata (R) |
+| I1 | Apple Photos: open an osxphotos export folder; its embedded keywords, GPS and album folders come in | A R | v1 | Built (an export folder scans like any folder; embedded XMP and IPTC keywords are read). Checked: tests/test-library-scan.mjs. Not driven with a real osxphotos export |
 | I2 | Google Takeout, extracted: match each JSON to its photo (47-character title truncation, `(N)` counters, `-edited` copies, fuzzy fallback); take the photo-taken time, description and GPS | G R | v1.x | Writes the result to the library file once, because matching is heuristic |
 | I3 | Google Takeout zips read in place with zip.js, one part at a time | G R | v1.x | No extraction needed; memory near one entry's size (inferred) |
 | I4 | Export an album or selection as a folder of originals, or as a zip | B | v1.x | |
@@ -161,10 +161,10 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| N1 | `commands.json` with the library commands: `slate.library.search`, `.list`, `.thumb`, `.rescan`; `slate.photo.favourite`, `.rate`, `.flag`, `.tag`, `.hide`, `.trash`, `.restore`, `.open`; `slate.album.create`, `.add`, `.remove`, `.list` | R | v1 | One handler per command backs the button, the key and the agent |
-| N2 | Registered with `naklios.experimental_commands.register`; scopes read, write and destructive; more than 200 ids or any trash is destructive and goes through host review | R | v1 | Results hold ids and short fields; thumbnails by id; under the 256 KB cap |
-| N3 | `dryRun` on every write, and an undo token for each write | R | v1 | |
-| N4 | Runs in the existing same-origin mirror at `naklios.dev/apps/slate/`, follows the host theme, signals `naklios.ready()` | R | v1 | Manifest gains `commands.json`; no new headers needed |
+| N1 | `commands.json` with the library commands: `slate.library.search`, `.list`, `.thumb`, `.rescan`; `slate.photo.favourite`, `.rate`, `.flag`, `.tag`, `.hide`, `.trash`, `.restore`, `.open`; `slate.album.create`, `.add`, `.remove`, `.list` | R | v1 | Built (commands.json, 26 commands). Checked: tests/test-library-core.mjs and test-library-door.mjs; live check: Ctrl+L and the toolbar button run library.open |
+| N2 | Registered with `naklios.experimental_commands.register`; scopes read, write and destructive; more than 200 ids or any trash is destructive and goes through host review | R | v1 | Built (door.js). Checked: tests/test-library-door.mjs re-runs the rail's checks. Registration inside NakliOS is the NakliOS session's check |
+| N3 | `dryRun` on every write, and an undo token for each write | R | v1 | Built. Checked: tests/test-library-core.mjs dry runs and undo; live check: every change shows Undo |
+| N4 | Runs in the existing same-origin mirror at `naklios.dev/apps/slate/`, follows the host theme, signals `naklios.ready()` | R | v1 | Built (follows the host theme in door.js). Checked: live check: the Library restyles for light and dark. Running in the mirror is the NakliOS session's check |
 | N5 | Editor commands (crop, rotate, adjust, export) in the same manifest | S | v1.x | Extends the agent face to the existing editor |
 | N6 | Publish the same commands as WebMCP tools | R | v1.x | WebMCP is an experimental proposal |
 
@@ -181,9 +181,9 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| K1 | Keys: arrows move focus, Enter opens, Escape returns, Space selects, F favourite, 0 to 5 rate, P, X, U flag, H hide, Delete trash, / search, E edit | L B | v1 | Listed in Slate's Help sheet |
-| K2 | Every control has an accessible name; the grid is a keyboard-navigable grid role | B | v1 | |
-| K3 | First-run tour steps for the Library | S | v1 | Extends Slate's existing tour |
+| K1 | Keys: arrows move focus, Enter opens, Escape returns, Space selects, F favourite, 0 to 5 rate, P, X, U flag, H hide, Delete trash, / search, E edit | L B | v1 | Built; keys listed in Help. Checked: live check: arrows, Enter, Escape, Space, /, F, 0 to 5, P, X, H, E |
+| K2 | Every control has an accessible name; the grid is a keyboard-navigable grid role | B | v1 | Built. Checked: live check: no horizontal overflow at 978 px; the grid has role grid; tests/test-library-door.mjs |
+| K3 | First-run tour steps for the Library | S | v1 | Built (a two-step library tour; the editor tour no longer covers the Library). Checked: live check: the first open shows it and Skip closes it |
 
 ## v1 checks
 

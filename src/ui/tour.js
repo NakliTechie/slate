@@ -1,4 +1,5 @@
 export const TOUR_KEY = 'slate.v2.tour-complete';
+export const LIBRARY_TOUR_KEY = 'slate.v2.library-tour-complete';
 
 const STEPS = [
   {
@@ -33,10 +34,26 @@ const STEPS = [
   },
 ];
 
+// A short second tour, shown the first time the Library opens (row K3). It is separate so
+// the editor tour stays six steps. Targets belong to src/ui/library/view.js.
+const LIBRARY_STEPS = [
+  {
+    target: '.library-sidebar',
+    title: 'Your photo library',
+    body: 'Timeline, favourites, albums, folders and trash are here. Add a folder to bring its photos in. Slate keeps your choices in a .slate-library.json file inside that folder, and uploads nothing.',
+  },
+  {
+    target: '.library-grid',
+    title: 'Cull with the keyboard',
+    body: 'Arrows move, Space selects, Enter opens. F favourites, 0 to 5 rate, P picks, X rejects. Hold Shift to apply and move to the next photo. Press ? for every library key.',
+  },
+];
+
 let layer = null;
 let stepIndex = 0;
 let previousFocus = null;
 let activeSteps = STEPS;
+let activeKey = TOUR_KEY;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -114,8 +131,14 @@ function renderStep() {
 }
 
 function finishTour() {
-  localStorage.setItem(TOUR_KEY, '1');
+  try { localStorage.setItem(activeKey, '1'); } catch {}
   closeTour();
+}
+
+// Closes the editor tour without recording it as seen, so it runs the next time
+// the editor is on screen. Used when the Library opens on top of it.
+export function setAsideEditorTour() {
+  if (layer && activeKey === TOUR_KEY) closeTour();
 }
 
 function closeTour() {
@@ -177,8 +200,27 @@ export function showTour({ force = false } = {}) {
   if (layer || (!force && localStorage.getItem(TOUR_KEY))) return false;
   previousFocus = document.activeElement;
   stepIndex = 0;
+  activeKey = TOUR_KEY;
   activeSteps = STEPS.filter(targetIsVisible);
   if (!activeSteps.length) activeSteps = STEPS.slice(1);
+  openLayer();
+  return true;
+}
+
+export function showLibraryTour({ force = false } = {}) {
+  let seen = null;
+  try { seen = localStorage.getItem(LIBRARY_TOUR_KEY); } catch {}
+  if (layer || (!force && seen)) return false;
+  previousFocus = document.activeElement;
+  stepIndex = 0;
+  activeKey = LIBRARY_TOUR_KEY;
+  activeSteps = LIBRARY_STEPS.filter(targetIsVisible);
+  if (!activeSteps.length) activeSteps = LIBRARY_STEPS;
+  openLayer();
+  return true;
+}
+
+function openLayer() {
   layer = document.createElement('div');
   layer.className = 'tour-layer';
   layer.innerHTML = `
@@ -206,5 +248,4 @@ export function showTour({ force = false } = {}) {
   window.addEventListener('resize', positionTour);
   document.addEventListener('keydown', handleTourKeydown, true);
   renderStep();
-  return true;
 }
