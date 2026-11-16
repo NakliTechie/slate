@@ -64,7 +64,7 @@ export function initTextIndex(lib, { recognise = (b) => extractText(b), loadImag
   function add(ids) {
     if (!ids.length) return;
     for (const id of ids) queued.add(id);
-    lib.jobs.add('ocr', ids.map(id => ({ id })), readOne);
+    lib.jobs.add('ocr', ids.map(id => ({ id })), readOne, { lane: 'background' });
   }
 
   function enqueueAll() { add([...lib.records.keys()].filter(needs)); }

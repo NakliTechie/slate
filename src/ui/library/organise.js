@@ -512,6 +512,8 @@ export function initOrganise(lib, ui) {
           <label class="org-radio"><input type="radio" name="org-export" value="folder" checked autofocus> Folder of originals</label>
           <label class="org-radio"><input type="radio" name="org-export" value="zip"> One .zip file</label>
         </fieldset>
+        <label class="org-radio"><input type="checkbox" class="org-noloc" checked> Remove location</label>
+        <p class="org-text org-hint">Slate removes the GPS position from the EXIF data of JPEG files and leaves every other byte as it is. Other files, such as HEIC, RAW and videos, are copied with their location.</p>
         ${inMemory ? `<p class="modal-info org-warn" style="display:none">This browser cannot write the zip to disk as it goes, so it holds all ${(bytes / 1024 ** 3).toFixed(1)} GB in memory before the download. Use Chrome or Edge, or export a folder.</p>` : ''}
         <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
         <button type="button" class="btn btn-primary" data-go>Export</button></div>`;
@@ -521,25 +523,29 @@ export function initOrganise(lib, ui) {
       body.querySelector('[data-no]').addEventListener('click', close);
       body.querySelector('[data-go]').addEventListener('click', () => {
         const m = mode();
+        const removeLocation = body.querySelector('.org-noloc').checked;
         close();
-        if (m === 'zip') exportToZip(ids, what, label); else exportToFolder(ids, what);
+        if (m === 'zip') exportToZip(ids, what, label, { removeLocation }); else exportToFolder(ids, what, { removeLocation });
       });
     });
   }
 
-  async function exportToFolder(ids, what) {
+  // A JPEG whose EXIF Slate cannot read loses its whole EXIF block, so its location still goes.
+  const locNote = (r) => (r.exifRemoved ? `; Slate could not read the EXIF of ${plural(r.exifRemoved, 'JPEG')}, so it removed all of their EXIF` : '');
+
+  async function exportToFolder(ids, what, opts = {}) {
     let dest;
     try { dest = await pickExportFolder(); } catch (e) { fail(e); return; }
     if (!dest) return;
     try {
       say(`Exporting ${plural(ids.length, 'file')} to ${dest.name}`);
-      const r = await exportFiles(lib, ids, dest);
-      const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}`;
+      const r = await exportFiles(lib, ids, dest, opts);
+      const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}${locNote(r)}`;
       say(r.failed ? `${msg}; ${r.failed} could not be copied` : msg, r.failed ? 'warn' : 'ok');
     } catch (e) { fail(e); }
   }
 
-  async function exportToZip(ids, what, label) {
+  async function exportToZip(ids, what, label, opts = {}) {
     const fileName = zipFileName(label);
     let writer;
     try { writer = await pickZipSave(fileName); } catch (e) { fail(e); return; }
@@ -549,7 +555,7 @@ export function initOrganise(lib, ui) {
       const zipLib = await loadZip();
       if (download) writer = new zipLib.BlobWriter('application/zip');
       say(`Exporting ${plural(ids.length, 'file')} to ${fileName}`);
-      const r = await exportZip(lib, ids, { zipLib, writer });
+      const r = await exportZip(lib, ids, { zipLib, writer, ...opts });
       if (download) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(r.result);
@@ -557,7 +563,7 @@ export function initOrganise(lib, ui) {
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
       }
-      let msg = `Exported ${plural(r.copied, 'file')}${what} to ${fileName}`;
+      let msg = `Exported ${plural(r.copied, 'file')}${what} to ${fileName}${locNote(r)}`;
       if (r.cancelled) msg = `Export cancelled; ${fileName} holds ${plural(r.copied, 'file')}`;
       say(r.failed ? `${msg}; ${r.failed} could not be read` : msg, r.failed || r.cancelled ? 'warn' : 'ok');
     } catch (e) {
@@ -670,6 +676,9 @@ export function initOrganise(lib, ui) {
         return null;
       });
   }
+
+  // The view's empty locked Hidden view offers Unlock… through this hook.
+  ui.hooks.unlockHidden = () => { if (lib.services.lock) unlock(); };
 
   // ── action bar ─────────────────────────────────────────────────────────
   if (!ui.actionsEl || typeof document === 'undefined') return;

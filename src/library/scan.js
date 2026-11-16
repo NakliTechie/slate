@@ -1,6 +1,15 @@
 // Walks a root folder and feeds lib.applyScan. See docs/architecture.md "Scan".
 //
-//   scanRoot(lib, root, { full }) -> { added, changed, unchanged, missing, failed, takeout }
+//   scanRoot(lib, root, { full, paths }) -> { added, changed, unchanged, missing, failed, takeout }
+//
+// paths (fsa roots, from the folder watcher): rescan only these relative paths. A path that is a
+// folder is walked; a file is read with the other files of its folder at hand (for sidecars,
+// Takeout JSON and Live Photo pairs), and a sidecar, JSON or movie path rescans the photos with
+// its stem in that folder. A path that is gone turns its records missing. Without paths, or for a
+// browse-only root, the whole root is walked.
+//
+// A file that was trashed, moved or removed after the walk found it (a NotFoundError when it is
+// read) is not counted as failed; the job queue counts it as done.
 //
 // fsa roots are walked through their FileSystemDirectoryHandle; files roots
 // (browse-only) use root.files. Metadata and sidecar reads run on lib.jobs as
@@ -47,7 +56,14 @@ export const LIVE_MAX_BYTES = 10 * 1024 * 1024;
 export const LIVE_MAX_SECONDS = 3;
 const LIVE_SLACK_SECONDS = 0.25;
 
-export async function scanRoot(lib, root, { full = false } = {}) {
+const stemKey = (path) => {
+  const i = path.lastIndexOf('/'), name = path.slice(i + 1), dot = name.indexOf('.');
+  return (path.slice(0, i + 1) + (dot > 0 ? name.slice(0, dot) : name)).toLowerCase();
+};
+const isGone = (e) => e?.name === 'NotFoundError';
+
+export async function scanRoot(lib, root, { full = false, paths = null } = {}) {
+  if (!root.handle) paths = null;
   if (root.handle) {
     const asked = await ensurePermission(root.handle);
     if ((asked || !lib.libLoaded?.has(root.id)) && lib.loadLibFile) await lib.loadLibFile(root);
@@ -58,7 +74,10 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   const sidecars = new Map();     // folder -> Map(lower-case name -> open)
   const jsons = new Map();        // folder -> Map(name -> open), Takeout candidates
   const walk = { failed: 0 };
+  const listedPaths = new Set();  // a scan of some paths can list one folder twice
   const add = (path, open) => {
+    if (listedPaths.has(path)) return;
+    listedPaths.add(path);
     const name = path.slice(path.lastIndexOf('/') + 1);
     const ext = extOf(name);
     if (ext === SIDECAR_EXT || (ext === 'json' && !name.startsWith('.'))) {
@@ -67,7 +86,9 @@ export async function scanRoot(lib, root, { full = false } = {}) {
       into.get(dir).set(ext === 'json' ? name : name.toLowerCase(), open);
     } else if (kindOf(name)) found.push({ path, open });
   };
-  if (root.handle) await walkDir(root.handle, '', add, walk);
+  let scope = null;
+  if (paths) scope = await walkPaths(root.handle, paths, add, walk);
+  else if (root.handle) await walkDir(root.handle, '', add, walk);
   else for (const f of root.files || []) {
     const path = relPathOf(f);
     if (folderOf(path).split('/').some(s => s && isSkippedDir(s))) continue;
@@ -75,7 +96,7 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   }
 
   const { live, movs } = await checkLivePairs(lib, root, pairLivePhotos(found.map(e => e.path)), new Map(found.map(e => [e.path, e.open])));
-  if (movs.size) found.splice(0, found.length, ...found.filter(e => !movs.has(e.path)));
+  if (movs.size || scope) found.splice(0, found.length, ...found.filter(e => !movs.has(e.path) && (!scope || scope(e.path))));
 
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
   const takeout = { matched: 0, favourites: 0, hidden: 0, rejected: 0 };
@@ -149,14 +170,14 @@ export async function scanRoot(lib, root, { full = false } = {}) {
 
   await runJobs(lib.jobs, 'scan', found, async (entry) => {
     try { await work(entry); }
-    catch (e) { res.failed++; throw e; }
+    catch (e) { if (!isGone(e)) res.failed++; throw e; }
   });
 
   // 3. Final call with `seen`, unless part of the folder could not be read.
-  await flush(walk.failed ? {} : { seen });
+  await flush(walk.failed ? {} : scope ? { seen, scope } : { seen });
   await applyTakeoutChoices(lib, fromTakeout, takeout);
-  if (root.handle && lib.recoverTrash) await recoverTrash(lib, root, walk.failed ? null : seen);
-  for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
+  if (root.handle && lib.recoverTrash && !scope) await recoverTrash(lib, root, walk.failed ? null : seen);
+  for (const r of lib.records.values()) if (r.rootId === root.id && r.missing && (!scope || scope(r.path))) res.missing++;
   return res;
 }
 
@@ -333,17 +354,44 @@ async function ensurePermission(handle) {
   return true;
 }
 
-async function walkDir(dir, prefix, add, walk) {
+async function walkDir(dir, prefix, add, walk, { recursive = true } = {}) {
   try {
     for await (const [name, h] of dir.entries()) {
       const path = prefix ? `${prefix}/${name}` : name;
-      if (h.kind === 'directory') { if (!isSkippedDir(name)) await walkDir(h, path, add, walk); }
+      if (h.kind === 'directory') { if (recursive && !isSkippedDir(name)) await walkDir(h, path, add, walk); }
       else add(path, () => h.getFile());
     }
   } catch (e) {
     console.warn('[slate library] could not read folder', prefix || dir.name, e);
     walk.failed++;
   }
+}
+
+// The walk for a scan of some paths: lists the folder of each path (not its subfolders), walks
+// each path that is a folder, and returns the scope: path => true for a file the scan covers.
+async function walkPaths(rootHandle, paths, add, walk) {
+  const exact = new Set(), dirs = [], stems = new Set(), listed = new Set();
+  const dirAt = async (rel) => {
+    let d = rootHandle;
+    for (const s of rel.split('/').filter(Boolean)) d = await d.getDirectoryHandle(s);
+    return d;
+  };
+  for (const raw of paths) {
+    const path = String(raw).split('/').filter(Boolean).join('/');
+    if (!path || path.split('/').some(s => isSkippedDir(s))) continue;
+    exact.add(path); stems.add(stemKey(path));
+    const folder = folderOf(path);
+    if (!listed.has(folder)) {
+      listed.add(folder);
+      let d = null;
+      try { d = await dirAt(folder); } catch (e) { if (!isGone(e)) { console.warn('[slate library] could not read folder', folder, e); walk.failed++; } }
+      if (d) await walkDir(d, folder, add, walk, { recursive: false });
+    }
+    let sub = null;
+    try { sub = await dirAt(path); } catch { /* a file, or gone */ }
+    if (sub) { dirs.push(path + '/'); await walkDir(sub, path, add, walk); }
+  }
+  return (p) => exact.has(p) || stems.has(stemKey(p)) || dirs.some(d => p.startsWith(d));
 }
 
 // Run fn over items on the shared queue and resolve when this batch is finished,
@@ -367,7 +415,7 @@ function runJobs(jobs, kind, items, fn) {
       inFlight++;
       try { await fn(item, signal); }
       finally { inFlight--; if (--left === 0) finish(); }
-    });
+    }, { lane: 'now' });
     const ctl = jobs.controllers?.get(kind);
     ctl?.signal?.addEventListener?.('abort', () => { cancelled = true; jobs._emit?.(kind); });
   });

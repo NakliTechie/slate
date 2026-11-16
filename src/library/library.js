@@ -26,15 +26,27 @@
 //   'error'    { message }
 
 import { JobQueue } from './jobs.js';
-import { emptyChoice, makeId, splitId, normTag, FLAGS, normPath, kindOf, extOf, folderOf, newRecord, instantToWallClock } from './schema.js';
+import { LIBRARY_FILE, emptyChoice, makeId, splitId, normTag, FLAGS, normPath, kindOf, extOf, folderOf, newRecord, instantToWallClock } from './schema.js';
 import { createMove, renderName } from './move.js';
-import { parseLibFile, buildLibFile, rematchMoved, newAlbumId, isBlankChoice, mergeLibFiles, inTrash, toTrashPath, fromTrashPath } from './libfile.js';
+import { LIBRARY_META_FILE, parseLibFile, buildLibFile, rematchMoved, newAlbumId, isBlankChoice, mergeLibFiles, inTrash, toTrashPath, fromTrashPath } from './libfile.js';
 import { query, choiceOf, tagCounts, folderCounts, effectiveRating, allTags } from './query.js';
 
 const UNDO_LIMIT = 200;
 const SAVE_DELAY_MS = 600;
 // Trash saves the trashed flags before it moves the files, in batches of this many (review S3).
 export const TRASH_BATCH = 50;
+// How long a path Slate itself wrote, moved or renamed stays on the self-write list (watch.js).
+export const SELF_WRITE_MS = 5000;
+
+// The key a path is matched by on the self-write list: its folder and its name up to the first
+// dot, lower-cased, so a photo's sidecars (IMG_1.jpg.xmp, IMG_1.xmp, its Takeout JSON) and its
+// Live Photo movie match the photo. A file another program adds under the same stem within
+// SELF_WRITE_MS is missed by the watcher; the next rescan finds it.
+export function selfWriteKey(rootId, path) {
+  const i = path.lastIndexOf('/');
+  const name = path.slice(i + 1), dot = name.indexOf('.');
+  return `${rootId}\u0000${path.slice(0, i + 1)}${dot > 0 ? name.slice(0, dot) : name}`.toLowerCase();
+}
 
 // Run fn while holding a Web Lock, where the browser has them, so two tabs on one folder never
 // read and write its library file at the same time (review S2).
@@ -64,7 +76,8 @@ export class Library {
     this.albumTombs = new Map();  // albumId -> ms it was deleted
     this.libLoaded = new Set();   // roots whose library file was read (or found absent) this session
     this.libExtra = new Map();    // rootId -> unknown top-level fields of its library file
-    this.again = new Map();       // rootId -> { full } a rescan asked for while that root was scanning
+    this.again = new Map();       // rootId -> { full, paths } a rescan asked for while that root was scanning
+    this.selfWrites = new Map();  // selfWriteKey -> ms: files Slate itself wrote, moved or renamed
     this.flushing = Promise.resolve();
     // A closing or hidden page writes what is pending (review S3).
     if (typeof globalThis.addEventListener === 'function') {
@@ -211,28 +224,35 @@ export class Library {
   // file twice). It asks for one more scan when the running one ends, because the running walk
   // may have passed files that changed after it started (review S14); any number of such
   // requests give one more scan. The caller waits for both.
-  async rescan(rootId = null, { full = false } = {}) {
+  //
+  // paths (with a rootId): rescan only those relative paths (files, folders, or paths now gone),
+  // as the folder watcher asks; null rescans the whole root. A whole-root request waiting beside
+  // path requests wins.
+  async rescan(rootId = null, { full = false, paths = null } = {}) {
     const roots = rootId ? [this.roots.get(rootId)] : [...this.roots.values()];
+    if (!rootId) paths = null;
     this.scanning ??= new Map();
     for (const root of roots) {
       if (!root) throw new Error(`no root ${rootId}`);
       if (!this.services.scanRoot) throw new Error('scanning is not available');
       const running = this.scanning.get(root.id);
       if (running) {
-        this.again.set(root.id, { full: full || !!this.again.get(root.id)?.full });
+        const prev = this.again.get(root.id);
+        const merged = (prev && !prev.paths) || !paths ? null : new Set([...(prev?.paths ?? []), ...paths]);
+        this.again.set(root.id, { full: full || !!prev?.full, paths: merged });
         await running;
         continue;
       }
-      const p = this.#scanLoop(root, full);
+      const p = this.#scanLoop(root, full, paths ? new Set(paths) : null);
       this.scanning.set(root.id, p);
       try { await p; } finally { if (this.scanning.get(root.id) === p) this.scanning.delete(root.id); }
     }
   }
 
-  async #scanLoop(root, full) {
+  async #scanLoop(root, full, paths) {
     try {
       for (;;) {
-        await Promise.resolve().then(() => this.services.scanRoot(this, root, { full }));
+        await Promise.resolve().then(() => this.services.scanRoot(this, root, paths ? { full, paths: [...paths] } : { full }));
         // A scanner that does not read the library file itself (scan.js does, after its
         // permission step) still gets it read once the folder could be walked.
         if (!this.libLoaded.has(root.id)) await this.loadLibFile(root);
@@ -240,14 +260,17 @@ export class Library {
         if (!next) return;
         this.again.delete(root.id);
         full = next.full;
+        paths = next.paths;
       }
     } finally { this.again.delete(root.id); }
   }
 
   // Called by scan.js with the result of walking one root.
   //   upserts: PhotoRecord[]  new or changed rows
-  //   seen:    Set<id>        every id found on disk this scan (null for a partial scan)
-  async applyScan(rootId, { upserts = [], seen = null } = {}) {
+  //   seen:    Set<id>        every id found on disk this scan (null when part of the walk failed)
+  //   scope:   path => bool   a scan of some paths only: `seen` covers just the records whose
+  //                           path it accepts, so only those can turn missing or found again
+  async applyScan(rootId, { upserts = [], seen = null, scope = null } = {}) {
     for (const r of upserts) this.records.set(r.id, r);
     if (upserts.length) await this.store.putPhotos(upserts);
     let missing = [];
@@ -255,7 +278,8 @@ export class Library {
       // A MOV now paired with a Live Photo has no record of its own: drop it rather than mark it missing.
       const paired = new Set();
       for (const r of this.records.values()) if (r.rootId === rootId && r.liveVideo) paired.add(makeId(rootId, r.liveVideo));
-      const dropped = [...paired].filter(id => this.records.has(id) && !seen.has(id) && !this.choices.get(id)?.trashed);
+      const inScope = (id) => !scope || scope(splitId(id).path);
+      const dropped = [...paired].filter(id => this.records.has(id) && inScope(id) && !seen.has(id) && !this.choices.get(id)?.trashed);
       if (dropped.length) {
         for (const id of dropped) this.records.delete(id);
         await this.store.deletePhotos(dropped);
@@ -263,13 +287,13 @@ export class Library {
         missing.push(...dropped.map(id => ({ id })));
       }
       for (const r of this.records.values()) {
-        if (r.rootId !== rootId) continue;
+        if (r.rootId !== rootId || (scope && !scope(r.path))) continue;
         const gone = !seen.has(r.id) && !this.choices.get(r.id)?.trashed;
         if (gone !== !!r.missing) { r.missing = gone; missing.push(r); }
       }
       if (missing.length) await this.store.putPhotos(missing);
       const root = this.roots.get(rootId);
-      if (root) { root.lastScan = Date.now(); await this.store.putRoot(stripRoot(root)); }
+      if (root && !scope) { root.lastScan = Date.now(); await this.store.putRoot(stripRoot(root)); }
       this.reconcile(rootId);
     }
     if (upserts.length || missing.length) this.emit('records', { ids: [...upserts, ...missing].map(r => r.id), reason: 'scan' });
@@ -348,6 +372,18 @@ export class Library {
     let dir = root.handle;
     for (const p of parts) dir = await dir.getDirectoryHandle(p);
     return parent ? dir : dir.getFileHandle(name);
+  }
+
+  // Slate's own writes (the library and meta files, XMP sidecars, moves into and out of the
+  // trash, moves and renames): watch.js ignores a change to a path noted here in the last
+  // SELF_WRITE_MS, so Slate's writes never start a rescan.
+  noteSelfWrite(rootId, ...paths) {
+    const now = Date.now();
+    for (const p of paths) if (p) this.selfWrites.set(selfWriteKey(rootId, p), now);
+  }
+  isSelfWrite(rootId, path, now = Date.now()) {
+    for (const [k, t] of this.selfWrites) if (now - t > SELF_WRITE_MS) this.selfWrites.delete(k);
+    return this.selfWrites.has(selfWriteKey(rootId, path));
   }
 
   // The File for a record, from either kind of root. Throws when it is gone.
@@ -484,6 +520,7 @@ export class Library {
       for (const p of planned) {
         const root = this.roots.get(p.rootId);
         try {
+          this.noteSelfWrite(p.rootId, p.path, p.live);
           if (!p.missing) this.#noteRenamed(await this.services.trash?.move(root, p.path), p.path);
         } catch (e) {
           this.emit('error', { message: `Could not move ${p.path} to the trash: ${e.message}` });
@@ -526,6 +563,7 @@ export class Library {
       const rec = this.records.get(id), root = this.roots.get(rootId);
       try {
         if (oid !== id && this.records.get(oid) && !this.records.get(oid).missing) throw new Error(`${orig} already exists, so the trashed copy was left in the trash`);
+        this.noteSelfWrite(rootId, orig, rec?.liveVideo ? fromTrashPath(rec.liveVideo) : null);
         if (!rec?.missing) this.#noteRenamed(await this.services.trash?.restore(root, orig), orig);
       } catch (e) {
         this.emit('error', { message: `Could not restore ${orig}: ${e.message}` });
@@ -800,7 +838,10 @@ export class Library {
     for (const m of plan) {
       let res;
       try {
-        res = await mover.move(this.roots.get(m.rootId), m.from, m.to, { liveVideo: this.records.get(m.id).liveVideo ?? null });
+        const live = this.records.get(m.id).liveVideo ?? null;
+        // The movie and sidecars move with the photo and keep its stem, so m.to's key covers them.
+        this.noteSelfWrite(m.rootId, m.from, m.to, live);
+        res = await mover.move(this.roots.get(m.rootId), m.from, m.to, { liveVideo: live });
       } catch (e) {
         failed.push({ id: m.id, reason: e.message });
         this.emit('error', { message: `Could not move ${m.from}: ${e.message}` });
@@ -933,6 +974,7 @@ export class Library {
       this.libLoaded.add(root.id);
       if (file) this.mergeIn(root.id, file);
     } catch { /* not readable now: kv only */ }
+    this.noteSelfWrite(root.id, LIBRARY_FILE, LIBRARY_META_FILE);
     await this.services.persist.save(root, this.libFileFor(root.id), { disk: read && this.libLoaded.has(root.id) });
   }
 

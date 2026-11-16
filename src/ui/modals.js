@@ -36,6 +36,10 @@ function getOrCreate(id) {
   return dlg;
 }
 
+// Dialogs whose result the person judges on the photo behind them: no dimmed backdrop
+// (theme.css dialog.modal-see-through), so the editor canvas shows as it is.
+function seeThrough(dlg) { dlg.classList.add('modal-see-through'); return dlg; }
+
 function slider(id, label, min, max, step, value, unit = '') {
   return `
     <div class="modal-field-row">
@@ -126,7 +130,7 @@ function showResize() {
 
 function showAdjust() {
   if (!state.image.working) return;
-  const dlg = getOrCreate('modal-adjust');
+  const dlg = seeThrough(getOrCreate('modal-adjust'));
 
   dlg.innerHTML = `
     <div class="modal-header"><h2>Adjust</h2></div>
@@ -236,14 +240,17 @@ async function showLensBlur() {
   const src = state.image.working;
   const dlg = getOrCreate('modal-lensblur');
   dlg.setAttribute('aria-label', 'Background blur');
+  // The preview scales down with the dialog, so it never needs a horizontal scrollbar.
+  dlg.style.maxWidth = `min(${LB_PREVIEW_W + 48}px, 95vw)`;
+  dlg.style.overflowX = 'hidden';
   const k = Math.min(1, LB_PREVIEW_W / src.width, LB_PREVIEW_H / src.height);
   const pw = Math.max(1, Math.round(src.width * k)), ph = Math.max(1, Math.round(src.height * k));
   dlg.innerHTML = `
     <div class="modal-header"><h2>Background blur</h2></div>
     <div class="modal-fields">
       <p class="modal-info" id="lb-status" role="status">Finding depth in this image…</p>
-      <div style="position:relative;width:${pw}px;height:${ph}px;margin:0 auto">
-        <canvas id="lb-preview" width="${pw}" height="${ph}" style="display:block;width:${pw}px;height:${ph}px;cursor:crosshair" aria-label="Preview. Click to set the focus point."></canvas>
+      <div style="position:relative;width:fit-content;max-width:100%;margin:0 auto">
+        <canvas id="lb-preview" width="${pw}" height="${ph}" style="display:block;width:auto;height:auto;max-width:100%;max-height:min(${ph}px, 50vh);cursor:crosshair" aria-label="Preview. Click to set the focus point."></canvas>
         <div id="lb-marker" aria-hidden="true" style="position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;left:50%;top:50%"></div>
       </div>
       <p class="help-p" style="margin:4px 0 0">Click the preview to choose what stays sharp. Areas nearer or farther than that point get more blur.</p>
@@ -350,7 +357,7 @@ function showDescribe() {
 
 function showSharpen() {
   if (!state.image.working) return;
-  const dlg = getOrCreate('modal-sharpen');
+  const dlg = seeThrough(getOrCreate('modal-sharpen'));
 
   dlg.innerHTML = `
     <div class="modal-header"><h2>Sharpen</h2></div>
@@ -374,7 +381,7 @@ function showSharpen() {
 
 function showStraighten() {
   if (!state.image.working) return;
-  const dlg = getOrCreate('modal-straighten');
+  const dlg = seeThrough(getOrCreate('modal-straighten'));
 
   dlg.innerHTML = `
     <div class="modal-header"><h2>Straighten</h2></div>

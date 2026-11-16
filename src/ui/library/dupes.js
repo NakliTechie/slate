@@ -375,6 +375,7 @@ export function initDupes(lib, ui) {
     id: 'duplicates',
     label: 'Duplicates',
     count: () => (computed ? allGroups().length : null),
+    countText: () => { if (!computed) return ''; const n = allGroups().length; return `${n.toLocaleString('en-GB')} group${n === 1 ? '' : 's'}`; },
     render(el) {
       el.innerHTML = '<div class="dup-root"><div class="dup-head"></div><div class="dup-body"></div></div>';
       host = el.querySelector('.dup-root');

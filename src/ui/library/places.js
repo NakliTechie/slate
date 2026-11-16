@@ -50,6 +50,7 @@ export function initPlaces(lib, ui, { places = createPlaces() } = {}) {
     id: 'places',
     label: 'Places',
     count: () => (gpsCount ??= located().length),
+    countText: () => { const n = (gpsCount ??= located().length); return `${n.toLocaleString('en-GB')} photo${n === 1 ? '' : 's'} with a location`; },
     render(el) {
       el.innerHTML = `<div class="plc-root">
         <div class="plc-head">

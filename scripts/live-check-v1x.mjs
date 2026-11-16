@@ -68,6 +68,8 @@ try {
   await until(`${L} return L.search({ trashed: 'only' }).length > ${before}`, 15000);
   const trashed = await ev(`${L} return L.search({ trashed: 'only' }).map(r=>r.id)`);
   check('D3', '"Keep the marked one, trash the rest" moves the others to the trash', trashed.length > before, `${trashed.length} in trash`);
+  // The flags are saved before the files move (review S3), so the Undo toast comes after the moves end.
+  await until(`return [...document.querySelectorAll('.org-toast button, .toast button')].some(b=>/undo/i.test(b.innerText))`, 30000);
   const undone = await ev(`const b=[...document.querySelectorAll('.org-toast button, .toast button')].find(b=>/undo/i.test(b.innerText)); if(!b) return 'no undo button'; b.click(); await new Promise(r=>setTimeout(r,1500)); return window.__slateLibrary.lib.search({ trashed: 'only' }).length`);
   check('D3', 'Undo brings them back', undone === before, String(undone));
 

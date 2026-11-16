@@ -30,6 +30,71 @@ const SLIDESHOW_MAX = 1000;
 const BROWSE_ONLY_NOTE = 'This browser cannot keep access to a folder, so the library is browse-only here: Slate reads the files for this visit and keeps your choices in the browser. Download the library file from Storage to keep them.';
 const icon = (id) => `<svg class="icon" aria-hidden="true"><use href="#icon-${id}"/></svg>`;
 
+// The empty-grid message. A locked Hidden view says it is locked whatever the job queue
+// is doing, because its photos stay out of the grid until the passphrase is entered.
+export function emptyMessage({ view, busy = false, rankPending = false, ranked = null, searching = false, hiddenLocked = false }) {
+  if (view === 'hidden' && hiddenLocked) return 'Hidden photos are locked. Unlock them to see them.';
+  if (rankPending) return 'Searching by meaning.';
+  if (ranked) return ranked.kind === 'similar' ? 'No similar photos found.' : 'No photos match this meaning closely enough.';
+  if (busy) return 'Reading your folders. Photos appear here as they are found.';
+  if (searching) return 'No photos match this search.';
+  return { trash: 'The trash is empty.', hidden: 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[view] ?? 'No photos here.';
+}
+
+// The header count. A grid view counts its tiles. A view that draws its own panel shows
+// the text its countText() gives, or no count at all, because its grid list is empty.
+export function headCountText({ panel = null, items = 0, selected = 0 }) {
+  if (panel) { try { return panel.countText?.() ?? ''; } catch { return ''; } }
+  const n = `${items.toLocaleString('en-GB')} item${items === 1 ? '' : 's'}`;
+  return selected ? `${n}, ${selected.toLocaleString('en-GB')} selected` : n;
+}
+
+// Stacks over ranked results (rows B9, Q2): the stacks come from the time-ordered list, so
+// bursts are found as in the timeline, and each stack's top becomes its best-scoring member,
+// so the tile shown for a stack is the closest match. Returns a new stackOf map.
+export function rankedStackOf(stackOf, scores) {
+  const out = new Map(), done = new Map();
+  for (const [id, st] of stackOf) {
+    let copy = done.get(st);
+    if (!copy) {
+      let top = st.top, best = scores.get(st.top) ?? -Infinity;
+      for (const m of st.members) { const s = scores.get(m); if (s != null && s > best) { best = s; top = m; } }
+      copy = { ...st, top };
+      done.set(st, copy);
+    }
+    out.set(id, copy);
+  }
+  return out;
+}
+
+// The "Download … and turn on" button of the Search by meaning panel (row Q2). The panel
+// renders the button once and only changes its text when the weights check returns, so the
+// button never moves under the pointer. A click before the check returns is held and runs
+// when the check answers, so it is never lost.
+//   weights: a Promise of the dtype; enable(dtype): turns the feature on (handles its own errors);
+//   onChange(): redraw the button's text and state.
+export function meaningSwitch({ weights, enable, onChange = () => {} }) {
+  let dtype = null, held = false, busy = false;
+  const run = async () => {
+    busy = true; onChange();
+    try { await enable(dtype); } catch (err) { console.error('[slate meaning] turn on', err); } finally { busy = false; onChange(); }
+  };
+  Promise.resolve(weights).then((d) => {
+    dtype = d; onChange();
+    if (held) { held = false; run(); }
+  });
+  return {
+    get dtype() { return dtype; },
+    get busy() { return busy || held; },
+    click() {
+      if (busy || held) return 'ignored';
+      if (!dtype) { held = true; onChange(); return 'held'; }
+      run();
+      return 'run';
+    },
+  };
+}
+
 export function initLibraryView(lib) {
   const el = document.getElementById('library');
   if (!el) throw new Error('the #library container is missing from index.html');
@@ -303,21 +368,28 @@ export function initLibraryView(lib) {
     dirty = false;
     const keep = scrollAnchor();
     const xdef = cur.view === 'x' ? extraViews.get(cur.xview) : null;
-    if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
+    if (xdef?.render) { list = []; ids = []; indexOf = new Map(); months = []; updateMonthLabel(); renderHead(); return; }
     list = lib.search(currentOpts());
     if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
+    let timeOrder = list;
     if (ranked) {
       const sc = ranked.scores;
-      list = list.filter(r => sc.has(r.id)).sort((a, b) => sc.get(b.id) - sc.get(a.id));
-    } else if (rankPending) list = [];
+      timeOrder = list.filter(r => sc.has(r.id));
+      list = [...timeOrder].sort((a, b) => sc.get(b.id) - sc.get(a.id));
+    } else if (rankPending) list = timeOrder = [];
     renderRanked();
     stackMembers = new Map();
-    if (stacking && cur.view !== 'trash' && !ranked) ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
+    if (stacking && cur.view !== 'trash') {
+      let { stackOf } = buildStacks(timeOrder);
+      if (ranked) stackOf = rankedStackOf(stackOf, ranked.scores);
+      ({ items: list, members: stackMembers } = collapseStacks(list, stackOf));
+    }
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
     for (const id of sel) if (!indexOf.has(id)) { sel.delete(id); pruned = true; }
     relayout(keep);
+    updateMonthLabel();
     renderHead();
     viewer.refresh();
     if (pruned) { announceSelection(); selectionChanged(); }
@@ -513,8 +585,9 @@ export function initLibraryView(lib) {
   }
   function renderHead() {
     viewNameEl.textContent = viewTitle();
-    const n = list.length.toLocaleString('en-GB');
-    countEl.textContent = `${n} item${list.length === 1 ? '' : 's'}${sel.size ? `, ${sel.size.toLocaleString('en-GB')} selected` : ''}`;
+    const xdef = cur.view === 'x' ? extraViews.get(cur.xview) : null;
+    countEl.textContent = headCountText({ panel: xdef?.render ? xdef : null, items: list.length, selected: sel.size });
+    countEl.hidden = !countEl.textContent;
   }
   function announceSelection() { renderHead(); }
 
@@ -529,14 +602,10 @@ export function initLibraryView(lib) {
       return;
     }
     if (list.length) { emptyEl.hidden = true; return; }
-    const busy = !lib.jobs.status().idle;
-    const msg = rankPending ? 'Searching by meaning.'
-      : ranked ? (ranked.kind === 'similar' ? 'No similar photos found.' : 'No photos match this meaning closely enough.')
-      : busy ? 'Reading your folders. Photos appear here as they are found.'
-      : q || Object.keys(filters).length ? 'No photos match this search.'
-        : { trash: 'The trash is empty.', hidden: lib.hiddenLocked?.() ? 'Hidden photos are locked. Unlock them to see them.' : 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[cur.view] ?? 'No photos here.';
+    const locked = cur.view === 'hidden' && !!lib.hiddenLocked?.();
+    const msg = emptyMessage({ view: cur.view, busy: !lib.jobs.status().idle, rankPending, ranked, searching: !!q || Object.keys(filters).length > 0, hiddenLocked: locked });
     emptyEl.hidden = false;
-    emptyEl.innerHTML = `<div class="lib-empty-inner"><p>${esc(msg)}</p></div>`;
+    emptyEl.innerHTML = `<div class="lib-empty-inner"><p>${esc(msg)}</p>${locked && ui.hooks.unlockHidden ? '<button type="button" class="btn btn-primary" data-act="unlock-hidden" aria-haspopup="dialog">Unlock…</button>' : ''}</div>`;
   }
 
   // ── sidebar ──────────────────────────────────────────────────────────────
@@ -585,6 +654,7 @@ export function initLibraryView(lib) {
       ${viewBtn('trash', 'Trash', c.trashed)}
     </div>`;
     side.innerHTML = html;
+    if (cur.view === 'x' && extraViews.get(cur.xview)?.render) renderHead();
   }
 
   // Top-level folders of a root, plus the branch down to (and the children of) the current folder.
@@ -650,6 +720,7 @@ export function initLibraryView(lib) {
 
   function switchView() {
     sel = new Set(); anchor = -1; focusId = null;
+    monthEl.textContent = ''; monthEl.hidden = true;
     if (ranked?.kind === 'similar') { ranked = null; rankSeq++; }
     viewer.close();
     mountPanel();
@@ -676,6 +747,7 @@ export function initLibraryView(lib) {
     else if (a === 'storage') openStoragePanel(lib, storageDlg);
     else if (a === 'meaning') toggleMeaning();
     else if (a === 'clear-ranked') clearRanked();
+    else if (a === 'unlock-hidden') ui.hooks.unlockHidden?.();
   });
 
   function pickFiles() {
@@ -836,61 +908,89 @@ export function initLibraryView(lib) {
   });
 
   // The "Search by meaning" view: what it downloads, the switch, and the vector store.
+  // Each state (off, on) renders its structure once; later changes update text in place,
+  // so no button is replaced while the pointer is on it (row Q2, promo finding 10).
   const mb = (b) => `${Math.round(b / 1e6).toLocaleString('en-GB')} MB`;
-  let weightsGuess = null;
+  let weightsGuess = null, weightsCheck = null;
+  const checkWeights = () => (weightsCheck ??= pickWeights().then(d => (weightsGuess = d)));
   ui.registerView({
     id: 'meaning',
     label: 'Search by meaning',
     count: () => (clip.enabled() ? clip.count() : null),
+    countText: () => (clip.enabled() ? `${clip.count().toLocaleString('en-GB')} photos with a vector` : ''),
     render(host) {
       const root = document.createElement('div');
       root.className = 'mng-root';
       host.appendChild(root);
-      let queued = false;
+      let queued = false, mode = '', actionsSig = '';
+      const sw = meaningSwitch({
+        weights: weightsGuess ?? checkWeights(),
+        enable: async (dtype) => { try { await clip.enable(dtype); } catch (err) { ui.toast(err?.message ?? String(err), 'error'); } },
+        onChange: () => queue(),
+      });
+      const drawOff = () => {
+        if (mode !== 'off') {
+          mode = 'off';
+          root.innerHTML = `<h2>Search by meaning</h2>
+            <p>Find photos by what they show, such as “dog on a beach” or “birthday cake”, and find photos that look like the one you are viewing. Duplicates can also use it to find near copies that fingerprints miss.</p>
+            <p>Turning this on downloads the ${esc(MODEL_ID)} model (OpenAI CLIP ViT-B/32, MIT licence) from Hugging Face, once<span class="mng-size"></span>. Slate then reads each photo’s 256 px thumbnail on this device to make a small vector for it. No photo and no search text leaves this device.</p>
+            <p class="mng-note"></p>
+            <button type="button" class="btn btn-primary" data-mng="on"></button>`;
+        }
+        const dtype = sw.dtype, w = dtype ? WEIGHTS[dtype] : null;
+        root.querySelector('.mng-size').innerHTML = w ? `: about <strong>${mb(w.bytes)}</strong>` : '';
+        root.querySelector('.mng-note').textContent = dtype ? (dtype === 'fp16' ? 'This browser will run the model on the graphics card (WebGPU, 16-bit weights).' : 'This browser will run the model on the processor (WebAssembly, 8-bit weights), which is slower.') : 'Checking this browser';
+        const btn = root.querySelector('[data-mng="on"]');
+        const label = sw.busy ? (dtype ? 'Turning on…' : 'Checking this browser…') : `Download ${w ? mb(w.bytes) + ' ' : ''}and turn on`;
+        if (btn.textContent !== label) btn.textContent = label;
+        btn.setAttribute('aria-disabled', String(sw.busy));
+      };
+      const drawOn = (s) => {
+        if (mode !== 'on') {
+          mode = 'on'; actionsSig = '';
+          root.innerHTML = `<h2>Search by meaning</h2>
+            <dl class="mng-facts">
+              <dt>Model</dt><dd class="mng-model"></dd>
+              <dt>Photos with a vector</dt><dd class="mng-count"></dd>
+              <dt>Vector store</dt><dd class="mng-bytes"></dd>
+            </dl>
+            <p>Press Meaning beside the search box, or type ~ before a search, then describe the photo. In the viewer, Find similar shows the photos closest to the one you are viewing.</p>
+            <div class="mng-actions"></div>`;
+        }
+        const job = lib.jobs.status().kinds.clip;
+        const left = job ? Math.max(0, job.total - job.done - job.failed) : 0;
+        root.querySelector('.mng-model').textContent = s.model === 'loading'
+          ? (s.progress ? `Downloading the model: ${mb(s.progress.loaded)} of ${mb(s.progress.total)}` : 'Loading the model')
+          : s.model === 'ready' ? `Model ready on ${s.device === 'webgpu' ? 'WebGPU' : 'WebAssembly'}`
+            : s.model === 'error' ? `The model did not load: ${s.error}` : 'The model loads when it is first needed';
+        root.querySelector('.mng-count').textContent = `${s.count.toLocaleString('en-GB')} of ${s.indexable.toLocaleString('en-GB')}${left ? `, ${left.toLocaleString('en-GB')} in the queue` : ''}`;
+        root.querySelector('.mng-bytes').textContent = `${mb(s.bytes)} in this browser`;
+        const sig = s.model === 'error' ? 'error' : 'ok';
+        if (sig !== actionsSig) {
+          actionsSig = sig;
+          root.querySelector('.mng-actions').innerHTML = `${sig === 'error' ? '<button type="button" class="btn" data-mng="retry">Try again</button>' : ''}
+            <button type="button" class="btn btn-danger" data-mng="off">Turn off and delete vectors</button>`;
+        }
+      };
       const draw = () => {
         queued = false;
         if (!root.isConnected) return;
         const s = clip.status();
-        if (!s.on) {
-          const dtype = weightsGuess;
-          const w = dtype ? WEIGHTS[dtype] : null;
-          root.innerHTML = `<h2>Search by meaning</h2>
-            <p>Find photos by what they show, such as “dog on a beach” or “birthday cake”, and find photos that look like the one you are viewing. Duplicates can also use it to find near copies that fingerprints miss.</p>
-            <p>Turning this on downloads the ${esc(MODEL_ID)} model (OpenAI CLIP ViT-B/32, MIT licence) from Hugging Face, once${w ? `: about <strong>${mb(w.bytes)}</strong>` : ''}. Slate then reads each photo’s 256 px thumbnail on this device to make a small vector for it. No photo and no search text leaves this device.</p>
-            <p class="mng-note">${dtype ? (dtype === 'fp16' ? 'This browser will run the model on the graphics card (WebGPU, 16-bit weights).' : 'This browser will run the model on the processor (WebAssembly, 8-bit weights), which is slower.') : 'Checking this browser'}</p>
-            <button type="button" class="btn btn-primary" data-mng="on" ${dtype ? '' : 'disabled'}>Download ${w ? mb(w.bytes) + ' ' : ''}and turn on</button>`;
-          return;
-        }
-        const job = lib.jobs.status().kinds.clip;
-        const left = job ? Math.max(0, job.total - job.done - job.failed) : 0;
-        const model = s.model === 'loading'
-          ? (s.progress ? `Downloading the model: ${mb(s.progress.loaded)} of ${mb(s.progress.total)}` : 'Loading the model')
-          : s.model === 'ready' ? `Model ready on ${s.device === 'webgpu' ? 'WebGPU' : 'WebAssembly'}`
-            : s.model === 'error' ? `The model did not load: ${esc(s.error)}` : 'The model loads when it is first needed';
-        root.innerHTML = `<h2>Search by meaning</h2>
-          <dl class="mng-facts">
-            <dt>Model</dt><dd>${model}</dd>
-            <dt>Photos with a vector</dt><dd>${s.count.toLocaleString('en-GB')} of ${s.indexable.toLocaleString('en-GB')}${left ? `, ${left.toLocaleString('en-GB')} in the queue` : ''}</dd>
-            <dt>Vector store</dt><dd>${mb(s.bytes)} in this browser</dd>
-          </dl>
-          <p>Press Meaning beside the search box, or type ~ before a search, then describe the photo. In the viewer, Find similar shows the photos closest to the one you are viewing.</p>
-          <div class="mng-actions">
-            ${s.model === 'error' ? '<button type="button" class="btn" data-mng="retry">Try again</button>' : ''}
-            <button type="button" class="btn btn-danger" data-mng="off">Turn off and delete vectors</button>
-          </div>`;
+        if (s.on) drawOn(s); else drawOff();
       };
       const queue = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
-      if (!weightsGuess) pickWeights().then(d => { weightsGuess = d; queue(); });
       draw();
       root.addEventListener('click', async (e) => {
         const b = e.target.closest('[data-mng]');
         if (!b) return;
+        if (b.dataset.mng === 'on') { sw.click(); return; }
+        if (b.disabled) return;
         b.disabled = true;
         try {
-          if (b.dataset.mng === 'on') await clip.enable(weightsGuess);
-          else if (b.dataset.mng === 'off') { await clip.disable(); ui.toast('Search by meaning is off and its vectors are deleted.', 'ok'); }
+          if (b.dataset.mng === 'off') { await clip.disable(); ui.toast('Search by meaning is off and its vectors are deleted.', 'ok'); }
           else if (b.dataset.mng === 'retry') await clip.retry();
         } catch (err) { ui.toast(err?.message ?? String(err), 'error'); }
+        b.disabled = false;
         queue();
       });
       const offClip = clip.onChange(queue);
@@ -1113,8 +1213,10 @@ export function initLibraryView(lib) {
     }
   }
   function updateMonthLabel() {
-    const m = monthAt(months, grid.scrollTop - PAD);
+    const panel = cur.view === 'x' && !!extraViews.get(cur.xview)?.render;
+    const m = panel || !list.length ? null : monthAt(months, grid.scrollTop - PAD);
     monthEl.textContent = m && layout.unit ? m.label : '';
+    monthEl.hidden = !monthEl.textContent;
   }
   function jumpTo(m) { if (m) { grid.scrollTop = m.top; render(); updateMonthLabel(); } }
   let scrubbing = false;

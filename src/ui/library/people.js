@@ -237,6 +237,7 @@ export function initPeople(lib, ui) {
     id: 'people',
     label: 'People',
     count: () => (faces.enabled() ? faces.people().length : null),
+    countText: () => { if (!faces.enabled()) return ''; const n = faces.people().length; return `${n.toLocaleString('en-GB')} ${n === 1 ? 'person' : 'people'}`; },
     render(el) {
       host = el;
       el.addEventListener('click', act);

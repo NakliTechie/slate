@@ -174,7 +174,7 @@ export function createThumbs(lib) {
       const list = records.filter(r => r && !queued.has(r.id));
       if (!list.length) return;
       for (const r of list) queued.add(r.id);
-      lib.jobs.add('thumbs', list, make);
+      lib.jobs.add('thumbs', list, make, { lane: 'now' });
     },
 
     url(id) {

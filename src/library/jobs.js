@@ -4,17 +4,33 @@
 //
 //   const q = new JobQueue({ concurrency: 4 });
 //   q.onProgress(p => ...);          // { kind, done, failed, total, running, paused, idle }
-//   q.add('thumbs', items, async (item, signal) => { ... });
+//   q.add('thumbs', items, async (item, signal) => { ... }, { lane: 'now' });
 //   q.pause(); q.resume(); q.cancel('thumbs'); await q.idle();
 //
 // A job function receives an AbortSignal that fires on cancel. A job that
 // throws counts as failed and the queue moves on; it never stops the queue.
+// A job whose file was trashed, moved or removed before it ran (it throws a
+// NotFoundError) is not a failure: it counts as done.
+//
+// Lanes: q.add(kind, items, fn, { lane: 'now' | 'background' }). Work the person waits
+// for (scan, thumbs, export, import, trash, restore) runs in 'now'; slow indexing
+// (ocr, clip, faces, dupes) runs in 'background'. Without a lane, a kind in
+// BACKGROUND_KINDS goes to 'background' and every other kind to 'now'. The pump
+// always takes 'now' work first, and starts background work only when 'now' is
+// empty. Background jobs also never fill the last slot (at most concurrency - 1 of
+// them run), so a 'now' job that arrives while OCR or CLIP is busy starts at once
+// instead of waiting seconds for a background job to end; a running job is never
+// stopped to make room.
+
+export const BACKGROUND_KINDS = new Set(['ocr', 'clip', 'faces', 'dupes', 'rehash']);
+const isGone = (err) => err?.name === 'NotFoundError';
 
 export class JobQueue {
   constructor({ concurrency = 4 } = {}) {
     this.concurrency = concurrency;
-    this.pending = [];             // [{ kind, item, fn }]
+    this.lanes = { now: [], background: [] }; // [{ kind, item, fn }] per lane
     this.running = 0;
+    this.runningBackground = 0;
     this.paused = false;
     this.counts = new Map();       // kind -> { done, failed, total }
     this.listeners = new Set();
@@ -25,11 +41,15 @@ export class JobQueue {
 
   onProgress(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  add(kind, items, fn) {
+  // Every pending job, 'now' lane first (scan.js reads it to tell whether its items are left).
+  get pending() { return [...this.lanes.now, ...this.lanes.background]; }
+
+  add(kind, items, fn, { lane = BACKGROUND_KINDS.has(kind) ? 'background' : 'now' } = {}) {
+    if (!this.lanes[lane]) throw new Error(`no job lane ${lane}`);
     if (!this.counts.has(kind)) this.counts.set(kind, { done: 0, failed: 0, total: 0 });
     if (!this.controllers.has(kind)) this.controllers.set(kind, new AbortController());
-    const c = this.counts.get(kind);
-    for (const item of items) { this.pending.push({ kind, item, fn }); c.total++; }
+    const c = this.counts.get(kind), q = this.lanes[lane];
+    for (const item of items) { q.push({ kind, item, fn, lane }); c.total++; }
     this._emit(kind);
     this._pump();
   }
@@ -39,12 +59,14 @@ export class JobQueue {
 
   // Drop every pending item of a kind (or all kinds) and abort the running ones.
   cancel(kind = null) {
-    const keep = [];
-    for (const j of this.pending) {
-      if (kind == null || j.kind === kind) this.counts.get(j.kind).total--;
-      else keep.push(j);
+    for (const lane of Object.keys(this.lanes)) {
+      const keep = [];
+      for (const j of this.lanes[lane]) {
+        if (kind == null || j.kind === kind) this.counts.get(j.kind).total--;
+        else keep.push(j);
+      }
+      this.lanes[lane] = keep;
     }
-    this.pending = keep;
     for (const [k, ctl] of this.controllers) {
       if (kind == null || k === kind) { ctl.abort(); this.controllers.delete(k); }
     }
@@ -54,7 +76,7 @@ export class JobQueue {
 
   // Resolves when nothing is pending or running.
   idle() {
-    if (!this.pending.length && !this.running) return Promise.resolve();
+    if (!this.#queued() && !this.running) return Promise.resolve();
     return new Promise(r => this.idleWaiters.push(r));
   }
 
@@ -62,20 +84,32 @@ export class JobQueue {
     const kinds = {};
     let done = 0, failed = 0, total = 0;
     for (const [k, c] of this.counts) { kinds[k] = { ...c }; done += c.done; failed += c.failed; total += c.total; }
-    return { done, failed, total, running: this.running, pending: this.pending.length, paused: this.paused, idle: !this.pending.length && !this.running, kinds };
+    const pending = this.#queued();
+    return { done, failed, total, running: this.running, pending, paused: this.paused, idle: !pending && !this.running, kinds };
   }
 
   // Forget finished counts (after the status bar has shown "done").
   reset() {
-    if (this.pending.length || this.running) return;
+    if (this.#queued() || this.running) return;
     this.counts.clear();
     this._emit(null);
   }
 
+  #queued() { return this.lanes.now.length + this.lanes.background.length; }
+
+  #next() {
+    if (this.lanes.now.length) return this.lanes.now.shift();
+    const room = Math.max(1, this.concurrency - 1);
+    if (this.lanes.background.length && this.runningBackground < room) return this.lanes.background.shift();
+    return null;
+  }
+
   _pump() {
-    while (!this.paused && this.running < this.concurrency && this.pending.length) {
-      const job = this.pending.shift();
+    while (!this.paused && this.running < this.concurrency) {
+      const job = this.#next();
+      if (!job) break;
       this.running++;
+      if (job.lane === 'background') this.runningBackground++;
       const ctl = this.controllers.get(job.kind) ?? new AbortController();
       this.controllers.set(job.kind, ctl);
       Promise.resolve()
@@ -83,12 +117,15 @@ export class JobQueue {
         .then(() => { this.counts.get(job.kind).done++; },
           (err) => {
             if (ctl.signal.aborted) return;
-            this.counts.get(job.kind).failed++;
+            const c = this.counts.get(job.kind);
+            if (isGone(err)) { c.done++; return; }
+            c.failed++;
             this.errors.push({ kind: job.kind, item: job.item?.id ?? job.item?.path ?? String(job.item), message: err?.message ?? String(err) });
             if (this.errors.length > 50) this.errors.shift();
           })
         .finally(() => {
           this.running--;
+          if (job.lane === 'background') this.runningBackground--;
           this._emit(job.kind);
           this._pump();
           this._checkIdle();
@@ -97,7 +134,7 @@ export class JobQueue {
   }
 
   _checkIdle() {
-    if (this.pending.length || this.running) return;
+    if (this.#queued() || this.running) return;
     const w = this.idleWaiters; this.idleWaiters = [];
     for (const r of w) r();
   }

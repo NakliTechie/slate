@@ -504,7 +504,7 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
     recs = recs.filter(r => !queued.has(r.id));
     if (!on || paused || !recs.length) return;
     for (const r of recs) queued.add(r.id);
-    lib.jobs.add('faces', recs, processOne);
+    lib.jobs.add('faces', recs, processOne, { lane: 'background' });
   }
 
   // Face rows of photos that left the library: `ids` (or every row when null) whose record is

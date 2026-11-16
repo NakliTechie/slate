@@ -16,11 +16,19 @@
 // An existing sidecar that buildXmp cannot merge into (no rdf:Description it can find, a
 // UTF-16 file, an `RDF:` prefix) is never replaced: the write is skipped and the file is
 // reported once through lib 'error' (review S11).
+//
+// Only changes XMP carries start a write: hiding a photo or making it a favourite does not
+// (XMP_SKIP_REASONS). A photo with no rating, reject, tags or face regions gets no new sidecar,
+// because the file would add nothing; an existing one is still updated, so a cleared rating or
+// tag leaves it. Each written path goes on the library's self-write list, so the folder watcher
+// does not rescan for it.
 
 import { buildXmp, sidecarNames } from './xmp.js';
 
 export const XMP_SETTING_KEY = 'setting:xmpWrite';
 const DELAY_MS = 1500;
+// Choice changes no XMP property carries.
+export const XMP_SKIP_REASONS = new Set(['hide', 'favourite']);
 
 async function readText(dir, name) {
   try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
@@ -35,9 +43,9 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
 
   const ready = Promise.resolve(lib.store?.getKv?.(XMP_SETTING_KEY)).then(v => { on = v === true; }).catch(() => {});
 
-  lib.on('choices', ({ ids } = {}) => {
+  lib.on('choices', ({ ids, reason } = {}) => {
     // ids is null for a library-file load or a moved-file rematch; those are not edits.
-    if (!on || !Array.isArray(ids) || !ids.length) return;
+    if (!on || !Array.isArray(ids) || !ids.length || XMP_SKIP_REASONS.has(reason)) return;
     for (const id of ids) pending.add(id);
     clearTimeout(timer);
     timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not write XMP sidecars: ${e.message}` })); }, delay);
@@ -60,7 +68,9 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
     const own = await readText(dir, full);
     const seedName = own != null ? full : stem;
     const existing = own ?? (stem ? await readText(dir, stem) : null);
-    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing, regions: lib.services.faces?.regionsFor?.(id) });
+    const rating = lib.rating(id), tags = lib.tagsOf(id), regions = lib.services.faces?.regionsFor?.(id);
+    if (own == null && !rating && c.flag !== 'reject' && !tags.length && !regions?.regions?.length) return false;
+    const text = buildXmp({ rating, flag: c.flag, tags, existing, regions });
     if (text == null) {
       const dirPath = r.path.slice(0, r.path.lastIndexOf('/') + 1);
       const path = dirPath + seedName;
@@ -71,6 +81,7 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
       return false;
     }
     if (text === existing) return false;
+    lib.noteSelfWrite?.(root.id, r.path.slice(0, r.path.lastIndexOf('/') + 1) + full);
     const fh = await dir.getFileHandle(full, { create: true });
     const w = await fh.createWritable();
     await w.write(text);

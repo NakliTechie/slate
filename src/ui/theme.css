@@ -185,6 +185,8 @@ dialog {
 }
 
 dialog::backdrop { background: var(--overlay-backdrop); }
+/* Adjust, Sharpen, Straighten: the photo behind the dialog stays undimmed (modals.js seeThrough). */
+dialog.modal-see-through::backdrop { background: transparent; }
 
 /* ── Utility classes ──────────────────────────────────────────────────────── */
 

@@ -21,8 +21,18 @@
 // zipFileName(label, date) -> "<label> YYYY-MM-DD.zip", with characters files cannot hold removed
 // pickZipSave(suggestedName) -> WritableStream, or null when cancelled; undefined when the
 //   browser has no showSaveFilePicker. Call it straight from a click.
+//
+// Remove location (on by default in the dialog): exportFiles and exportZip take
+// { removeLocation: true }. A JPEG then loses the GPS directory of its EXIF block
+// (exif.js sanitiseExifApp1 finds and zeroes it, and its entry leaves IFD0); every other
+// byte of the file, the orientation and the embedded thumbnail included, stays as it is.
+// A JPEG whose EXIF cannot be read loses its whole EXIF block instead, and the result
+// counts it as exifRemoved (a field the result has only when removeLocation is set). Other files (HEIC, PNG, RAW, videos) are copied as they are.
+//   removeGpsFromApp1(app1) -> Uint8Array copy without GPS, or null when unreadable
+//   withoutLocation(file) -> { file, change: 'none'|'gps'|'exif' }
 
 import { makeId } from './schema.js';
+import { sanitiseExifApp1 } from '../exif.js';
 
 export function uniqueName(name, taken) {
   const lower = (s) => s.toLowerCase();
@@ -68,6 +78,70 @@ export function albumExportIds(lib, albumId) {
   return [...al.items].filter(id => { const r = lib.get(id); return r && !r.missing && !lib.choice(id).trashed; });
 }
 
+// ── Remove location ─────────────────────────────────────────────────────────
+// sanitiseExifApp1 also drops the thumbnail and resets the orientation, which suit a
+// re-encoded export but not an original. So it runs twice, with and without GPS removal:
+// the bytes that differ outside IFD0's entry block are the zeroed GPS directory and its
+// values, and only those are taken. The GPS entry is then removed from the original IFD0.
+export function removeGpsFromApp1(app1) {
+  const src = app1 instanceof Uint8Array ? app1 : new Uint8Array(app1);
+  const keep = sanitiseExifApp1(src, { removeLocation: false });
+  const drop = sanitiseExifApp1(src, { removeLocation: true });
+  if (!keep || !drop) return null;
+  const out = src.slice();
+  const T = 10;
+  const v = new DataView(out.buffer, out.byteOffset + T, out.byteLength - T);
+  const le = v.getUint16(0) === 0x4949;
+  const ifd0 = v.getUint32(4, le);
+  const n = v.getUint16(ifd0, le);
+  let g = -1;
+  for (let i = 0; i < n; i++) if (v.getUint16(ifd0 + 2 + i * 12, le) === 0x8825) { g = ifd0 + 2 + i * 12; break; }
+  if (g < 0) return out;
+  const blockStart = T + ifd0, blockEnd = T + ifd0 + 2 + n * 12 + 4;
+  for (let i = 0; i < out.length; i++) {
+    if (i >= blockStart && i < blockEnd) continue;
+    if (keep[i] !== drop[i]) out[i] = drop[i];
+  }
+  out.copyWithin(T + g, T + g + 12, blockEnd);
+  out.fill(0, blockEnd - 12, blockEnd);
+  v.setUint16(ifd0, n - 1, le);
+  return out;
+}
+
+// The EXIF APP1 segment of a JPEG head: { start, end } byte offsets, or null.
+function findExifApp1(head) {
+  const v = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  if (head.length < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let off = 2;
+  while (off + 4 <= head.length) {
+    const marker = v.getUint16(off);
+    if (marker < 0xFF00 || marker === 0xFFDA || marker === 0xFFD9) return null;
+    const len = v.getUint16(off + 2);
+    if (marker === 0xFFE1 && off + 10 <= head.length && v.getUint32(off + 4) === 0x45786966 && v.getUint16(off + 8) === 0) {
+      return off + 2 + len <= head.length ? { start: off, end: off + 2 + len } : null;
+    }
+    off += 2 + len;
+  }
+  return null;
+}
+
+const HEAD_BYTES = 256 * 1024; // APP1 is at most 64 KB and sits at the start of the file
+
+export async function withoutLocation(file) {
+  const head = new Uint8Array(await file.slice(0, Math.min(file.size, HEAD_BYTES)).arrayBuffer());
+  if (head.length < 2 || head[0] !== 0xFF || head[1] !== 0xD8) return { file, change: 'none' };
+  const seg = findExifApp1(head);
+  if (!seg) return { file, change: 'none' };
+  const app1 = head.slice(seg.start, seg.end);
+  const clean = removeGpsFromApp1(app1);
+  const parts = [file.slice(0, seg.start), ...(clean ? [clean] : []), file.slice(seg.end)];
+  const blob = new Blob(parts, { type: file.type || 'image/jpeg' });
+  const out = typeof File === 'function' ? new File([blob], file.name, { type: blob.type, lastModified: file.lastModified }) : blob;
+  if (!clean) return { file: out, change: 'exif' };
+  const same = clean.every((b, i) => b === app1[i]);
+  return { file: same ? file : out, change: same ? 'none' : 'gps' };
+}
+
 async function copyInto(file, dir, name) {
   const fh = await dir.getFileHandle(name, { create: true });
   const w = await fh.createWritable();
@@ -81,8 +155,18 @@ async function copyInto(file, dir, name) {
   }
 }
 
-export async function exportFiles(lib, ids, destDir) {
-  if (!ids.some(id => lib.get(id))) return { copied: 0, failed: 0, total: 0 };
+async function readForExport(lib, fileId, removeLocation, counts) {
+  const file = await lib.getFile(fileId);
+  if (!removeLocation) return file;
+  const r = await withoutLocation(file);
+  if (r.change === 'exif') counts.exifRemoved++;
+  return r.file;
+}
+
+export async function exportFiles(lib, ids, destDir, { removeLocation = false } = {}) {
+  const extra = () => (removeLocation ? { exifRemoved: counts.exifRemoved } : {});
+  const counts = { exifRemoved: 0 };
+  if (!ids.some(id => lib.get(id))) return { copied: 0, failed: 0, total: 0, ...extra() };
   // Names are reserved up front, so parallel copies never race for one name.
   const taken = new Set();
   for await (const [n] of destDir.entries()) taken.add(n.toLowerCase());
@@ -91,12 +175,12 @@ export async function exportFiles(lib, ids, destDir) {
   let copied = 0, failed = 0;
   return new Promise((resolve) => {
     let finished = false;
-    const finish = () => { if (!finished) { finished = true; resolve({ copied, failed, total: items.length }); } };
+    const finish = () => { if (!finished) { finished = true; resolve({ copied, failed, total: items.length, ...extra() }); } };
     const tick = () => { if (copied + failed === items.length) finish(); };
     lib.jobs.add('export', items, async (item, signal) => {
       try {
         if (signal?.aborted) throw new Error('cancelled');
-        await copyInto(await lib.getFile(item.fileId), destDir, item.name);
+        await copyInto(await readForExport(lib, item.fileId, removeLocation, counts), destDir, item.name);
         copied++;
       } catch (e) { failed++; throw e; }
       finally { tick(); }
@@ -136,7 +220,8 @@ export async function pickZipSave(suggestedName) {
   } catch (e) { if (e?.name === 'AbortError') return null; throw e; }
 }
 
-export async function exportZip(lib, ids, { zipLib, writer } = {}) {
+export async function exportZip(lib, ids, { zipLib, writer, removeLocation = false } = {}) {
+  const counts = { exifRemoved: 0 };
   const items = zipEntries(lib, ids);
   const bytes = items.reduce((n, it) => n + (it.fileId === it.id ? lib.get(it.id).size || 0 : 0), 0);
   const zip = new zipLib.ZipWriter(writer, { zip64: bytes > ZIP64_BYTES || items.length > 0xFFFF });
@@ -152,7 +237,7 @@ export async function exportZip(lib, ids, { zipLib, writer } = {}) {
         const step = chain.then(async () => {
           if (signal?.aborted || fatal) throw new Error('cancelled');
           let file;
-          try { file = await lib.getFile(item.fileId); } catch (e) { failed++; throw e; }
+          try { file = await readForExport(lib, item.fileId, removeLocation, counts); } catch (e) { failed++; throw e; }
           try {
             const level = zipLevelFor(item.name);
             const opts = {};
@@ -177,5 +262,5 @@ export async function exportZip(lib, ids, { zipLib, writer } = {}) {
     throw new Error(`The zip export stopped: ${fatal.message ?? fatal}`);
   }
   const result = await zip.close();
-  return { copied, failed, total: items.length, cancelled, result };
+  return { copied, failed, total: items.length, cancelled, result, ...(removeLocation ? { exifRemoved: counts.exifRemoved } : {}) };
 }
