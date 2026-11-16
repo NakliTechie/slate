@@ -17,6 +17,7 @@ const opt = (k, d) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i
 const URL0 = opt('url', 'http://127.0.0.1:8493/index.html');
 const SET = opt('set', 'testset');
 const MODELS = args.includes('--models');
+const SKIP_OCR = args.includes('--skip-ocr');
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const FOLDER = `slate-livecheck-real-${Date.now().toString(36)}`;
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
@@ -77,10 +78,10 @@ try {
       noDims: rs.filter(r=>r.kind==='photo' && (!r.w||!r.h)).map(r=>r.path).slice(0,8), videosNoDur: rs.filter(r=>r.kind==='video' && !r.dur).map(r=>r.path),
       errors: L.jobs.errors.slice(0,8) }`);
   note(`indexed in ${Math.round((Date.now() - t0) / 1000)} s: ${JSON.stringify(sum)}`);
-  check('L1 M1 M2', 'every copied file is indexed with a thumbnail', sum.records === copied.n && sum.thumbFails.length === 0, `${sum.records} records; failures: ${sum.thumbFails.join(', ') || 'none'}`);
+  check('L1 M1 M2', 'every copied file is indexed, and every thumbnail is made except clips in codecs Chrome lacks (Theora)', sum.records === copied.n && sum.thumbFails.every(f => /\.ogv /.test(f)), `${sum.records} records; failures: ${sum.thumbFails.join(', ') || 'none'}`);
   check('M1', 'real EXIF: capture dates from cameras, several years and cameras', (sum.timeSource.exif || 0) >= sum.records * 0.6 && sum.years.length >= 5 && sum.cameras >= 5, `exif dates ${sum.timeSource.exif || 0}, years ${sum.years.join(' ')}, ${sum.cameras} cameras`);
   check('M1', 'every photo has its pixel size', sum.noDims.length === 0, sum.noDims.join(', ') || 'all');
-  check('M3', 'every video has a poster and a duration', sum.videosNoDur.length === 0 && (sum.kinds.video || 0) >= 1, `${sum.kinds.video || 0} videos; without duration: ${sum.videosNoDur.join(', ') || 'none'}`);
+  check('M3', 'every video in a codec Chrome plays has a poster and a duration (Theora .ogv is listed with a placeholder)', sum.videosNoDur.every(p => /\.ogv$/.test(p)) && (sum.kinds.video || 0) >= 1, `${sum.kinds.video || 0} videos; without duration: ${sum.videosNoDur.join(', ') || 'none'}`);
 
   // ── Places ──
   await ev(`document.querySelector('.library-sidebar [data-xview="places"]')?.click(); return 1`);
@@ -101,6 +102,7 @@ try {
   const dup = await ev(`return (/Found[^.]*\\./.exec(document.querySelector('.lib-panel')?.innerText||'')||[''])[0]`);
   check('D2', 'Duplicates finds the bursts and near-duplicates', /(\d+) groups? of similar/.test(dup) && Number(/(\d+) groups? of similar/.exec(dup)[1]) >= 1, dup || 'No duplicates found');
 
+  if (!SKIP_OCR) {
   // ── text in photos ──
   await ev(`${L} await L.services.textIndex.setEnabled(true); return 1`);
   const tOcr = Date.now();
@@ -113,8 +115,10 @@ try {
   ocr.seconds = Math.round((Date.now() - tOcr) / 1000);
   check('X3', 'text is read from real signs and a word from them finds the photo', ocr.withText >= 3 && ocr.hits >= 1, JSON.stringify(ocr));
 
+  }
+
   if (MODELS) {
-    await ev(`${L} await L.services.clip.enable(); return 1`);
+    await ev(`${L} await L.services.clip.enable('q8'); return 1`);
     await until(`${L} const s=L.services.clip.status(); return (s.count||0) >= s.indexable && s.model==='ready'`, 1200000, 3000);
     const cl = await ev(`${L} const q=async t=>(await S.run('library.search_meaning',{ text:t, limit:5 })).items.map(x=>x.folder+'/'+x.name);
       const out={ mountains: await q('snowy mountains'), beach: await q('a beach with the sea'), city: await q('a city street at night'), status: L.services.clip.status() };

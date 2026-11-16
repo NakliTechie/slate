@@ -13,7 +13,9 @@ export const PHOTO_EXTS = new Set([
   'heic', 'heif', 'tif', 'tiff', 'jxl', 'psd', 'tga', 'dds',
   'cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2',
 ]);
-export const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'webm']);
+// .ogv and .ogg (Theora) are listed so they are not silently skipped; Chrome cannot decode Theora,
+// so they show a placeholder (found on the real photo set: 2 Commons clips).
+export const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'webm', 'ogv']);
 
 // Sidecar extension; `photo.jpg.xmp` (full name) and `photo.xmp` (stem) are both read.
 export const SIDECAR_EXT = 'xmp';
