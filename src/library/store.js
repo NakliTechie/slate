@@ -20,6 +20,9 @@
 //   estimate()                  { photos, roots } row counts
 
 export const DB_NAME = 'slate.library';
+
+// Rebuild index keeps the person's settings, the hidden-photo lock and text already read from photos.
+export function keepKv(key) { return typeof key === 'string' && (key.startsWith('setting:') || key.startsWith('lock:') || key === 'textindex'); }
 export const DB_VERSION = 1;
 
 export function memoryStore() {
@@ -41,7 +44,7 @@ export function memoryStore() {
     async getKv(key) { return kv.has(key) ? clone(kv.get(key)) : undefined; },
     async setKv(key, value) { kv.set(key, clone(value)); },
     async deleteKv(key) { kv.delete(key); },
-    async clear() { photos.clear(); roots.clear(); kv.clear(); },
+    async clear() { photos.clear(); roots.clear(); for (const k of [...kv.keys()]) if (!keepKv(k)) kv.delete(k); },
     async estimate() { return { photos: photos.size, roots: roots.size }; },
   };
 }
@@ -103,8 +106,11 @@ export async function idbStore(name = DB_NAME) {
     async setKv(key, value) { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(value, key); await done(tx); },
     async deleteKv(key) { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(key); await done(tx); },
     async clear() {
+      const keys = await req(db.transaction('kv').objectStore('kv').getAllKeys());
       const tx = db.transaction(['photos', 'roots', 'kv'], 'readwrite');
-      for (const s of ['photos', 'roots', 'kv']) tx.objectStore(s).clear();
+      tx.objectStore('photos').clear();
+      tx.objectStore('roots').clear();
+      for (const k of keys) if (!keepKv(k)) tx.objectStore('kv').delete(k);
       await done(tx);
     },
     async estimate() {

@@ -1,7 +1,8 @@
 // Storage panel: how big the index and thumbnails are, the browser's quota,
 // a request to keep the data (navigator.storage.persist), library file
-// downloads for browse-only folders, the "Write XMP sidecars" setting, and
-// Rebuild index with a confirmation.
+// downloads for browse-only folders, the "Write XMP sidecars" setting, the
+// "Read text in photos" setting (row X3, textindex.js), and Rebuild index with
+// a confirmation.
 
 import { emit } from '../../core/events.js';
 import { esc } from '../../core/html.js';
@@ -31,6 +32,9 @@ export function openStoragePanel(lib, dlg) {
     <p class="lib-note">${lib.services.watch?.status?.() === 'watching' ? 'Slate watches your folders and picks up new, changed and removed files on its own.' : 'This browser cannot watch folders, so Slate looks for new and changed files each time the Library opens.'}</p>
     <label class="lib-storage-xmp"><input type="checkbox" data-s-xmp> Write XMP sidecars for ratings, labels and tags</label>
     <p class="lib-note">Slate writes a photo.jpg.xmp file beside each photo you rate, reject or tag, so Lightroom, digiKam and darktable see the same choices. Your photos are never changed.</p>
+    ${lib.services.textIndex ? `<label class="lib-storage-xmp"><input type="checkbox" data-s-text> Read text in photos</label>
+    <p class="lib-note">Slate reads the words in each photo on this device, so search finds a sign, a receipt or a slide by its text. The text stays in this browser and is not written to your folders. It runs in the background and the Pause button pauses it. <span data-s="text-count"></span></p>
+    <button class="btn" data-s="forget-text">Forget read text</button>` : ''}
     ${browseOnly.length ? `<div class="lib-storage-files"><p class="lib-note">Slate cannot write the library file into these folders, so their choices are kept in this browser. Download the library file and put it in the folder to keep a copy.</p>
       ${browseOnly.map(r => `<button class="btn" data-s-download="${esc(r.id)}">Download library file for ${esc(r.name)}</button>`).join('')}</div>` : ''}
     <div class="lib-storage-confirm" hidden>
@@ -66,6 +70,20 @@ export function openStoragePanel(lib, dlg) {
     } catch (e) { emit('error', { message: `Could not save the setting: ${e.message}` }); }
   };
 
+  const textBox = dlg.querySelector('[data-s-text]');
+  const ti = lib.services.textIndex;
+  const showTextCount = () => set('text-count', ti ? `Photos read so far: ${ti.count().toLocaleString('en-GB')}.` : '');
+  if (textBox && ti) {
+    Promise.resolve(ti.ready).then(() => { textBox.checked = ti.enabled(); showTextCount(); }).catch(() => {});
+    textBox.onchange = async () => {
+      const v = textBox.checked;
+      try {
+        await ti.setEnabled(v);
+        emit('toast', { message: v ? 'Slate is reading the text in your photos.' : 'Slate stopped reading text. The text it found stays searchable.', level: 'ok' });
+      } catch (e) { emit('error', { message: `Could not save the setting: ${e.message}` }); }
+    };
+  }
+
   const confirmBox = dlg.querySelector('.lib-storage-confirm');
   const footer = dlg.querySelector('[data-s="footer"]');
 
@@ -77,6 +95,11 @@ export function openStoragePanel(lib, dlg) {
     }
     const a = e.target.closest('[data-s]')?.dataset.s;
     if (a === 'close') dlg.close();
+    else if (a === 'forget-text') {
+      await ti?.forget();
+      showTextCount();
+      emit('toast', { message: 'Slate forgot the text it read from your photos.', level: 'ok' });
+    }
     else if (a === 'persist') {
       if (!navigator.storage?.persist) { emit('toast', { message: 'This browser cannot be asked to keep data.', level: 'warn' }); return; }
       const ok = await navigator.storage.persist().catch(() => false);

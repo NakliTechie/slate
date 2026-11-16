@@ -22,6 +22,8 @@ the supply-chain risk is mitigated.
 | Photoshop (decode) | `ag-psd@30.1.1` | esm.sh | ~250 KB plus `pako` and `base64-js`. |
 | Extract text (OCR) | `tesseract.js@7.0.0` | esm.sh, then jsdelivr | Loads only when you press Extract text. The library pulls its worker, `tesseract.js-core` (WASM) and the English `eng.traineddata` from jsdelivr (about 5 MB, cached). Recognition runs locally; the image is never sent anywhere. |
 | Google Takeout import (zip read) | `@zip.js/zip.js@2.24.0` | esm.sh | Loads only when you import Google Takeout zips into the library. BSD-3-Clause, pure JS; inflate uses the browser's own DecompressionStream, and its web workers are turned off. The zips are read locally and never sent anywhere. |
+| Search by meaning (photo library, opt-in) | `@huggingface/transformers@4.3.2` | jsdelivr | Loads only after you turn on Search by meaning, which first states the download size. Apache-2.0. It pulls `onnxruntime-web@1.31.0-dev.20260914-8d85527a0` (MIT) and its WebAssembly files from jsdelivr, then the model below from huggingface.co. The model runs in a worker on this device; photos and search text are never sent anywhere. |
+| Search by meaning model weights | Xenova/clip-vit-base-patch32, revision `6b7c523` | huggingface.co | OpenAI CLIP ViT-B/32 converted to ONNX, MIT licence. About 157 MB with 8-bit weights (WebAssembly) or 307 MB with 16-bit weights (WebGPU), downloaded once and cached by the browser. Turning the feature off deletes the stored vectors; the browser cache keeps the model files until site data is cleared. |
 | Targa (decode) | `tga-js@1.1.1` | **Vendored** at `src/vendor/tga-js.mjs` | 4 KB pure JS, no transitive deps. |
 | DDS textures (decode) | `dds-parser@1.0.1` | **Vendored** at `src/vendor/dds-parser.mjs` | 4 KB pure JS, no transitive deps. |
 | Photo library metadata (EXIF, XMP, embedded thumbnails) | `exifr@7.1.3` | **Vendored** at `src/vendor/exifr.mjs` | 75 KB pure JS (full ESM build), MIT, no transitive deps; one line break added before `export default` for the bundler. |
@@ -39,6 +41,17 @@ zip.js loads the same way the first time you import Google Takeout zips
 into the photo library.
 
 ---
+
+### Opt-in downloads (photo library)
+
+| Feature | What loads | From | When |
+|---|---|---|---|
+| Search by meaning | `@huggingface/transformers@4.3.2`, its onnxruntime-web, and `Xenova/clip-vit-base-patch32` (MIT) at revision `6b7c523`, about 157 MB (WASM) or 307 MB (WebGPU) | cdn.jsdelivr.net, huggingface.co | after you turn it on |
+| People (faces) | `onnxruntime-web@1.29.0`, YuNet 2023mar (MIT, 233 KB) and SFace 2021dec int8 (Apache-2.0, 9.9 MB), pinned to repository commits | cdn.jsdelivr.net, huggingface.co | after you turn it on |
+| Places map file | `maplibre-gl@6.16.0`, `pmtiles@4.5.0` | cdn.jsdelivr.net | when you choose a .pmtiles file |
+| Places | `assets/places/cities.bin` (GeoNames, CC BY 4.0), `assets/places/countries.json` (Natural Earth, public domain) | Slate's own site | when you open Places |
+
+Photos and their vectors stay in the browser; only these libraries and model files are downloaded.
 
 ## Vendored modules — content hashes
 
@@ -64,8 +77,8 @@ To upgrade a vendored library:
 
 ## CDN-loaded modules — exact-version pin
 
-All six CDN-loaded packages are pinned to an exact version (no `@1`,
-no `latest`):
+Every CDN-loaded package Slate imports by URL is pinned to an exact
+version (no `@1`, no `latest`):
 
 - `https://esm.sh/utif@3.1.0`
 - `https://esm.sh/libheif-js@1.19.8/wasm-bundle.js`
@@ -73,6 +86,10 @@ no `latest`):
 - `https://esm.sh/ag-psd@30.1.1`
 - `https://esm.sh/@zip.js/zip.js@2.24.0`
 - `https://esm.sh/tesseract.js@7.0.0` (then `cdn.jsdelivr.net/npm/tesseract.js*` and the tessdata files)
+- `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/+esm` (Search by meaning, opt-in), with the model files pinned to Hugging Face revision `6b7c523703ae26e39be4b03774966f8571c7f523`
+
+One gap: jsdelivr's bundle of Transformers.js 4.3.2 imports `onnxruntime-common`
+without a version, so jsdelivr picks the version it serves for that package.
 
 A new version of any of these published upstream — malicious or not —
 **does not reach a Slate user**. Their browser keeps requesting the
@@ -115,6 +132,11 @@ deployed.
   TIFF, or PSD file. JPG / PNG / WebP / GIF / AVIF / SVG / BMP / TGA / DDS
   / RAW (embedded preview) all work with zero network traffic after the
   page loads.
+
+- **A compromised jsdelivr or Hugging Face** for Search by meaning. The
+  same reasoning as esm.sh applies: Transformers.js and its runtime come
+  from jsdelivr, and the model files from huggingface.co, without SRI.
+  Nothing from either loads until you turn the feature on.
 
 - **A malicious upstream package version that we audit and ship.** If a
   vendored bundle (`tga-js@1.1.1` say) is itself malicious upstream, our

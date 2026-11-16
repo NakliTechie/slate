@@ -5,6 +5,8 @@
 // Live Photo (row M7, `rec.liveVideo`) plays its paired MOV, on hover or from the Play button.
 // A stack (row B9) steps through its members with the Up and Down arrows or the stack buttons;
 // the shown member is the one choices apply to.
+// "Find similar" (row Q3) shows when the photo has a meaning vector (clip.js);
+// it hands the id to hooks.onSimilar, and the grid shows the nearest photos.
 
 import { decode } from '../../decode/registry.js';
 import { esc } from '../../core/html.js';
@@ -35,7 +37,7 @@ export function formatTaken(time) {
 /**
  * @param {object} lib
  * @param {HTMLElement} el  the viewer container (starts hidden)
- * @param {{ getList: () => object[], getStack?: (id:string) => string[]|null, onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void }} hooks
+ * @param {{ getList: () => object[], getStack?: (id:string) => string[]|null, onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void, canSimilar?: (id:string) => boolean, onSimilar?: (id:string) => void }} hooks
  */
 
 // The motion clip of a record as a Blob, or null: the embedded MP4 of a Motion Photo,
@@ -50,7 +52,7 @@ export async function motionClip(lib, rec) {
   return null;
 }
 
-export function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, onClose, onEdit }) {
+export function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, onClose, onEdit, canSimilar = () => false, onSimilar = () => {} }) {
   el.innerHTML = `
     <div class="lv-bar">
       <button class="btn-icon" data-v="close" aria-label="Back to the grid (Escape)"><svg class="icon" aria-hidden="true"><use href="#icon-x"/></svg></button>
@@ -66,6 +68,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
       <button class="btn-icon" data-v="prev" aria-label="Previous photo (Left arrow)"><span aria-hidden="true">&#8249;</span></button>
       <button class="btn-icon" data-v="next" aria-label="Next photo (Right arrow)"><span aria-hidden="true">&#8250;</span></button>
       <button class="btn-icon" data-v="info" aria-label="Photo information (I)" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg></button>
+      <button class="btn" data-v="similar" aria-label="Find similar photos" hidden>Find similar</button>
       <button class="btn btn-primary" data-v="edit" aria-label="Open in the editor (E)">Edit</button>
     </div>
     <div class="lv-body">
@@ -78,6 +81,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
   const posEl = el.querySelector('.lv-pos');
   const infoBtn = el.querySelector('[data-v="info"]');
   const editBtn = el.querySelector('[data-v="edit"]');
+  const similarBtn = el.querySelector('[data-v="similar"]');
   const motionEl = el.querySelector('.lv-motion');
   const stackEl = el.querySelector('.lv-stack');
   const stackPosEl = el.querySelector('.lv-stackpos');
@@ -100,6 +104,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
     else if (a === 'snext') step(1);
     else if (a === 'play') playMotion();
     else if (a === 'edit' && id) onEdit(id);
+    else if (a === 'similar' && id) { const sid = id; close(); onSimilar(sid); }
   });
 
   // Hovering the photo plays its motion clip (rows M6 and M7).
@@ -204,6 +209,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
     renderPos(getList());
     renderInfo(rec);
     editBtn.disabled = rec.kind === 'video';
+    similarBtn.hidden = !canSimilar(rec.id);
     const hasClip = !!(rec.motion || rec.liveVideo);
     motionEl.hidden = !hasClip;
     motionEl.innerHTML = hasClip ? `<span class="lv-motion-badge">${rec.motion ? 'Motion' : 'Live'}</span> <button class="btn btn-sm" data-v="play" aria-label="Play the ${rec.motion ? 'motion' : 'live'} clip (Space)">Play</button>` : '';
@@ -266,6 +272,8 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
       c.fav ? ['Favourite', 'Yes'] : null,
       lib.tagsOf(rec.id).length ? ['Tags', lib.tagsOf(rec.id).join(', ')] : null,
       lib.albumsOf(rec.id).length ? ['Albums', lib.albumsOf(rec.id).map(a => a.name).join(', ')] : null,
+      rec.description ? ['Caption', rec.description] : null,
+      lib.textOf?.(rec.id) ? ['Text in photo', lib.textOf(rec.id).slice(0, 400)] : null,
       rec.missing ? ['Status', 'Missing from its folder'] : null,
     ].filter(Boolean);
     info.innerHTML = `<h2 class="lv-info-title">Information</h2><dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
@@ -289,6 +297,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
     renderPos(list);
     const rec = lib.get(id) ?? list[at];
     renderInfo(rec);
+    similarBtn.hidden = !canSimilar(id);
     onShow(index);
   }
 

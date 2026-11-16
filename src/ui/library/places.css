@@ -1,0 +1,36 @@
+/* ── Library places view (ui/library/places.js) ──────────────────────────── */
+
+.lib-panel:has(> .plc-root) { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.plc-root { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+
+.plc-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.plc-tabs { display: inline-flex; gap: var(--space-1); }
+.plc-tab { padding: 2px var(--space-3); font-size: 12px; }
+.plc-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.plc-pm { margin-left: auto; padding: 2px var(--space-2); font-size: 12px; }
+
+.plc-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+.plc-note { margin: 0; font-size: 12px; color: var(--fg-1); }
+.plc-attr { margin: 0; font-size: 11px; color: var(--fg-2); }
+
+.plc-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.plc-country { border: 1px solid var(--bg-3); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-1) var(--space-2); }
+.plc-country summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-0); }
+.plc-cname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plc-count { margin-left: auto; padding-left: var(--space-2); font-size: 12px; font-weight: 400; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.plc-city {
+  display: flex; align-items: center; width: 100%;
+  padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--fg-1); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.plc-city:hover, .plc-city:focus-visible { background: var(--bg-2); color: var(--fg-0); }
+.plc-all { font-style: italic; }
+
+.plc-map { flex: 1; min-height: 240px; position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-md); }
+.plc-canvas { display: block; position: absolute; inset: 0; cursor: grab; touch-action: none; }
+.plc-canvas:active { cursor: grabbing; }
+.plc-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.plc-hint { margin: 0; position: absolute; left: var(--space-2); bottom: var(--space-2); padding: 2px var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--bg-0) 80%, transparent); font-size: 11px; color: var(--fg-1); pointer-events: none; }
+.plc-glwrap .plc-hint { pointer-events: auto; }
+.plc-hint .btn { margin-left: var(--space-2); padding: 0 var(--space-2); font-size: 11px; }
+.plc-gl { flex: 1; min-height: 240px; }

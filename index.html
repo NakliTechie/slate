@@ -2899,6 +2899,22 @@ kbd {
 .lv-motion-badge { padding: 1px 6px; border-radius: 4px; background: var(--bg-2); color: var(--fg-1, inherit); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
 .lv-stackpos { font-variant-numeric: tabular-nums; }
 
+/* Search by meaning (rows Q2, Q3): the toggle, the ranked-results chip and the settings view. */
+.lib-search { display: flex; align-items: center; gap: var(--space-1, 4px); }
+.lib-q { flex: 1 1 auto; min-width: 0; }
+.lib-meaning { flex-shrink: 0; }
+.lib-meaning[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.lib-ranked { font-size: 12px; color: var(--fg-1); display: inline-flex; align-items: center; gap: var(--space-1, 4px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-panel:has(> .mng-root) { flex: 1; min-width: 0; overflow-y: auto; }
+.mng-root { max-width: 640px; padding: var(--space-3) var(--space-3) var(--space-4, 24px); color: var(--fg-1); }
+.mng-root h2 { color: var(--fg-0); font-size: 18px; margin: 0 0 var(--space-2); }
+.mng-root p { line-height: 1.5; margin: 0 0 var(--space-2); }
+.mng-note { color: var(--fg-2); font-size: 12px; }
+.mng-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1, 4px) var(--space-3); margin: 0 0 var(--space-3); }
+.mng-facts dt { color: var(--fg-2); }
+.mng-facts dd { margin: 0; color: var(--fg-0); overflow-wrap: anywhere; }
+.mng-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
 
 /* ui/library/organise.css */
 /* ── Library organise: action bar, dialogs, menus, undo toast ─────────────── */
@@ -2991,6 +3007,100 @@ kbd {
 .org-old { color: var(--fg-2); }
 .org-new { color: var(--fg-0); }
 .org-error { color: var(--danger); }
+.org-dialog input[type="password"] { font: inherit; }
+
+
+/* ui/library/people.css */
+/* ── Library People view (ui/library/people.js) ──────────────────────────── */
+
+.lib-panel:has(> .ppl-root), .lib-panel:has(> .ppl-intro) { flex: 1; min-width: 0; overflow-y: auto; }
+.ppl-root, .ppl-intro { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); color: var(--fg-0); }
+.ppl-intro { max-width: 640px; font-size: 13px; line-height: 1.5; }
+.ppl-intro h2 { margin: 0; font-size: 16px; }
+.ppl-intro p, .ppl-intro ul { margin: 0; color: var(--fg-1); }
+.ppl-intro ul { padding-left: var(--space-4, 20px); display: flex; flex-direction: column; gap: var(--space-1); }
+
+.ppl-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.ppl-status { font-size: 13px; }
+.ppl-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--fg-1); }
+.ppl-check { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ppl-error { margin: 0; font-size: 12px; color: var(--danger, #c0392b); }
+.ppl-confirm { border: 1px solid var(--bg-3); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-2) var(--space-3); font-size: 13px; }
+.ppl-confirm p { margin: 0 0 var(--space-2); }
+.ppl-empty { color: var(--fg-1); font-size: 13px; }
+
+.ppl-face {
+  display: block; width: 96px; height: 96px; flex: none;
+  border-radius: 50%; background-color: var(--bg-2); background-repeat: no-repeat;
+}
+.ppl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-3); }
+.ppl-card {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+  padding: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md);
+  background: none; color: var(--fg-0); cursor: pointer; font: inherit;
+}
+.ppl-card:hover, .ppl-card:focus-visible { border-color: var(--bg-3); background: var(--bg-1); }
+.ppl-hidden .ppl-face { opacity: 0.5; }
+.ppl-name { font-size: 13px; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+.ppl-count { font-size: 11px; color: var(--fg-2); }
+
+.ppl-person { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.ppl-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 13px; }
+.ppl-form input { min-width: 200px; }
+.ppl-section { margin: var(--space-2) 0 0; font-size: 14px; font-weight: 600; }
+.ppl-faces { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.ppl-facecell { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.ppl-facecell .ppl-face { width: 72px; height: 72px; }
+.ppl-facecell .btn { padding: 2px var(--space-2); font-size: 11px; }
+.ppl-cover .ppl-face { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+.ppl-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-1); }
+.ppl-photo { padding: 0; border: 0; background: var(--bg-2); aspect-ratio: 1; cursor: pointer; overflow: hidden; }
+.ppl-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+@media (max-width: 600px) {
+  .ppl-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .ppl-face { width: 72px; height: 72px; }
+  .ppl-form input { min-width: 0; width: 100%; }
+}
+
+
+/* ui/library/places.css */
+/* ── Library places view (ui/library/places.js) ──────────────────────────── */
+
+.lib-panel:has(> .plc-root) { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.plc-root { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+
+.plc-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.plc-tabs { display: inline-flex; gap: var(--space-1); }
+.plc-tab { padding: 2px var(--space-3); font-size: 12px; }
+.plc-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.plc-pm { margin-left: auto; padding: 2px var(--space-2); font-size: 12px; }
+
+.plc-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+.plc-note { margin: 0; font-size: 12px; color: var(--fg-1); }
+.plc-attr { margin: 0; font-size: 11px; color: var(--fg-2); }
+
+.plc-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.plc-country { border: 1px solid var(--bg-3); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-1) var(--space-2); }
+.plc-country summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-0); }
+.plc-cname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plc-count { margin-left: auto; padding-left: var(--space-2); font-size: 12px; font-weight: 400; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.plc-city {
+  display: flex; align-items: center; width: 100%;
+  padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--fg-1); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.plc-city:hover, .plc-city:focus-visible { background: var(--bg-2); color: var(--fg-0); }
+.plc-all { font-style: italic; }
+
+.plc-map { flex: 1; min-height: 240px; position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-md); }
+.plc-canvas { display: block; position: absolute; inset: 0; cursor: grab; touch-action: none; }
+.plc-canvas:active { cursor: grabbing; }
+.plc-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.plc-hint { margin: 0; position: absolute; left: var(--space-2); bottom: var(--space-2); padding: 2px var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--bg-0) 80%, transparent); font-size: 11px; color: var(--fg-1); pointer-events: none; }
+.plc-glwrap .plc-hint { pointer-events: auto; }
+.plc-hint .btn { margin-left: var(--space-2); padding: 0 var(--space-2); font-size: 11px; }
+.plc-gl { flex: 1; min-height: 240px; }
 
 
 /* ui/theme.css */
@@ -6462,7 +6572,9 @@ const __m_library_licences = (() => {
 // `bundled` packages are vendored under src/vendor/ and built into index.html, so their
 // licence text ships here and in the vendored file's header. `esm.sh` packages are
 // fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
-// carry their own licence in what esm.sh serves.
+// carry their own licence in what esm.sh serves. `jsdelivr` packages load the same way from
+// cdn.jsdelivr.net, and `huggingface` entries are model weights downloaded from huggingface.co;
+// both only after the person turns on Search by meaning (src/library/clip.js).
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
 const LICENCES = [
@@ -6538,6 +6650,16 @@ SOFTWARE.` },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
   { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
+  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning: runs the CLIP model in a worker, only after you turn it on', source: 'https://github.com/huggingface/transformers.js' },
+  { name: 'onnxruntime-web', version: '1.31.0-dev.20260914-8d85527a0', licence: 'MIT', loaded: 'jsdelivr', use: 'Fetched with @huggingface/transformers, with onnxruntime-common and its WebAssembly files', source: 'https://github.com/microsoft/onnxruntime' },
+  { name: 'onnxruntime-web (faces)', version: '1.29.0', licence: 'MIT', loaded: 'jsdelivr', use: 'Runs the face models, only after you turn on People', source: 'https://github.com/microsoft/onnxruntime' },
+  { name: 'YuNet face detector', version: '2023mar', licence: 'MIT', loaded: 'huggingface', use: 'Finds faces (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_detection_yunet' },
+  { name: 'SFace face recogniser', version: '2021dec int8', licence: 'Apache-2.0', loaded: 'huggingface', use: 'Groups faces of the same person (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_recognition_sface' },
+  { name: 'GeoNames cities5000', version: '2026-11-16', licence: 'CC BY 4.0', loaded: 'same-origin', use: 'Place names for Places (assets/places/cities.bin). Data from GeoNames, geonames.org', source: 'https://www.geonames.org/' },
+  { name: 'Natural Earth admin-0 countries', version: '5.1.2', licence: 'Public domain', loaded: 'same-origin', use: 'Country outlines for the Places map (assets/places/countries.json)', source: 'https://www.naturalearthdata.com/' },
+  { name: 'maplibre-gl', version: '6.16.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Draws a map from your own .pmtiles file in Places, only when you choose one', source: 'https://github.com/maplibre/maplibre-gl-js' },
+  { name: 'pmtiles', version: '4.5.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Reads your .pmtiles map file, with maplibre-gl', source: 'https://github.com/protomaps/PMTiles' },
+  { name: 'Xenova/clip-vit-base-patch32', version: 'revision 6b7c523', licence: 'MIT', loaded: 'huggingface', use: 'OpenAI CLIP ViT-B/32 weights (ONNX) for Search by meaning, downloaded once after you turn it on', source: 'https://huggingface.co/Xenova/clip-vit-base-patch32' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];
 
@@ -6895,7 +7017,7 @@ function licences() {
       ${bundled.map(l => line(l) + `<details class="help-licence"><summary>${esc(l.name)} licence</summary><pre class="help-p" style="white-space:pre-wrap;font-size:11px">${esc(l.text)}</pre></details>`).join('')}
     `)}
     ${section('Fetched on first use', `
-      <p class="help-p">These load from esm.sh, at a pinned version, the first time you open a file that needs them. Each carries its own licence.</p>
+      <p class="help-p">These load at a pinned version the first time a feature needs them: decoders from esm.sh when you open such a file; the CLIP, face and map libraries from jsDelivr and their models from Hugging Face only after you turn that feature on; place data from Slate's own site. Each carries its own licence.</p>
       ${fetched.map(line).join('')}
     `)}
   `;
@@ -7988,7 +8110,8 @@ const __m_library_xmp = (() => {
 // parseXmp(text) -> { tags: string[], rating: number, label: string|null,
 //                     time: number|null, lat: number|null, lon: number|null }
 // sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
-// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
+// buildXmp({ rating, flag, label, tags, regions, existing }) -> XMP packet text (see below)
+// parseRegions(text) -> MWG face regions (spec row F3), see "face regions" below
 
 const normTag = __m_library_schema.normTag;
 const wallClockToTime = __m_library_schema.wallClockToTime;
@@ -8082,6 +8205,47 @@ function parseXmp(text) {
   return { tags, rating, label, time, lat, lon };
 }
 
+// ── face regions (MWG) ──────────────────────────────────────────────────────
+// The Metadata Working Group regions schema, as digiKam, Lightroom and Picasa
+// write it:
+//   <mwg-rs:Regions rdf:parseType="Resource">
+//    <mwg-rs:AppliedToDimensions stDim:w="4000" stDim:h="3000" stDim:unit="pixel"/>
+//    <mwg-rs:RegionList><rdf:Bag><rdf:li><rdf:Description mwg-rs:Name="Asha" mwg-rs:Type="Face">
+//      <mwg-rs:Area stArea:x="0.5" stArea:y="0.4" stArea:w="0.1" stArea:h="0.12" stArea:unit="normalized"/>
+//    </rdf:Description></rdf:li></rdf:Bag></mwg-rs:RegionList>
+//   </mwg-rs:Regions>
+// stArea x and y are the centre of the rectangle; all four are fractions of
+// the image (0 to 1). Each field may be an attribute or an element.
+//
+// parseRegions(text) -> { w, h, regions: [{ name, type, x, y, w, h }] } | null
+//   name is '' when the region has none. Regions with no usable area are dropped.
+
+function parseRegions(text) {
+  const src = String(text ?? '');
+  const body = elementBody(src, 'mwg-rs:Regions');
+  if (body == null) return null;
+  const dims = { w: Number(single(body, 'stDim:w')) || 0, h: Number(single(body, 'stDim:h')) || 0 };
+  const listBody = elementBody(body, 'mwg-rs:RegionList') ?? '';
+  const regions = [];
+  for (const m of listBody.matchAll(/<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/g)) {
+    const li = m[0];
+    const num = (q) => { const v = Number(single(li, q)); return Number.isFinite(v) ? v : NaN; };
+    const r = { name: single(li, 'mwg-rs:Name') ?? '', type: single(li, 'mwg-rs:Type') ?? '', x: num('stArea:x'), y: num('stArea:y'), w: num('stArea:w'), h: num('stArea:h') };
+    if ([r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0) regions.push(r);
+  }
+  return { w: dims.w, h: dims.h, regions };
+}
+
+function regionsXml(reg, pad) {
+  const n = (v) => String(Math.round(v * 1e6) / 1e6);
+  const dim = reg.w > 0 && reg.h > 0 ? `${pad} <mwg-rs:AppliedToDimensions stDim:w="${Math.round(reg.w)}" stDim:h="${Math.round(reg.h)}" stDim:unit="pixel"/>\n` : '';
+  const lis = reg.regions.map(r =>
+    `${pad}   <rdf:li>\n${pad}    <rdf:Description${r.name ? ` mwg-rs:Name="${xmlEsc(r.name)}"` : ''} mwg-rs:Type="${xmlEsc(r.type || 'Face')}">\n` +
+    `${pad}     <mwg-rs:Area stArea:x="${n(r.x)}" stArea:y="${n(r.y)}" stArea:w="${n(r.w)}" stArea:h="${n(r.h)}" stArea:unit="normalized"/>\n` +
+    `${pad}    </rdf:Description>\n${pad}   </rdf:li>\n`).join('');
+  return `${pad}<mwg-rs:Regions rdf:parseType="Resource">\n${dim}${pad} <mwg-rs:RegionList>\n${pad}  <rdf:Bag>\n${lis}${pad}  </rdf:Bag>\n${pad} </mwg-rs:RegionList>\n${pad}</mwg-rs:Regions>\n`;
+}
+
 function sidecarNames(name) {
   const i = name.lastIndexOf('.');
   const full = name + '.xmp', stem = (i < 0 ? name : name.slice(0, i)) + '.xmp';
@@ -8101,11 +8265,19 @@ function sidecarNames(name) {
 // digiKam and darktable read. A pick writes nothing beyond its rating.
 // With `existing` (a sidecar's text), only these four properties are replaced,
 // in attribute or element form; every other property and namespace stays.
+// `regions` ({ w, h, regions } as parseRegions returns) also replaces
+// mwg-rs:Regions; left undefined, an existing mwg-rs:Regions stays as it is,
+// and an empty regions list removes it.
 
 const NS = {
   xmp: 'http://ns.adobe.com/xap/1.0/',
   dc: 'http://purl.org/dc/elements/1.1/',
   lr: 'http://ns.adobe.com/lightroom/1.0/',
+};
+const REGION_NS = {
+  'mwg-rs': 'http://www.metadataworkinggroup.com/schemas/regions/',
+  stArea: 'http://ns.adobe.com/xmp/sType/Area#',
+  stDim: 'http://ns.adobe.com/xap/1.0/sType/Dimensions#',
 };
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
@@ -8123,7 +8295,7 @@ function bag(qname, items, pad) {
   return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
 }
 
-function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
+function buildXmp({ rating = 0, flag = null, label, tags = [], regions, existing = null } = {}) {
   const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
   const clean = [...new Set(tags.map(normTag).filter(Boolean))];
   const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
@@ -8135,6 +8307,9 @@ function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null }
   if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
   if (leaves.length) props += bag('dc:subject', leaves, pad);
   if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
+  const writeRegions = regions !== undefined;
+  if (regions?.regions?.length) props += regionsXml(regions, pad);
+  const ns = regions?.regions?.length ? { ...NS, ...REGION_NS } : NS;
 
   let text = existing ? String(existing) : '';
   const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
@@ -8145,7 +8320,7 @@ function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null }
   <rdf:Description rdf:about=""
     xmlns:xmp="${NS.xmp}"
     xmlns:dc="${NS.dc}"
-    xmlns:lr="${NS.lr}">
+    xmlns:lr="${NS.lr}"${ns === NS ? '' : Object.entries(REGION_NS).map(([p, u]) => `\n    xmlns:${p}="${u}"`).join('')}>
 ${props}  </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>
@@ -8153,15 +8328,16 @@ ${props}  </rdf:Description>
 `;
   }
   for (const q of OWNED) text = removeProp(text, q);
+  if (writeRegions) text = removeProp(text, 'mwg-rs:Regions');
   const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
   let attrs = m[1];
-  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
+  for (const [p, uri] of Object.entries(ns)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
   const head = `<rdf:Description${attrs}>\n${props}`;
   const tail = m[2] ? '  </rdf:Description>' : '';
   return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');
 }
 
-return { parseXmpDate, parseXmpGps, parseXmp, sidecarNames, buildXmp };
+return { parseXmpDate, parseXmpGps, parseXmp, parseRegions, sidecarNames, buildXmp };
 })();
 
 const __m_library_move = (() => {
@@ -8486,6 +8662,8 @@ const emptyChoice = __m_library_schema.emptyChoice;
  * @property {'exclude'|'only'|'include'} [trashed='exclude']
  * @property {boolean} [missing]    true = only missing files; default excludes nothing
  * @property {'time-desc'|'time-asc'|'name'|'size'} [sort='time-desc']
+ * @property {(id: string) => string|undefined} [textOf]  text read from the photo (textindex.js, row X3); free-text words also match it
+ * @property {boolean} [lockHidden]  the hidden photos are locked (locked.js, row O9): no hidden photo matches, whatever `hidden` says
  */
 
 const MONTH_WORDS = new Map();
@@ -8504,17 +8682,18 @@ function tagMatches(tags, want) {
 }
 
 // Each free-text token must match somewhere (AND across tokens).
-function tokenMatcher(token, albumNamesOf) {
+function tokenMatcher(token, albumNamesOf, textOf) {
   const t = token.toLowerCase();
+  const inText = textOf ? (r) => (textOf(r.id) || '').toLowerCase().includes(t) : () => false;
   if (/^\d{4}$/.test(t)) {
     const y = Number(t);
     return (r, c) => new Date(r.time).getUTCFullYear() === y || r.name.toLowerCase().includes(t) || r.path.toLowerCase().includes(t);
   }
   if (MONTH_WORDS.has(t)) {
     const m = MONTH_WORDS.get(t);
-    return (r, c) => new Date(r.time).getUTCMonth() === m || hay(r, c, albumNamesOf).includes(t);
+    return (r, c) => new Date(r.time).getUTCMonth() === m || hay(r, c, albumNamesOf).includes(t) || inText(r);
   }
-  return (r, c) => hay(r, c, albumNamesOf).includes(t);
+  return (r, c) => hay(r, c, albumNamesOf).includes(t) || inText(r);
 }
 
 function hay(r, c, albumNamesOf) {
@@ -8545,13 +8724,14 @@ function query(records, choices, albums, opts = {}) {
     }
     return albumIndex.get(id) || [];
   };
-  const tokens = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => tokenMatcher(t, albumNamesOf));
+  const tokens = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => tokenMatcher(t, albumNamesOf, opts.textOf));
   const cam = opts.camera ? opts.camera.toLowerCase() : null;
   const folder = opts.folder != null ? opts.folder.replace(/\/+$/, '') : null;
 
   const out = [];
   for (const r of records) {
     const c = choiceOf(choices, r.id);
+    if (opts.lockHidden && c.hidden) continue;
     if (hidden === 'exclude' && c.hidden) continue;
     if (hidden === 'only' && !c.hidden) continue;
     if (trashed === 'exclude' && c.trashed) continue;
@@ -8906,7 +9086,9 @@ class Library {
   // ── reads ───────────────────────────────────────────────────────────────
   get(id) { return this.records.get(id) ?? null; }
   choice(id) { return choiceOf(this.choices, id); }
-  search(opts = {}) { return query(this.records.values(), this.choices, this.albums, opts); }
+  // textOf (set by textindex.js) lets words match text read from photos; hiddenLocked (locked.js)
+  // keeps hidden photos out of every result until the passphrase is given this session.
+  search(opts = {}) { return query(this.records.values(), this.choices, this.albums, { textOf: this.textOf, ...opts, lockHidden: !!this.hiddenLocked?.() }); }
   tags() { return tagCounts(this.records.values(), this.choices); }
   folders() { return folderCounts(this.records.values()); }
   rating(id) { const r = this.records.get(id); return r ? effectiveRating(r, this.choice(id)) : 0; }
@@ -9355,6 +9537,9 @@ const __m_library_store = (() => {
 //   estimate()                  { photos, roots } row counts
 
 const DB_NAME = 'slate.library';
+
+// Rebuild index keeps the person's settings, the hidden-photo lock and text already read from photos.
+function keepKv(key) { return typeof key === 'string' && (key.startsWith('setting:') || key.startsWith('lock:') || key === 'textindex'); }
 const DB_VERSION = 1;
 
 function memoryStore() {
@@ -9376,7 +9561,7 @@ function memoryStore() {
     async getKv(key) { return kv.has(key) ? clone(kv.get(key)) : undefined; },
     async setKv(key, value) { kv.set(key, clone(value)); },
     async deleteKv(key) { kv.delete(key); },
-    async clear() { photos.clear(); roots.clear(); kv.clear(); },
+    async clear() { photos.clear(); roots.clear(); for (const k of [...kv.keys()]) if (!keepKv(k)) kv.delete(k); },
     async estimate() { return { photos: photos.size, roots: roots.size }; },
   };
 }
@@ -9438,8 +9623,11 @@ async function idbStore(name = DB_NAME) {
     async setKv(key, value) { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(value, key); await done(tx); },
     async deleteKv(key) { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(key); await done(tx); },
     async clear() {
+      const keys = await req(db.transaction('kv').objectStore('kv').getAllKeys());
       const tx = db.transaction(['photos', 'roots', 'kv'], 'readwrite');
-      for (const s of ['photos', 'roots', 'kv']) tx.objectStore(s).clear();
+      tx.objectStore('photos').clear();
+      tx.objectStore('roots').clear();
+      for (const k of keys) if (!keepKv(k)) tx.objectStore('kv').delete(k);
       await done(tx);
     },
     async estimate() {
@@ -9449,7 +9637,7 @@ async function idbStore(name = DB_NAME) {
   };
 }
 
-return { DB_NAME, DB_VERSION, memoryStore, idbStore };
+return { DB_NAME, keepKv, DB_VERSION, memoryStore, idbStore };
 })();
 
 const __m_editor_commands = (() => {
@@ -9662,7 +9850,7 @@ const dryRun = { type: 'boolean', description: 'report what would change and cha
 const obj = (properties = {}, required = []) => ({ type: 'object', properties, required });
 
 const SEARCH_PROPS = {
-  q: { type: 'string', description: 'words to match in file name, folder, tags, album names, camera; a year (2024) or month name (March) matches capture dates' },
+  q: { type: 'string', description: 'words to match in file name, folder, tags, album names, camera, captions and text read from photos; a year (2024) or month name (March) matches capture dates' },
   from: { type: 'string', description: 'capture date on or after, YYYY-MM-DD' },
   to: { type: 'string', description: 'capture date before, YYYY-MM-DD' },
   kind: { type: 'string', enum: ['photo', 'video'] },
@@ -9748,6 +9936,13 @@ const COMMANDS = [
   { name: 'library.tags', label: 'List tags', description: 'List every tag in the library with how many photos carry it.', scope: 'read', input: obj(),
     run: (lib) => ({ tags: [...lib.tags()].sort((x, y) => y[1] - x[1]).map(([tag, count]) => ({ tag, count })) }) },
 
+  { name: 'library.search_meaning', label: 'Search by meaning', description: 'Find photos by what they show, for example "a dog on a beach at sunset", using the CLIP vectors made on this device. Needs Search by meaning turned on in the Library.', scope: 'read', input: obj({ text: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['text']),
+    run: async (lib, a) => {
+      if (!lib.services.clip) throw new Error('Search by meaning is not available');
+      const hits = (await lib.services.clip.searchText(a.text)).slice(0, a.limit ?? 50);
+      return { items: hits.map(h => ({ ...summary(lib, lib.get(h.id)), score: Math.round(h.score * 1000) / 1000 })).filter(x => x.id) };
+    } },
+
   // ── one photo ────────────────────────────────────────────────────────────
   { name: 'photo.get', label: 'Photo details', description: 'Full details of one photo: dates, size, camera, place, tags, albums, rating and flag.', scope: 'read', input: obj({ id: { type: 'string' } }, ['id']),
     run: (lib, a) => {
@@ -9760,6 +9955,12 @@ const COMMANDS = [
       const dataUrl = await lib.services.thumbs?.dataUrl?.(a.id);
       if (!dataUrl) throw new Error('no thumbnail yet; try again when the library has finished indexing');
       return { id: a.id, dataUrl };
+    } },
+  { name: 'photo.similar', label: 'Find similar', description: 'The photos that look most like one photo, by their CLIP vectors. Needs Search by meaning turned on.', scope: 'read', input: obj({ id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, ['id']),
+    run: (lib, a) => {
+      if (!lib.get(a.id)) throw new Error(`unknown photo id: ${a.id}`);
+      const hits = (lib.services.clip?.similar(a.id) ?? []).slice(0, a.limit ?? 30);
+      return { items: hits.map(h => ({ ...summary(lib, lib.get(h.id)), score: Math.round(h.score * 1000) / 1000 })) };
     } },
   { name: 'photo.open', label: 'Open in editor', description: 'Open one photo in Slate\'s editor.', scope: 'read', input: obj({ id: { type: 'string' } }, ['id']), shortcut: 'E', shows: true,
     run: async (lib, a, ctx) => { if (!lib.get(a.id)) throw new Error(`unknown photo id: ${a.id}`); await ctx?.ui?.openInEditor?.(a.id); return { opened: a.id }; } },
@@ -10501,8 +10702,9 @@ const __m_library_dupes = (() => {
 //   nearGroups(records, opts)                 -> Group[]
 //   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
 //   rankKeeper(records, opts)        -> records sorted best keeper first
+//   clipGroups(records, vectorOf, opts) / clipGroupsAsync  -> Group[] of kind 'clip' (row D4, at the end)
 //
-// Group = { kind: 'exact'|'near', key, ids, keeper }; ids are best keeper first.
+// Group = { kind: 'exact'|'near'|'clip', key, ids, keeper }; ids are best keeper first.
 // opts.isTrashed(record) excludes a record (default: record.trashed);
 // opts.choiceOf(id) -> { fav, rating } feeds the keeper ranking.
 //
@@ -10730,7 +10932,145 @@ function runOnJobs(jobs, kind, items, fn) {
   });
 }
 
-return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs };
+// ── similar by meaning (row D4) ───────────────────────────────────────────
+//
+//   clipGroupsAsync(records, vectorOf, opts) -> Promise<Group[]> of kind 'clip'
+//
+// vectorOf(id) -> { q: Int8Array, inv } (clip.js VectorSet.view) or null.
+// Two photos join when their cosine is at least opts.minCosine (default 0.95).
+// opts.exclude: groups already found (exact and dHash near); a pair whose two
+// photos share one of those groups is skipped, so this pass adds only what the
+// fingerprints missed. opts.onProgress({ done, total }), opts.signal as above.
+//
+// Comparing every pair is too slow past a few thousand photos, so candidate
+// pairs come from random-hyperplane hashes (SimHash): CLIP_TABLES tables of 64
+// bits each, over vectors centred on the library's mean (CLIP vectors sit in a
+// narrow cone, and without centring most bits are the same for every photo).
+// Two hashes within CLIP_MAX_BITS bits in any table make a candidate, and every
+// candidate is checked with the exact cosine, so a group never holds a false
+// pair. A true pair can be missed: on the test's fake vectors the result equals
+// an all-pairs reference at 0.95 and 0.98 and misses 3 of about 700 pairs at
+// 0.92 (tests/test-library-dupes.mjs). Node takes about 4 s for 20,000 vectors
+// and 38 s for 100,000, most of it hashing.
+
+const CLIP_DEFAULT_MIN = 0.95;
+const CLIP_MIN_LIMIT = 0.92;
+const CLIP_MAX_LIMIT = 0.99;
+const CLIP_TABLES = 4;
+const CLIP_MAX_BITS = 11;
+const CLIP_SEED = 0x5eed1234;
+
+// Seeded Gaussian planes (Box-Muller over a linear congruential generator).
+function gaussianPlanes(count, dim, seed) {
+  let s = seed >>> 0;
+  const u = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 1) / 4294967297; };
+  const out = new Float32Array(count * dim);
+  for (let i = 0; i < out.length; i += 2) {
+    const r = Math.sqrt(-2 * Math.log(u())), t = 2 * Math.PI * u();
+    out[i] = r * Math.cos(t);
+    if (i + 1 < out.length) out[i + 1] = r * Math.sin(t);
+  }
+  return out;
+}
+
+function clipCosine(a, b) {
+  const q1 = a.q, q2 = b.q;
+  let dot = 0;
+  for (let j = 0; j < q1.length; j++) dot += q1[j] * q2[j];
+  return dot * a.inv * b.inv;
+}
+
+function* clipSteps(records, vectorOf, opts = {}) {
+  const min = Math.max(CLIP_MIN_LIMIT, Math.min(CLIP_MAX_LIMIT, Number(opts.minCosine ?? CLIP_DEFAULT_MIN)));
+  const list = [], vecs = [];
+  for (const r of live(records, opts)) { const v = vectorOf(r.id); if (v && v.inv) { list.push(r); vecs.push(v); } }
+  const n = list.length;
+  if (n < 2) return [];
+  const dim = vecs[0].q.length;
+  const STEP = 1000;
+  const total = n * 2;
+
+  // Centre, then hash: bit p of table t is sign(plane · (v - mean)).
+  const mean = new Float64Array(dim);
+  for (const v of vecs) for (let j = 0; j < dim; j++) mean[j] += v.q[j] * v.inv;
+  for (let j = 0; j < dim; j++) mean[j] /= n;
+  const P = CLIP_TABLES * 64;
+  const planes = gaussianPlanes(P, dim, CLIP_SEED);
+  const pm = new Float64Array(P);
+  for (let p = 0; p < P; p++) { let s = 0; const o = p * dim; for (let j = 0; j < dim; j++) s += planes[o + j] * mean[j]; pm[p] = s; }
+  const hi = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  const lo = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  for (let i = 0; i < n; i++) {
+    const { q, inv } = vecs[i];
+    for (let p = 0; p < P; p++) {
+      let s = 0;
+      const o = p * dim;
+      for (let j = 0; j < dim; j++) s += planes[o + j] * q[j];
+      if (s * inv > pm[p]) {
+        const t = (p / 64) | 0, b = p % 64;
+        if (b < 32) hi[t][i] |= (1 << b); else lo[t][i] |= (1 << (b - 32));
+      }
+    }
+    if ((i + 1) % STEP === 0) yield { done: i + 1, total };
+  }
+
+  const groupOf = new Int32Array(n).fill(-1);
+  const gid = new Map();
+  (opts.exclude ?? []).forEach((g, k) => { for (const id of g.ids) gid.set(id, k); });
+  for (let i = 0; i < n; i++) { const k = gid.get(list[i].id); if (k !== undefined) groupOf[i] = k; }
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const r = Math.floor(CLIP_MAX_BITS / 4);
+  for (let t = 0; t < CLIP_TABLES; t++) {
+    const H = hi[t], L = lo[t];
+    const block = (i, b) => b === 0 ? H[i] >>> 16 : b === 1 ? H[i] & 0xffff : b === 2 ? L[i] >>> 16 : L[i] & 0xffff;
+    const tables = [0, 1, 2, 3].map(() => new Map());
+    for (let i = 0; i < n; i++) for (let b = 0; b < 4; b++) { const m = tables[b], v = block(i, b), s = m.get(v); if (s) s.push(i); else m.set(v, [i]); }
+    for (let i = 0; i < n; i++) {
+      for (let b = 0; b < 4; b++) {
+        for (const v of neighbours(block(i, b), r)) {
+          const s = tables[b].get(v);
+          if (!s) continue;
+          for (const j of s) {
+            if (j <= i) continue;
+            if (groupOf[i] >= 0 && groupOf[i] === groupOf[j]) continue;
+            if (pop32((H[i] ^ H[j]) >>> 0) + pop32((L[i] ^ L[j]) >>> 0) > CLIP_MAX_BITS) continue;
+            const a = find(i), c = find(j);
+            if (a === c) continue;
+            if (clipCosine(vecs[i], vecs[j]) >= min) parent[a] = c;
+          }
+        }
+      }
+      if ((i + 1) % STEP === 0) yield { done: n + Math.round((t * n + i + 1) / CLIP_TABLES), total };
+    }
+  }
+
+  const comps = new Map();
+  for (let i = 0; i < n; i++) { const root = find(i), c = comps.get(root); if (c) c.push(list[i]); else comps.set(root, [list[i]]); }
+  const out = [];
+  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('clip', 'c:' + members.map(m => m.id).sort()[0], members, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+function clipGroups(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) { const s = it.next(); if (s.done) return s.value; }
+}
+
+async function clipGroupsAsync(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) {
+    const s = it.next();
+    if (s.done) return s.value;
+    opts.onProgress?.(s.value);
+    await new Promise(res => setTimeout(res, 0));
+    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  }
+}
+
+return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT, clipCosine, clipGroups, clipGroupsAsync };
 })();
 
 const __m_library_thumbs = (() => {
@@ -11771,6 +12111,8 @@ const __m_ui_library_photo_viewer = (() => {
 // Live Photo (row M7, `rec.liveVideo`) plays its paired MOV, on hover or from the Play button.
 // A stack (row B9) steps through its members with the Up and Down arrows or the stack buttons;
 // the shown member is the one choices apply to.
+// "Find similar" (row Q3) shows when the photo has a meaning vector (clip.js);
+// it hands the id to hooks.onSimilar, and the grid shows the nearest photos.
 
 const decode = __m_decode_registry.decode;
 const esc = __m_core_html.esc;
@@ -11803,7 +12145,7 @@ function formatTaken(time) {
 /**
  * @param {object} lib
  * @param {HTMLElement} el  the viewer container (starts hidden)
- * @param {{ getList: () => object[], getStack?: (id:string) => string[]|null, onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void }} hooks
+ * @param {{ getList: () => object[], getStack?: (id:string) => string[]|null, onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void, canSimilar?: (id:string) => boolean, onSimilar?: (id:string) => void }} hooks
  */
 
 // The motion clip of a record as a Blob, or null: the embedded MP4 of a Motion Photo,
@@ -11818,7 +12160,7 @@ async function motionClip(lib, rec) {
   return null;
 }
 
-function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, onClose, onEdit }) {
+function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, onClose, onEdit, canSimilar = () => false, onSimilar = () => {} }) {
   el.innerHTML = `
     <div class="lv-bar">
       <button class="btn-icon" data-v="close" aria-label="Back to the grid (Escape)"><svg class="icon" aria-hidden="true"><use href="#icon-x"/></svg></button>
@@ -11834,6 +12176,7 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
       <button class="btn-icon" data-v="prev" aria-label="Previous photo (Left arrow)"><span aria-hidden="true">&#8249;</span></button>
       <button class="btn-icon" data-v="next" aria-label="Next photo (Right arrow)"><span aria-hidden="true">&#8250;</span></button>
       <button class="btn-icon" data-v="info" aria-label="Photo information (I)" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg></button>
+      <button class="btn" data-v="similar" aria-label="Find similar photos" hidden>Find similar</button>
       <button class="btn btn-primary" data-v="edit" aria-label="Open in the editor (E)">Edit</button>
     </div>
     <div class="lv-body">
@@ -11846,6 +12189,7 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
   const posEl = el.querySelector('.lv-pos');
   const infoBtn = el.querySelector('[data-v="info"]');
   const editBtn = el.querySelector('[data-v="edit"]');
+  const similarBtn = el.querySelector('[data-v="similar"]');
   const motionEl = el.querySelector('.lv-motion');
   const stackEl = el.querySelector('.lv-stack');
   const stackPosEl = el.querySelector('.lv-stackpos');
@@ -11868,6 +12212,7 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
     else if (a === 'snext') step(1);
     else if (a === 'play') playMotion();
     else if (a === 'edit' && id) onEdit(id);
+    else if (a === 'similar' && id) { const sid = id; close(); onSimilar(sid); }
   });
 
   // Hovering the photo plays its motion clip (rows M6 and M7).
@@ -11972,6 +12317,7 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
     renderPos(getList());
     renderInfo(rec);
     editBtn.disabled = rec.kind === 'video';
+    similarBtn.hidden = !canSimilar(rec.id);
     const hasClip = !!(rec.motion || rec.liveVideo);
     motionEl.hidden = !hasClip;
     motionEl.innerHTML = hasClip ? `<span class="lv-motion-badge">${rec.motion ? 'Motion' : 'Live'}</span> <button class="btn btn-sm" data-v="play" aria-label="Play the ${rec.motion ? 'motion' : 'live'} clip (Space)">Play</button>` : '';
@@ -12034,6 +12380,8 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
       c.fav ? ['Favourite', 'Yes'] : null,
       lib.tagsOf(rec.id).length ? ['Tags', lib.tagsOf(rec.id).join(', ')] : null,
       lib.albumsOf(rec.id).length ? ['Albums', lib.albumsOf(rec.id).map(a => a.name).join(', ')] : null,
+      rec.description ? ['Caption', rec.description] : null,
+      lib.textOf?.(rec.id) ? ['Text in photo', lib.textOf(rec.id).slice(0, 400)] : null,
       rec.missing ? ['Status', 'Missing from its folder'] : null,
     ].filter(Boolean);
     info.innerHTML = `<h2 class="lv-info-title">Information</h2><dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
@@ -12057,6 +12405,7 @@ function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, on
     renderPos(list);
     const rec = lib.get(id) ?? list[at];
     renderInfo(rec);
+    similarBtn.hidden = !canSimilar(id);
     onShow(index);
   }
 
@@ -12142,7 +12491,7 @@ function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
     const dir = await lib.getHandle(id, { parent: true });
     const [full, stem] = sidecarNames(r.name);
     const existing = (await readText(dir, full)) ?? (stem ? await readText(dir, stem) : null);
-    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing });
+    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing, regions: lib.services.faces?.regionsFor?.(id) });
     if (text === existing) return false;
     const fh = await dir.getFileHandle(full, { create: true });
     const w = await fh.createWritable();
@@ -12153,6 +12502,13 @@ function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
 
   const api = {
     ready,
+    // Ask for these photos' sidecars to be written (faces.js calls it when people are named).
+    queue(ids) {
+      if (!on || !ids?.length) return;
+      for (const id of ids) pending.add(id);
+      clearTimeout(timer);
+      timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not write XMP sidecars: ${e.message}` })); }, delay);
+    },
     enabled: () => on,
     async setEnabled(v) {
       on = !!v;
@@ -12184,8 +12540,9 @@ return { XMP_SETTING_KEY, initXmpWrite };
 const __m_ui_library_storage = (() => {
 // Storage panel: how big the index and thumbnails are, the browser's quota,
 // a request to keep the data (navigator.storage.persist), library file
-// downloads for browse-only folders, the "Write XMP sidecars" setting, and
-// Rebuild index with a confirmation.
+// downloads for browse-only folders, the "Write XMP sidecars" setting, the
+// "Read text in photos" setting (row X3, textindex.js), and Rebuild index with
+// a confirmation.
 
 const emit = __m_core_events.emit;
 const esc = __m_core_html.esc;
@@ -12215,6 +12572,9 @@ function openStoragePanel(lib, dlg) {
     <p class="lib-note">${lib.services.watch?.status?.() === 'watching' ? 'Slate watches your folders and picks up new, changed and removed files on its own.' : 'This browser cannot watch folders, so Slate looks for new and changed files each time the Library opens.'}</p>
     <label class="lib-storage-xmp"><input type="checkbox" data-s-xmp> Write XMP sidecars for ratings, labels and tags</label>
     <p class="lib-note">Slate writes a photo.jpg.xmp file beside each photo you rate, reject or tag, so Lightroom, digiKam and darktable see the same choices. Your photos are never changed.</p>
+    ${lib.services.textIndex ? `<label class="lib-storage-xmp"><input type="checkbox" data-s-text> Read text in photos</label>
+    <p class="lib-note">Slate reads the words in each photo on this device, so search finds a sign, a receipt or a slide by its text. The text stays in this browser and is not written to your folders. It runs in the background and the Pause button pauses it. <span data-s="text-count"></span></p>
+    <button class="btn" data-s="forget-text">Forget read text</button>` : ''}
     ${browseOnly.length ? `<div class="lib-storage-files"><p class="lib-note">Slate cannot write the library file into these folders, so their choices are kept in this browser. Download the library file and put it in the folder to keep a copy.</p>
       ${browseOnly.map(r => `<button class="btn" data-s-download="${esc(r.id)}">Download library file for ${esc(r.name)}</button>`).join('')}</div>` : ''}
     <div class="lib-storage-confirm" hidden>
@@ -12250,6 +12610,20 @@ function openStoragePanel(lib, dlg) {
     } catch (e) { emit('error', { message: `Could not save the setting: ${e.message}` }); }
   };
 
+  const textBox = dlg.querySelector('[data-s-text]');
+  const ti = lib.services.textIndex;
+  const showTextCount = () => set('text-count', ti ? `Photos read so far: ${ti.count().toLocaleString('en-GB')}.` : '');
+  if (textBox && ti) {
+    Promise.resolve(ti.ready).then(() => { textBox.checked = ti.enabled(); showTextCount(); }).catch(() => {});
+    textBox.onchange = async () => {
+      const v = textBox.checked;
+      try {
+        await ti.setEnabled(v);
+        emit('toast', { message: v ? 'Slate is reading the text in your photos.' : 'Slate stopped reading text. The text it found stays searchable.', level: 'ok' });
+      } catch (e) { emit('error', { message: `Could not save the setting: ${e.message}` }); }
+    };
+  }
+
   const confirmBox = dlg.querySelector('.lib-storage-confirm');
   const footer = dlg.querySelector('[data-s="footer"]');
 
@@ -12261,6 +12635,11 @@ function openStoragePanel(lib, dlg) {
     }
     const a = e.target.closest('[data-s]')?.dataset.s;
     if (a === 'close') dlg.close();
+    else if (a === 'forget-text') {
+      await ti?.forget();
+      showTextCount();
+      emit('toast', { message: 'Slate forgot the text it read from your photos.', level: 'ok' });
+    }
     else if (a === 'persist') {
       if (!navigator.storage?.persist) { emit('toast', { message: 'This browser cannot be asked to keep data.', level: 'warn' }); return; }
       const ok = await navigator.storage.persist().catch(() => false);
@@ -12738,10 +13117,559 @@ function openICloudDialog() {
 return { ZIP_URL, IMPORT_LABEL, ICLOUD_LABEL, initImport, destPath, importTakeoutZips, openImportDialog, openICloudDialog };
 })();
 
+const __m_library_clip = (() => {
+// Search by meaning (rows Q2, Q3, D4): CLIP image and text embeddings, kept on
+// this device. Opt-in: nothing downloads until the person turns on "Search by
+// meaning", which stores { on, dtype } in lib.store kv under SETTING_KEY.
+//
+// The model is Xenova/clip-vit-base-patch32 (OpenAI CLIP ViT-B/32, MIT) through
+// Transformers.js (Apache-2.0), both pinned, in a blob-URL module worker: fp16
+// weights on WebGPU, q8 weights on WASM. Image vectors come from the stored
+// 256 px thumbnails (thumbs.js), never the originals, and run on lib.jobs as
+// kind 'clip', so they pause with the queue.
+//
+// Vectors are unit length, quantised to Int8 with a per-vector inverse norm, and
+// stored one packed blob per root in lib.store kv (`clip:vectors:<rootId>`),
+// with the id list and the model key in its header. A different model key
+// discards the blob. Search is brute-force cosine over every vector with a
+// typed-array loop on the main thread (51 million multiply-adds at 100,000
+// photos; tests/test-library-clip.mjs prints the time).
+//
+//   createClip(lib, { embedder?, readThumb? }) -> service (see the return value)
+//   VectorSet, packVectors, unpackVectors, topK, quantise   pure, for the tests
+
+const runOnJobs = __m_library_dupes.runOnJobs;
+
+const MODEL_ID = 'Xenova/clip-vit-base-patch32';
+const MODEL_REVISION = '6b7c523703ae26e39be4b03774966f8571c7f523';
+const TJS_VERSION = '4.3.2';
+const TJS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TJS_VERSION}/+esm`;
+const DIM = 512;
+const SETTING_KEY = 'clip:setting';
+const VECTORS_PREFIX = 'clip:vectors:';
+const SEARCH_TOP = 200;
+const SEARCH_MIN = 0.2;     // text to image cosine; CLIP ViT-B/32 matches sit near 0.25 to 0.35
+const SIMILAR_TOP = 100;
+const SIMILAR_MIN = 0.5;    // image to image cosine
+const TOKENIZER_BYTES = 3_620_000; // tokenizer.json, vocab.json, merges.txt and configs at MODEL_REVISION
+// Download size per weight type, from the model repository's file list at MODEL_REVISION.
+const WEIGHTS = {
+  fp16: { device: 'webgpu', bytes: 176_080_659 + 127_339_794 + TOKENIZER_BYTES },
+  q8: { device: 'wasm', bytes: 89_117_001 + 64_504_507 + TOKENIZER_BYTES },
+};
+const modelKey = (dtype) => `${MODEL_ID}@${MODEL_REVISION.slice(0, 7)}:${dtype}`;
+
+const SAVE_DELAY_MS = 15000;
+const ENQUEUE_DELAY_MS = 1500;
+const MAGIC = 0x56434c53; // 'SLCV' little-endian
+
+// ── pure parts ────────────────────────────────────────────────────────────
+
+// Quantise `vec` into out[offset .. offset + dim) as Int8 scaled so the largest
+// component is 127. Returns 1 / |q|, so cosine against the stored Int8 values is
+// exact for the quantised vector: cos = inv * dot(query_unit, q).
+function quantise(vec, out, offset = 0) {
+  const dim = vec.length;
+  let max = 0;
+  for (let i = 0; i < dim; i++) { const a = Math.abs(vec[i]); if (a > max) max = a; }
+  if (!(max > 0)) { out.fill(0, offset, offset + dim); return 0; }
+  const s = 127 / max;
+  let sq = 0;
+  for (let i = 0; i < dim; i++) { const q = Math.round(vec[i] * s); out[offset + i] = q; sq += q * q; }
+  return 1 / Math.sqrt(sq);
+}
+
+function normalise(vec) {
+  let sq = 0;
+  for (let i = 0; i < vec.length; i++) sq += vec[i] * vec[i];
+  const out = new Float32Array(vec.length);
+  if (!(sq > 0)) return out;
+  const k = 1 / Math.sqrt(sq);
+  for (let i = 0; i < vec.length; i++) out[i] = vec[i] * k;
+  return out;
+}
+
+// One root's vectors: Int8 rows in one buffer, a Float32 inverse norm per row.
+class VectorSet {
+  constructor(dim = DIM, capacity = 64) {
+    this.dim = dim;
+    this.ids = [];                 // slot -> id, or null for a freed slot
+    this.slot = new Map();         // id -> slot
+    this.free = [];
+    this.data = new Int8Array(dim * capacity);
+    this.inv = new Float32Array(capacity);
+  }
+  get size() { return this.slot.size; }
+  has(id) { return this.slot.has(id); }
+  set(id, vec) {
+    if (vec.length !== this.dim) throw new Error(`a vector has ${vec.length} values, expected ${this.dim}`);
+    let s = this.slot.get(id);
+    if (s == null) {
+      s = this.free.length ? this.free.pop() : this.ids.length;
+      if (s >= this.inv.length) this._grow(Math.max(64, this.inv.length * 2));
+      this.ids[s] = id;
+      this.slot.set(id, s);
+    }
+    this.inv[s] = quantise(vec, this.data, s * this.dim);
+  }
+  delete(id) {
+    const s = this.slot.get(id);
+    if (s == null) return false;
+    this.slot.delete(id);
+    this.ids[s] = null;
+    this.inv[s] = 0;
+    this.free.push(s);
+    return true;
+  }
+  // { q: Int8Array view, inv } for one id, or null.
+  view(id) {
+    const s = this.slot.get(id);
+    return s == null ? null : { q: this.data.subarray(s * this.dim, (s + 1) * this.dim), inv: this.inv[s] };
+  }
+  // The stored vector as unit Float32, for a "find similar" query.
+  vector(id) {
+    const v = this.view(id);
+    if (!v) return null;
+    const out = new Float32Array(this.dim);
+    for (let i = 0; i < this.dim; i++) out[i] = v.q[i] * v.inv;
+    return out;
+  }
+  _grow(cap) {
+    const d = new Int8Array(this.dim * cap); d.set(this.data); this.data = d;
+    const n = new Float32Array(cap); n.set(this.inv); this.inv = n;
+  }
+}
+
+// Layout: u32 MAGIC, u32 header length, header JSON { v, model, dim, count, ids },
+// zero padding to a multiple of 4, Float32 inv[count], Int8 data[count * dim].
+function packVectors(set, model) {
+  const ids = [], slots = [];
+  set.ids.forEach((id, s) => { if (id != null) { ids.push(id); slots.push(s); } });
+  const head = new TextEncoder().encode(JSON.stringify({ v: 1, model, dim: set.dim, count: ids.length, ids }));
+  const headEnd = 8 + head.length + ((4 - (head.length % 4)) % 4);
+  const out = new Uint8Array(headEnd + ids.length * 4 + ids.length * set.dim);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, MAGIC, true);
+  dv.setUint32(4, head.length, true);
+  out.set(head, 8);
+  const inv = new Float32Array(out.buffer, headEnd, ids.length);
+  const data = new Int8Array(out.buffer, headEnd + ids.length * 4, ids.length * set.dim);
+  slots.forEach((s, i) => {
+    inv[i] = set.inv[s];
+    data.set(set.data.subarray(s * set.dim, (s + 1) * set.dim), i * set.dim);
+  });
+  return out;
+}
+
+// A VectorSet from packed bytes, or null when the bytes are not a vector blob
+// or were made by another model (`model` must equal the stored key).
+function unpackVectors(bytes, model) {
+  if (!bytes) return null;
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u8.length < 8) return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (dv.getUint32(0, true) !== MAGIC) return null;
+  const hl = dv.getUint32(4, true);
+  let head;
+  try { head = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + hl))); } catch { return null; }
+  if (head?.v !== 1 || head.model !== model || !Array.isArray(head.ids) || head.ids.length !== head.count) return null;
+  const headEnd = 8 + hl + ((4 - (hl % 4)) % 4);
+  const n = head.count, dim = head.dim;
+  if (u8.length < headEnd + n * 4 + n * dim) return null;
+  const copy = u8.slice(headEnd, headEnd + n * 4 + n * dim); // aligned copy
+  const set = new VectorSet(dim, Math.max(64, n));
+  set.inv.set(new Float32Array(copy.buffer, 0, n));
+  set.data.set(new Int8Array(copy.buffer, n * 4, n * dim));
+  head.ids.forEach((id, s) => { set.ids[s] = id; set.slot.set(id, s); });
+  return set;
+}
+
+// Brute-force cosine of `query` (any length-dim Float32Array) against every
+// vector in `sets`. Returns up to k { id, score } at or above `min`, best first.
+// opts.skip: a Set of ids to leave out; opts.keep(id) -> false leaves one out.
+function topK(sets, query, { k = SEARCH_TOP, min = -1, skip = null, keep = null } = {}) {
+  const q = normalise(query);
+  const dim = q.length;
+  const hits = [];
+  for (const set of sets) {
+    if (set.dim !== dim) continue;
+    const { data, inv, ids } = set;
+    const n = ids.length;
+    for (let s = 0; s < n; s++) {
+      const iv = inv[s];
+      if (!iv) continue;
+      let dot = 0;
+      const o = s * dim;
+      for (let j = 0; j < dim; j++) dot += q[j] * data[o + j];
+      const score = dot * iv;
+      if (score < min) continue;
+      const id = ids[s];
+      if (id == null || (skip && skip.has(id)) || (keep && !keep(id))) continue;
+      hits.push({ id, score });
+    }
+  }
+  hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+  return hits.length > k ? hits.slice(0, k) : hits;
+}
+
+// ── the browser service ───────────────────────────────────────────────────
+
+const cloneBytes = (b) => (b instanceof Uint8Array ? b : b ? new Uint8Array(b) : null);
+
+async function pickWeights() {
+  try { if (typeof navigator !== 'undefined' && navigator.gpu && await navigator.gpu.requestAdapter()) return 'fp16'; }
+  catch { /* no usable adapter */ }
+  return 'q8';
+}
+
+function createClip(lib, { embedder = null, readThumb = null } = {}) {
+  const sets = new Map();          // rootId -> VectorSet
+  const dirty = new Set();         // rootIds to save
+  const queued = new Set();        // ids waiting or running
+  const listeners = new Set();
+  const savedBytes = new Map();    // rootId -> bytes of the last save
+  let setting = null;              // { on: true, dtype } when turned on
+  let model = null;                // 'idle' | 'loading' | 'ready' | 'error'
+  let modelError = '', progress = null, device = null;
+  let loaded = false, loading = null;
+  let saveTimer = null, saving = Promise.resolve();
+  let enqueueTimer = null, pendingIds = null;
+  let emb = embedder;
+
+  const key = () => modelKey(setting?.dtype ?? 'q8');
+  const emit = () => { for (const fn of listeners) { try { fn(status()); } catch { /* a listener never stops the service */ } } };
+  const thumbBlob = readThumb ?? (async (id) => {
+    const u = await lib.services.thumbs?.url?.(id);
+    return u ? (await fetch(u)).blob() : null;
+  });
+
+  function status() {
+    let count = 0;
+    for (const s of sets.values()) count += s.size;
+    return {
+      on: !!setting?.on, dtype: setting?.dtype ?? null, device, model, error: modelError, progress,
+      count, indexable: indexable().length + count, pending: queued.size, bytes: sizeBytes(),
+    };
+  }
+
+  function sizeBytes() {
+    let b = 0;
+    for (const [rid, s] of sets) b += savedBytes.get(rid) ?? s.size * (s.dim + 4);
+    return b;
+  }
+
+  const wanted = (r) => r && !r.missing && r.thumb === 'ok';
+  function indexable() {
+    const out = [];
+    for (const r of lib.records.values()) if (wanted(r) && !sets.get(r.rootId)?.has(r.id)) out.push(r);
+    return out;
+  }
+
+  async function ensureModel() {
+    if (model === 'ready') return emb;
+    if (!emb) emb = workerEmbedder();
+    model = 'loading'; modelError = ''; emit();
+    try {
+      const files = new Map();
+      device = await emb.init(setting.dtype, (p) => {
+        if (!p?.file || !(p.total > 0)) return;
+        files.set(p.file, { loaded: p.loaded, total: p.total });
+        let loaded = 0, total = 0;
+        for (const f of files.values()) { loaded += f.loaded; total += f.total; }
+        progress = { loaded, total };
+        emit();
+      });
+      model = 'ready'; progress = null; emit();
+      return emb;
+    } catch (e) {
+      model = 'error'; modelError = e?.message ?? String(e); emit();
+      throw e;
+    }
+  }
+
+  // Read the setting and the stored vectors. Blobs from another model are deleted.
+  async function load() {
+    if (loading) return loading;
+    loading = (async () => {
+      setting = (await lib.store.getKv(SETTING_KEY)) ?? null;
+      if (!setting?.on) { loaded = true; emit(); return; }
+      for (const rid of lib.roots.keys()) {
+        if (sets.has(rid)) continue;
+        const raw = cloneBytes(await lib.store.getKv(VECTORS_PREFIX + rid));
+        const set = unpackVectors(raw, key());
+        if (set) { sets.set(rid, set); savedBytes.set(rid, raw.length); }
+        else if (raw) await lib.store.deleteKv(VECTORS_PREFIX + rid);
+      }
+      loaded = true;
+      emit();
+      index();
+    })().finally(() => { loading = null; });
+    return loading;
+  }
+
+  // Queue every record with a thumbnail and no vector (or only `ids`).
+  function index(ids = null) {
+    if (!setting?.on) return Promise.resolve();
+    const list = (ids ? ids.map(id => lib.get(id)).filter(r => wanted(r) && !sets.get(r.rootId)?.has(r.id)) : indexable())
+      .filter(r => !queued.has(r.id));
+    if (!list.length) return Promise.resolve();
+    for (const r of list) queued.add(r.id);
+    emit();
+    return runOnJobs(lib.jobs, 'clip', list, embedOne).then(() => { emit(); return flush(); });
+  }
+
+  async function embedOne(rec, signal) {
+    try {
+      if (signal.aborted || !setting?.on) return;
+      const e = await ensureModel();
+      const blob = await thumbBlob(rec.id);
+      if (!blob) throw new Error('no thumbnail');
+      if (signal.aborted) return;
+      const vec = await e.image(blob);
+      if (signal.aborted || !setting?.on) return;
+      let set = sets.get(rec.rootId);
+      if (!set) { set = new VectorSet(vec.length); sets.set(rec.rootId, set); }
+      set.set(rec.id, vec);
+      dirty.add(rec.rootId);
+      scheduleSave();
+    } finally {
+      queued.delete(rec.id);
+    }
+  }
+
+  function scheduleSave() {
+    if (!saveTimer && dirty.size) saveTimer = setTimeout(() => { saveTimer = null; save(); }, SAVE_DELAY_MS);
+  }
+  function flush() { clearTimeout(saveTimer); saveTimer = null; return save(); }
+
+  // Write each dirty root's blob, dropping ids whose record is gone.
+  function save() {
+    saving = saving.then(async () => {
+      if (!setting?.on) return;
+      for (const rid of [...dirty]) {
+        dirty.delete(rid);
+        const set = sets.get(rid);
+        if (!set) continue;
+        for (const id of [...set.slot.keys()]) if (!lib.get(id)) set.delete(id);
+        const bytes = packVectors(set, key());
+        await lib.store.setKv(VECTORS_PREFIX + rid, bytes);
+        savedBytes.set(rid, bytes.length);
+      }
+      emit();
+    }).catch(e => console.warn('[slate library] meaning vectors not saved', e));
+    return saving;
+  }
+
+  // Library events: new thumbnails get vectors; removed roots lose theirs; a
+  // rebuild clears kv, so write the setting and the vectors again.
+  lib.on('records', (ev) => {
+    if (ev?.reason === 'load') { load(); return; }
+    if (!setting?.on || !loaded) return;
+    if (ev?.reason === 'rebuild') {
+      lib.store.setKv(SETTING_KEY, setting).catch(() => {});
+      for (const rid of sets.keys()) dirty.add(rid);
+      flush();
+      return;
+    }
+    if (ev?.ids) {
+      // Records that are gone (emptied trash, moved files) lose their vectors now.
+      for (const id of ev.ids) {
+        if (lib.get(id)) continue;
+        for (const [rid, set] of sets) if (set.delete(id)) { dirty.add(rid); scheduleSave(); }
+      }
+      pendingIds ??= new Set();
+      for (const id of ev.ids) pendingIds.add(id);
+    } else pendingIds = null;
+    clearTimeout(enqueueTimer);
+    enqueueTimer = setTimeout(() => { const p = pendingIds; pendingIds = null; index(p ? [...p] : null); }, ENQUEUE_DELAY_MS);
+  });
+  lib.on('roots', () => {
+    for (const rid of [...sets.keys()]) {
+      if (lib.roots.has(rid)) continue;
+      sets.delete(rid); savedBytes.delete(rid); dirty.delete(rid);
+      lib.store.deleteKv(VECTORS_PREFIX + rid).catch(() => {});
+    }
+    if (setting?.on && loaded) load();
+  });
+
+  const allSets = () => [...sets.values()];
+  const vectorOfId = (id) => { const r = lib.get(id); return r ? sets.get(r.rootId)?.view(id) ?? null : null; };
+
+  return {
+    status,
+    onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    load,
+    index,
+    enabled: () => !!setting?.on,
+    count: () => status().count,
+    has: (id) => !!vectorOfId(id),
+    vectorOf: vectorOfId,
+    sizeBytes,
+
+    // Turn on with the given weights ('fp16' for WebGPU, 'q8' for WASM) and start indexing.
+    async enable(dtype) {
+      if (!WEIGHTS[dtype]) throw new Error(`unknown weights: ${dtype}`);
+      if (setting?.on && setting.dtype !== dtype) await this.disable();
+      setting = { on: true, dtype };
+      await lib.store.setKv(SETTING_KEY, setting);
+      loaded = false;
+      emit();
+      await load();
+      ensureModel().catch(() => {});
+    },
+
+    // Turn off: stop the jobs, drop the model, delete every stored vector and the setting.
+    async disable() {
+      lib.jobs.cancel('clip');
+      queued.clear();
+      clearTimeout(saveTimer); saveTimer = null;
+      clearTimeout(enqueueTimer); pendingIds = null;
+      await saving;
+      const rids = new Set([...sets.keys(), ...lib.roots.keys()]);
+      setting = null; sets.clear(); dirty.clear(); savedBytes.clear();
+      for (const rid of rids) await lib.store.deleteKv(VECTORS_PREFIX + rid);
+      await lib.store.deleteKv(SETTING_KEY);
+      emb?.dispose?.(); if (!embedder) emb = null;
+      model = null; progress = null; modelError = ''; device = null;
+      emit();
+    },
+
+    // Load the model again after a failure; the stored vectors stay.
+    async retry() {
+      emb?.dispose?.(); if (!embedder) emb = null;
+      model = null;
+      await ensureModel();
+      index();
+    },
+
+    // Text query -> [{ id, score }], best first: top SEARCH_TOP at or above SEARCH_MIN.
+    async searchText(text, { k = SEARCH_TOP, min = SEARCH_MIN } = {}) {
+      if (!setting?.on) throw new Error('Search by meaning is off');
+      const e = await ensureModel();
+      const v = await e.text(String(text));
+      return topK(allSets(), v, { k, min });
+    },
+
+    // The nearest photos to one photo by image vector, the photo itself left out.
+    similar(id, { k = SIMILAR_TOP, min = SIMILAR_MIN } = {}) {
+      const r = lib.get(id);
+      const v = r && sets.get(r.rootId)?.vector(id);
+      if (!v) return [];
+      return topK(allSets(), v, { k, min, skip: new Set([id]) });
+    },
+
+    // Write pending vectors now.
+    flush,
+  };
+}
+
+// ── the worker ────────────────────────────────────────────────────────────
+
+// The default embedder: one blob-URL module worker holding both CLIP encoders.
+function workerEmbedder() {
+  let w = null, ready = null, onProgress = null;
+  const pending = new Map();
+  let seq = 0;
+  const call = (msg) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, ...msg });
+  });
+  const failAll = (err) => { for (const p of pending.values()) p.reject(err); pending.clear(); };
+  function start() {
+    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
+    w = new Worker(url, { type: 'module' });
+    w.addEventListener('error', (e) => {
+      console.error('[slate library] meaning worker error:', e.message);
+      failAll(new Error(e.message || 'the meaning model worker failed'));
+      ready = null;
+    });
+    w.addEventListener('message', (e) => {
+      const d = e.data;
+      if (d.type === 'progress') { onProgress?.(d.data); return; }
+      const p = pending.get(d.id);
+      if (!p) return;
+      pending.delete(d.id);
+      if (d.error) p.reject(new Error(d.error)); else p.resolve(d.result);
+    });
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  return {
+    init(dtype, progress) {
+      onProgress = progress;
+      if (!w) start();
+      ready ??= call({ op: 'init', dtype, device: WEIGHTS[dtype].device });
+      return ready;
+    },
+    image: (blob) => call({ op: 'image', blob }),
+    text: (text) => call({ op: 'text', text }),
+    dispose() { failAll(new Error('stopped')); w?.terminate(); w = null; ready = null; },
+  };
+}
+
+// Loads the pinned Transformers.js and both encoders, then embeds thumbnails
+// (Blob) or text. Replies { id, result } with a unit Float32Array, or { id, error }.
+const WORKER_SRC = `
+const URL_TJS = ${JSON.stringify(TJS_URL)};
+const MODEL = ${JSON.stringify(MODEL_ID)};
+const REVISION = ${JSON.stringify(MODEL_REVISION)};
+let T, tok, proc, vision, text, device;
+const f32 = (t) => (t.type === 'float32' ? t.data : t.to('float32').data);
+function unit(v) {
+  let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+  const k = s > 0 ? 1 / Math.sqrt(s) : 0, out = new Float32Array(v.length);
+  for (let i = 0; i < v.length; i++) out[i] = v[i] * k;
+  return out;
+}
+async function init(dtype, want) {
+  T = await import(URL_TJS);
+  T.env.allowLocalModels = true;
+  T.env.localModelPath = '/models/';
+  T.env.allowRemoteModels = true;
+  const progress_callback = (p) => self.postMessage({ type: 'progress', data: { status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 } });
+  const base = { revision: REVISION, progress_callback };
+  tok = await T.AutoTokenizer.from_pretrained(MODEL, base);
+  proc = await T.AutoProcessor.from_pretrained(MODEL, base);
+  const load = (d) => Promise.all([
+    T.CLIPVisionModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
+    T.CLIPTextModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
+  ]);
+  try { [vision, text] = await load(want); device = want; }
+  catch (e) { if (want === 'wasm') throw e; [vision, text] = await load('wasm'); device = 'wasm'; }
+  return device;
+}
+self.onmessage = async (e) => {
+  const { id, op } = e.data;
+  try {
+    let result;
+    if (op === 'init') result = await init(e.data.dtype, e.data.device);
+    else if (op === 'image') {
+      const img = await T.RawImage.fromBlob(e.data.blob);
+      const out = await vision(await proc(img));
+      result = unit(f32(out.image_embeds));
+    } else if (op === 'text') {
+      const inp = tok([e.data.text], { padding: true, truncation: true });
+      const out = await text(inp);
+      result = unit(f32(out.text_embeds));
+    } else throw new Error('unknown op ' + op);
+    self.postMessage({ id, result });
+  } catch (err) {
+    self.postMessage({ id, error: (err && err.message) || String(err) });
+  }
+};
+`;
+
+return { MODEL_ID, MODEL_REVISION, TJS_VERSION, TJS_URL, DIM, SETTING_KEY, VECTORS_PREFIX, SEARCH_TOP, SEARCH_MIN, SIMILAR_TOP, SIMILAR_MIN, WEIGHTS, modelKey, quantise, normalise, VectorSet, packVectors, unpackVectors, topK, pickWeights, createClip };
+})();
+
 const __m_ui_library_view = (() => {
 // The Library mode: sidebar, search and filters, the virtualised grid with
 // day and month headers, the month scrubber, selection, keyboard, the
 // full-size viewer, the job status line and the storage panel.
+// Search by meaning (rows Q2 and Q3, clip.js): a "Meaning" toggle beside the
+// search box (or a leading ~) ranks the grid by CLIP similarity to the text,
+// "Find similar" in the viewer ranks it by similarity to one photo, and the
+// "Search by meaning" sidebar view turns the feature on and off.
 // The editor stays underneath; the library covers it while open.
 // Interface: docs/architecture.md, "The view".
 
@@ -12776,6 +13704,10 @@ const openStoragePanel = __m_ui_library_storage.openStoragePanel;
 const needsDownload = __m_ui_library_storage.needsDownload;
 const downloadLibFile = __m_library_persist.downloadLibFile;
 const openImportDialog = __m_ui_library_import.openImportDialog;
+const createClip = __m_library_clip.createClip;
+const pickWeights = __m_library_clip.pickWeights;
+const WEIGHTS = __m_library_clip.WEIGHTS;
+const MODEL_ID = __m_library_clip.MODEL_ID;
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
 const STACKS_KEY = 'slate.v1.library.stacks';
@@ -12795,6 +13727,7 @@ function initLibraryView(lib) {
       <h1 class="lib-title">Library</h1>
       <div class="lib-search" role="search">
         <input type="search" class="lib-q" placeholder="Search names, folders, tags, cameras, dates" aria-label="Search photos (/)" autocomplete="off">
+        <button type="button" class="btn btn-sm lib-meaning" data-act="meaning" aria-pressed="false" title="Search by what photos show (or type ~ first)">Meaning</button>
       </div>
       <button class="btn" data-act="filters" aria-expanded="false" aria-controls="lib-filters">Filters</button>
       <div class="lib-zoom" role="group" aria-label="Tile size">
@@ -12823,6 +13756,7 @@ function initLibraryView(lib) {
           <h2 class="lib-viewname">Timeline</h2>
           <span class="lib-count"></span>
           <span class="lib-month" aria-hidden="true"></span>
+          <span class="lib-ranked" hidden><span class="lib-ranked-text"></span> <button type="button" class="btn btn-sm" data-act="clear-ranked">Clear</button></span>
           <label class="lib-check lib-stacks"><input type="checkbox" class="lib-stacks-on"> Stack similar files</label>
         </div>
         <div class="lib-gridwrap">
@@ -12855,6 +13789,7 @@ function initLibraryView(lib) {
   const jobEl = $('.lib-job'), pauseBtn = $('.lib-pause'), storageDlg = $('.lib-storage');
   const panelEl = $('.lib-panel');
   const stacksBox = $('.lib-stacks-on');
+  const meaningBtn = $('.lib-meaning'), rankedEl = $('.lib-ranked'), rankedText = $('.lib-ranked-text');
   // Views other modules add to the sidebar (ui.registerView): a view gives `ids()` to show
   // those photos in the grid, or `render(el, ctx)` to draw its own panel (returning a cleanup).
   const extraViews = new Map();
@@ -12865,6 +13800,8 @@ function initLibraryView(lib) {
   let cur = { view: 'timeline' };
   let q = '';
   let filters = {};
+  // Ranked results (rows Q2, Q3): { kind: 'meaning'|'similar', text?, id?, label, scores: Map id -> cosine }.
+  let meaning = false, ranked = null, rankPending = false, rankSeq = 0;
   let list = [], ids = [], indexOf = new Map();
   let layout = buildLayout([], { width: 1 });
   let months = [];
@@ -12894,12 +13831,16 @@ function initLibraryView(lib) {
     registerView(def) {
       if (!def?.id || !def.label || (!def.ids && !def.render)) throw new Error('a view needs id, label and ids() or render()');
       extraViews.set(def.id, def);
-      queueSidebar?.();
+      // Deferred: a view may register while initLibraryView is still running, before queueSidebar exists.
+      queueMicrotask(() => queueSidebar());
     },
-    refreshView() { if (cur.view === 'x') { if (extraViews.get(cur.xview)?.render) mountPanel(); else scheduleRequery(); } queueSidebar?.(); },
+    refreshView() { if (cur.view === 'x') { if (extraViews.get(cur.xview)?.render) mountPanel(); else scheduleRequery(); } queueMicrotask(() => queueSidebar()); },
     actionsEl: $('.lib-actions'),
     toast: (message, level = 'info') => emit('toast', { message, level }),
   };
+
+  // The meaning service; boot.js may set it first, otherwise the view makes it.
+  const clip = lib.services.clip ?? (lib.services.clip = createClip(lib));
 
   const viewer = createPhotoViewer(lib, $('.lib-viewer'), {
     getList: () => list,
@@ -12907,6 +13848,8 @@ function initLibraryView(lib) {
     onShow: (i) => { focusId = ids[i]; },
     onClose: () => { const i = indexOf.get(focusId); if (i != null) setFocus(i); else grid.focus(); },
     onEdit: (id) => openInEditor(id),
+    canSimilar: (id) => clip.enabled() && clip.has(id),
+    onSimilar: (id) => findSimilar(id),
   });
 
   // ── entry points into the mode ───────────────────────────────────────────
@@ -12959,7 +13902,9 @@ function initLibraryView(lib) {
     const opts = currentOpts();
     const searching = !!q || Object.keys(filters).length > 0;
     const view = searching && cur.view === 'timeline' ? 'search' : cur.view;
-    const out = { view, opts };
+    const out = { view: ranked || rankPending ? 'search' : view, opts };
+    if (ranked?.kind === 'meaning') out.meaning = ranked.text;
+    if (ranked?.kind === 'similar') out.similarTo = ranked.id;
     if (cur.albumId) out.albumId = cur.albumId;
     if (cur.rootId) out.rootId = cur.rootId;
     if (cur.folder != null) out.folder = cur.folder;
@@ -13035,7 +13980,7 @@ function initLibraryView(lib) {
   }
   function currentOpts() {
     const o = { ...baseOpts(), ...filters };
-    if (q) o.q = q;
+    if (q && !meaningText()) o.q = q;
     if (cur.view === 'videos') o.kind = 'video';
     if (cur.view === 'favourites') o.fav = true;
     return o;
@@ -13048,8 +13993,13 @@ function initLibraryView(lib) {
     if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
     list = lib.search(currentOpts());
     if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
+    if (ranked) {
+      const sc = ranked.scores;
+      list = list.filter(r => sc.has(r.id)).sort((a, b) => sc.get(b.id) - sc.get(a.id));
+    } else if (rankPending) list = [];
+    renderRanked();
     stackMembers = new Map();
-    if (stacking && cur.view !== 'trash') ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
+    if (stacking && cur.view !== 'trash' && !ranked) ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
@@ -13070,7 +14020,7 @@ function initLibraryView(lib) {
   function relayoutOrRequery() { if (dirty) requery(); else relayout(scrollAnchor()); }
 
   // ── layout and rendering ─────────────────────────────────────────────────
-  const sortable = () => true; // every view sorts by capture time, newest first
+  const sortable = () => !ranked; // every view sorts by capture time, newest first; ranked results by score
   function relayout(keep) {
     const width = grid.clientWidth - PAD * 2;
     if (width <= 0) return;
@@ -13232,6 +14182,8 @@ function initLibraryView(lib) {
 
   // ── header, counts, empty state ──────────────────────────────────────────
   function viewTitle() {
+    if (ranked) return ranked.kind === 'similar' ? 'Similar photos' : 'Search by meaning';
+    if (rankPending) return 'Searching by meaning';
     if (q || Object.keys(filters).length) { if (cur.view === 'timeline') return 'Search results'; }
     switch (cur.view) {
       case 'favourites': return 'Favourites';
@@ -13263,9 +14215,11 @@ function initLibraryView(lib) {
     }
     if (list.length) { emptyEl.hidden = true; return; }
     const busy = !lib.jobs.status().idle;
-    const msg = busy ? 'Reading your folders. Photos appear here as they are found.'
+    const msg = rankPending ? 'Searching by meaning.'
+      : ranked ? (ranked.kind === 'similar' ? 'No similar photos found.' : 'No photos match this meaning closely enough.')
+      : busy ? 'Reading your folders. Photos appear here as they are found.'
       : q || Object.keys(filters).length ? 'No photos match this search.'
-        : { trash: 'The trash is empty.', hidden: 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[cur.view] ?? 'No photos here.';
+        : { trash: 'The trash is empty.', hidden: lib.hiddenLocked?.() ? 'Hidden photos are locked. Unlock them to see them.' : 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[cur.view] ?? 'No photos here.';
     emptyEl.hidden = false;
     emptyEl.innerHTML = `<div class="lib-empty-inner"><p>${esc(msg)}</p></div>`;
   }
@@ -13381,6 +14335,7 @@ function initLibraryView(lib) {
 
   function switchView() {
     sel = new Set(); anchor = -1; focusId = null;
+    if (ranked?.kind === 'similar') { ranked = null; rankSeq++; }
     viewer.close();
     mountPanel();
     grid.scrollTop = 0;
@@ -13404,6 +14359,8 @@ function initLibraryView(lib) {
     else if (a === 'zoom-out') setZoom(zoom - 1);
     else if (a === 'slideshow') startSlideshow();
     else if (a === 'storage') openStoragePanel(lib, storageDlg);
+    else if (a === 'meaning') toggleMeaning();
+    else if (a === 'clear-ranked') clearRanked();
   });
 
   function pickFiles() {
@@ -13476,7 +14433,151 @@ function initLibraryView(lib) {
   let qTimer = null;
   search.addEventListener('input', () => {
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => { q = search.value.trim(); grid.scrollTop = 0; requery(); viewChanged(); }, 150);
+    qTimer = setTimeout(() => {
+      q = search.value.trim();
+      if (ranked?.kind === 'similar') ranked = null;
+      grid.scrollTop = 0;
+      if (meaningText()) runMeaning(); else { if (ranked || rankPending) { ranked = null; rankPending = false; rankSeq++; } requery(); }
+      viewChanged();
+    }, 150);
+  });
+
+  // ── search by meaning (rows Q2, Q3) ──────────────────────────────────────
+  // The text of a meaning query: the box text when the toggle is on, or after a leading ~.
+  function meaningText() {
+    if (!clip.enabled()) return '';
+    if (q.startsWith('~')) return q.slice(1).trim();
+    return meaning ? q : '';
+  }
+
+  async function runMeaning() {
+    const text = meaningText();
+    if (ranked?.kind === 'meaning' && ranked.text === text) { requery(); return; }
+    const my = ++rankSeq;
+    ranked = null; rankPending = true;
+    requery();
+    try {
+      const hits = await clip.searchText(text);
+      if (my !== rankSeq) return;
+      ranked = { kind: 'meaning', text, label: `Closest to “${text}”`, scores: new Map(hits.map(h => [h.id, h.score])) };
+    } catch (err) {
+      if (my === rankSeq) ui.toast(`Search by meaning failed: ${err?.message ?? err}`, 'error');
+    } finally {
+      if (my === rankSeq) { rankPending = false; requery(); viewChanged(); }
+    }
+  }
+
+  function findSimilar(id) {
+    const rec = lib.get(id);
+    if (!rec) return;
+    const hits = clip.similar(id);
+    rankSeq++; rankPending = false;
+    q = ''; search.value = '';
+    if (cur.view !== 'timeline') { cur = { view: 'timeline' }; switchView(); }
+    ranked = { kind: 'similar', id, label: `Like ${rec.name}`, scores: new Map([[id, 2], ...hits.map(h => [h.id, h.score])]) };
+    grid.scrollTop = 0;
+    requery();
+    renderSidebar();
+    viewChanged();
+  }
+
+  function clearRanked() {
+    rankSeq++; rankPending = false;
+    q = ''; search.value = '';
+    ranked = null;
+    requery();
+    viewChanged();
+  }
+
+  function toggleMeaning() {
+    if (!clip.enabled()) { cur = { view: 'x', xview: 'meaning' }; switchView(); return; }
+    meaning = !meaning;
+    renderMeaningBtn();
+    if (q) { if (meaningText()) runMeaning(); else { ranked = null; rankPending = false; rankSeq++; requery(); } }
+    search.focus();
+  }
+
+  function renderMeaningBtn() {
+    const on = clip.enabled();
+    meaningBtn.setAttribute('aria-pressed', String(on && meaning));
+    meaningBtn.title = on ? 'Search by what photos show (or type ~ first)' : 'Turn on search by meaning';
+    search.placeholder = on && meaning ? 'Describe what the photo shows' : 'Search names, folders, tags, cameras, dates';
+  }
+
+  function renderRanked() {
+    rankedEl.hidden = !ranked;
+    if (ranked) rankedText.textContent = `${ranked.label}, best match first`;
+  }
+
+  clip.onChange(() => {
+    renderMeaningBtn();
+    queueSidebar();
+    if (!clip.enabled() && (ranked || rankPending || meaning)) { meaning = false; ranked = null; rankPending = false; rankSeq++; scheduleRequery(); }
+    if (viewer.isOpen()) viewer.refresh();
+  });
+
+  // The "Search by meaning" view: what it downloads, the switch, and the vector store.
+  const mb = (b) => `${Math.round(b / 1e6).toLocaleString('en-GB')} MB`;
+  let weightsGuess = null;
+  ui.registerView({
+    id: 'meaning',
+    label: 'Search by meaning',
+    count: () => (clip.enabled() ? clip.count() : null),
+    render(host) {
+      const root = document.createElement('div');
+      root.className = 'mng-root';
+      host.appendChild(root);
+      let queued = false;
+      const draw = () => {
+        queued = false;
+        if (!root.isConnected) return;
+        const s = clip.status();
+        if (!s.on) {
+          const dtype = weightsGuess;
+          const w = dtype ? WEIGHTS[dtype] : null;
+          root.innerHTML = `<h2>Search by meaning</h2>
+            <p>Find photos by what they show, such as “dog on a beach” or “birthday cake”, and find photos that look like the one you are viewing. Duplicates can also use it to find near copies that fingerprints miss.</p>
+            <p>Turning this on downloads the ${esc(MODEL_ID)} model (OpenAI CLIP ViT-B/32, MIT licence) from Hugging Face, once${w ? `: about <strong>${mb(w.bytes)}</strong>` : ''}. Slate then reads each photo’s 256 px thumbnail on this device to make a small vector for it. No photo and no search text leaves this device.</p>
+            <p class="mng-note">${dtype ? (dtype === 'fp16' ? 'This browser will run the model on the graphics card (WebGPU, 16-bit weights).' : 'This browser will run the model on the processor (WebAssembly, 8-bit weights), which is slower.') : 'Checking this browser'}</p>
+            <button type="button" class="btn btn-primary" data-mng="on" ${dtype ? '' : 'disabled'}>Download ${w ? mb(w.bytes) + ' ' : ''}and turn on</button>`;
+          return;
+        }
+        const job = lib.jobs.status().kinds.clip;
+        const left = job ? Math.max(0, job.total - job.done - job.failed) : 0;
+        const model = s.model === 'loading'
+          ? (s.progress ? `Downloading the model: ${mb(s.progress.loaded)} of ${mb(s.progress.total)}` : 'Loading the model')
+          : s.model === 'ready' ? `Model ready on ${s.device === 'webgpu' ? 'WebGPU' : 'WebAssembly'}`
+            : s.model === 'error' ? `The model did not load: ${esc(s.error)}` : 'The model loads when it is first needed';
+        root.innerHTML = `<h2>Search by meaning</h2>
+          <dl class="mng-facts">
+            <dt>Model</dt><dd>${model}</dd>
+            <dt>Photos with a vector</dt><dd>${s.count.toLocaleString('en-GB')} of ${s.indexable.toLocaleString('en-GB')}${left ? `, ${left.toLocaleString('en-GB')} in the queue` : ''}</dd>
+            <dt>Vector store</dt><dd>${mb(s.bytes)} in this browser</dd>
+          </dl>
+          <p>Press Meaning beside the search box, or type ~ before a search, then describe the photo. In the viewer, Find similar shows the photos closest to the one you are viewing.</p>
+          <div class="mng-actions">
+            ${s.model === 'error' ? '<button type="button" class="btn" data-mng="retry">Try again</button>' : ''}
+            <button type="button" class="btn btn-danger" data-mng="off">Turn off and delete vectors</button>
+          </div>`;
+      };
+      const queue = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
+      if (!weightsGuess) pickWeights().then(d => { weightsGuess = d; queue(); });
+      draw();
+      root.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-mng]');
+        if (!b) return;
+        b.disabled = true;
+        try {
+          if (b.dataset.mng === 'on') await clip.enable(weightsGuess);
+          else if (b.dataset.mng === 'off') { await clip.disable(); ui.toast('Search by meaning is off and its vectors are deleted.', 'ok'); }
+          else if (b.dataset.mng === 'retry') await clip.retry();
+        } catch (err) { ui.toast(err?.message ?? String(err), 'error'); }
+        queue();
+      });
+      const offClip = clip.onChange(queue);
+      const offJobs = lib.jobs.onProgress((p) => { if (p.kind === 'clip') queue(); });
+      return () => { offClip(); offJobs(); };
+    },
   });
 
   function toggleFilters() {
@@ -13757,7 +14858,7 @@ function initLibraryView(lib) {
     if (isL) { e.preventDefault(); e.stopImmediatePropagation(); hideLibrary(); return; }
     if (inInput) {
       if (t === search) {
-        if (e.key === 'Escape') { e.preventDefault(); if (search.value) { search.value = ''; q = ''; requery(); viewChanged(); } else grid.focus(); }
+        if (e.key === 'Escape') { e.preventDefault(); if (search.value || ranked) clearRanked(); else grid.focus(); }
         else if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); grid.focus(); if (focusId == null && ids.length) setFocus(0); }
       }
       return; // the editor ignores keys typed in inputs; the input keeps them
@@ -13814,7 +14915,7 @@ function initLibraryView(lib) {
   });
 
   // ── job status line (row L5) ─────────────────────────────────────────────
-  const KIND_NAMES = { scan: 'reading files', thumbs: 'thumbnails', meta: 'details' };
+  const KIND_NAMES = { scan: 'reading files', thumbs: 'thumbnails', meta: 'details', clip: 'meaning vectors' };
   let jobQueued = false;
   function renderJobs() {
     jobQueued = false;
@@ -13848,6 +14949,8 @@ function initLibraryView(lib) {
     if (open) { refreshTiles(new Set(ev.ids)); viewer.refresh(); }
   });
   lib.on('choices', () => { queueSidebar(); scheduleRequery(); });
+  // Text read from photos (textindex.js): an active search may now match more.
+  lib.on('text', () => { if (q) scheduleRequery(); });
   lib.on('albums', () => { queueSidebar(); if (cur.view === 'album' || q) scheduleRequery(); else if (open) renderHead(); });
   lib.on('roots', () => {
     if (cur.view === 'folder' && !lib.roots.has(cur.rootId)) cur = { view: 'timeline' };
@@ -13862,6 +14965,7 @@ function initLibraryView(lib) {
   lib.on('error', (ev) => emit('error', { message: ev?.message ?? 'Library error' }));
 
   renderJobs();
+  renderMeaningBtn();
   return ui;
 }
 
@@ -13951,7 +15055,8 @@ const __m_ui_library_organise = (() => {
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
 // the Trash view actions, and Export (copy the originals of the selection or an
-// album into a folder). Every action goes through runCommand(), so the
+// album into a folder), Read text for the selection (row X3, textindex.js) and
+// the lock on hidden photos in the Hidden view (row O9, locked.js). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
 // initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
@@ -14480,6 +15585,68 @@ function initOrganise(lib, ui) {
     catch (e) { fail(e); }
   }
 
+  // ── read text (X3) ─────────────────────────────────────────────────────
+  function readText(ids) {
+    const ti = lib.services.textIndex;
+    if (!ti) return;
+    if (!ids.length) { say('Select a photo first', 'warn'); return; }
+    const n = ti.runFor(ids);
+    say(n ? `Reading the text in ${plural(n, 'photo')}. Search finds it when it is done.` : 'Slate has already read the text in these photos', n ? 'info' : 'ok');
+  }
+
+  // ── lock on hidden photos (O9) ─────────────────────────────────────────
+  const NOT_ENCRYPTED = 'This hides photos from casual viewers of this browser. It does not encrypt the files on disk: anyone who opens the folder sees every photo.';
+
+  function passDialog(title, intro, fields, okLabel, submit) {
+    openDialog(title, (body, close) => {
+      body.innerHTML = `${intro.map(t => `<p class="org-text">${esc(t)}</p>`).join('')}
+        <form class="org-form">
+          ${fields.map((f, i) => `<label class="org-label">${esc(f.label)}<input type="password" class="org-input" autocomplete="${f.auto}" data-pass="${i}"${i ? '' : ' autofocus'}></label>`).join('')}
+          <p class="org-error" role="alert" hidden></p>
+          <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+          <button type="submit" class="btn btn-primary">${esc(okLabel)}</button></div></form>`;
+      const err = body.querySelector('.org-error'), go = body.querySelector('[type="submit"]');
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const values = [...body.querySelectorAll('[data-pass]')].map(x => x.value);
+        go.disabled = true; err.hidden = true;
+        try {
+          const problem = await submit(values);
+          if (!problem) { close(); return; }
+          err.textContent = problem;
+        } catch (x) { err.textContent = x?.message ?? String(x); }
+        err.hidden = false; go.disabled = false;
+        body.querySelector('[data-pass="0"]').select();
+      });
+    });
+  }
+
+  function setLock() {
+    const lk = lib.services.lock;
+    passDialog('Lock hidden photos', ['From now on the Hidden view shows nothing until you enter this passphrase, once each session.', NOT_ENCRYPTED, 'Slate cannot recover a forgotten passphrase. Reset lock then removes the lock and leaves the photos hidden but viewable.'],
+      [{ label: 'Passphrase', auto: 'new-password' }, { label: 'Passphrase again', auto: 'new-password' }], 'Lock',
+      async ([a, b]) => {
+        if (a !== b) return 'The two passphrases differ.';
+        await lk.set(a);
+        say('Hidden photos are locked', 'ok');
+        return null;
+      });
+  }
+
+  function unlock() {
+    const lk = lib.services.lock;
+    passDialog('Unlock hidden photos', ['Enter the passphrase to show the hidden photos until you close Slate or lock them again.'],
+      [{ label: 'Passphrase', auto: 'current-password' }], 'Unlock',
+      async ([a]) => (await lk.unlock(a)) ? null : 'That passphrase is not right.');
+  }
+
+  async function resetLock() {
+    const ok = await confirmDialog('Reset lock', 'Remove the passphrase? Hidden photos become viewable in the Hidden view to anyone who uses this browser. They stay hidden from the other views, and nothing is deleted.', 'Remove lock');
+    if (!ok) return;
+    try { await lib.services.lock.reset(); say('The lock is removed. Hidden photos are viewable in the Hidden view.', 'ok'); } catch (e) { fail(e); }
+  }
+
   // ── action bar ─────────────────────────────────────────────────────────
   if (!ui.actionsEl || typeof document === 'undefined') return;
   const bar = document.createElement('div');
@@ -14494,7 +15661,9 @@ function initOrganise(lib, ui) {
     const allFav = n > 0 && ids.every(id => lib.choice(id).fav);
     const allHidden = n > 0 && ids.every(id => lib.choice(id).hidden);
     const trashed = v.view === 'trash' ? lib.counts().trashed : 0;
-    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed].join('|');
+    const lk = lib.services.lock;
+    const lockState = !lk ? '' : lk.isLocked() ? (lk.isSet() ? 'locked' : '') : lk.isSet() ? 'open' : 'none';
+    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed, lockState, !!lib.services.textIndex].join('|');
     if (next === sig) return;
     sig = next;
     const off = n ? '' : ' disabled';
@@ -14505,6 +15674,16 @@ function initOrganise(lib, ui) {
         <button type="button" class="btn btn-danger" data-act="empty"${trashed ? '' : ' disabled'}>Empty trash</button>`;
       return;
     }
+    const hiddenView = v.view === 'hidden';
+    if (hiddenView && lockState === 'locked') {
+      bar.innerHTML = `<span class="org-count">Hidden photos are locked</span>
+        <button type="button" class="btn btn-primary" data-act="unlock" aria-haspopup="dialog">Unlock…</button>
+        <button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`;
+      return;
+    }
+    const lockBtns = !hiddenView ? ''
+      : lockState === 'open' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="relock">Lock now</button><button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`
+      : lockState === 'none' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="set-lock" aria-haspopup="dialog" title="Ask for a passphrase before the Hidden view shows anything">Lock hidden photos…</button>` : '';
     bar.innerHTML = `${count}
       <button type="button" class="btn" data-act="favourite" aria-pressed="${allFav}" title="Favourite (F)"${off}>${allFav ? 'Unfavourite' : 'Favourite'}</button>
       <button type="button" class="btn" data-act="rate" aria-haspopup="menu" title="Rate (0 to 5)"${off}>Rate</button>
@@ -14519,7 +15698,8 @@ function initOrganise(lib, ui) {
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
-      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>`;
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>
+      ${lib.services.textIndex ? `<button type="button" class="btn" data-act="read-text" title="Find the words in these photos so search matches them"${off}>Read text</button>` : ''}${lockBtns}`;
   }
 
   bar.addEventListener('click', (e) => {
@@ -14549,6 +15729,11 @@ function initOrganise(lib, ui) {
       case 'export': exportTo(() => ids, ''); break;
       case 'move': moveDialog(ids); break;
       case 'rename': renameDialog(ids); break;
+      case 'read-text': readText(ids); break;
+      case 'set-lock': setLock(); break;
+      case 'unlock': unlock(); break;
+      case 'relock': lib.services.lock?.lock(); say('Hidden photos are locked', 'ok'); break;
+      case 'reset-lock': resetLock(); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }
@@ -14658,17 +15843,24 @@ const __m_ui_library_dupes = (() => {
 // initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
 // 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
 // them for photos thumbnailed before Slate took them.
+// "Also use meaning (CLIP)" (row D4) adds a third pass over the vectors that
+// Search by meaning keeps (lib.services.clip, clip.js): photos whose cosine is
+// at or above the slider value, leaving out pairs the first two passes grouped.
 
 const runCommand = __m_library_commands.runCommand;
 const esc = __m_core_html.esc;
 const exactGroups = __m_library_dupes.exactGroups;
 const nearGroupsAsync = __m_library_dupes.nearGroupsAsync;
+const clipGroupsAsync = __m_library_dupes.clipGroupsAsync;
 const sizeCollisions = __m_library_dupes.sizeCollisions;
 const sha256Hex = __m_library_dupes.sha256Hex;
 const dropCoveredNear = __m_library_dupes.dropCoveredNear;
 const runOnJobs = __m_library_dupes.runOnJobs;
 const DEFAULT_MAX_DISTANCE = __m_library_dupes.DEFAULT_MAX_DISTANCE;
 const MAX_DISTANCE_LIMIT = __m_library_dupes.MAX_DISTANCE_LIMIT;
+const CLIP_DEFAULT_MIN = __m_library_dupes.CLIP_DEFAULT_MIN;
+const CLIP_MIN_LIMIT = __m_library_dupes.CLIP_MIN_LIMIT;
+const CLIP_MAX_LIMIT = __m_library_dupes.CLIP_MAX_LIMIT;
 
 const TRASH_CAP = 5000;        // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -14676,6 +15868,8 @@ const PAGE = 40;               // groups drawn at a time
 const RECOMPUTE_MS = 1200;
 const THRESHOLD_KEY = 'slate.dupes.threshold';
 const SHA_PATCH_BATCH = 200;
+const CLIP_ON_KEY = 'slate.dupes.clip';
+const CLIP_MIN_KEY = 'slate.dupes.clipmin';
 
 const n = (x) => x.toLocaleString('en-GB');
 const plural = (c, one, many = one + 's') => `${n(c)} ${c === 1 ? one : many}`;
@@ -14691,10 +15885,17 @@ const dateOf = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', 
 function initDupes(lib, ui) {
   let threshold = DEFAULT_MAX_DISTANCE;
   try { const t = Number(localStorage.getItem(THRESHOLD_KEY)); if (t >= 1 && t <= MAX_DISTANCE_LIMIT) threshold = t; } catch { /* storage blocked */ }
+  let useClip = false, clipMin = CLIP_DEFAULT_MIN;
+  try {
+    useClip = localStorage.getItem(CLIP_ON_KEY) === '1';
+    const m = Number(localStorage.getItem(CLIP_MIN_KEY)); if (m >= CLIP_MIN_LIMIT && m <= CLIP_MAX_LIMIT) clipMin = m;
+  } catch { /* storage blocked */ }
+  const clip = () => lib.services.clip ?? null;
+  const clipReady = () => !!(clip()?.enabled() && clip().count());
 
   const sha = new Map();       // id -> content hash found this session (also patched onto the record)
   const keep = new Map();      // group key -> Set of ids marked to keep
-  let exact = [], near = [];
+  let exact = [], near = [], byMeaning = [];
   let computed = false, stale = true, busy = false, again = false;
   let status = '', unhashed = 0, lastCount = null;
   let shown = PAGE;
@@ -14784,14 +15985,23 @@ function initDupes(lib, ui) {
         ...o, maxDistance: threshold,
         onProgress: (p) => setStatus(`Comparing fingerprints: ${n(p.done)} of ${n(p.total)}`),
       }), exact);
+      // 4. Similar by meaning, when asked for and the vectors exist.
+      byMeaning = [];
+      if (useClip && clipReady()) {
+        setStatus('Comparing photos by meaning');
+        byMeaning = await clipGroupsAsync(all, (id) => clip().vectorOf(id), {
+          ...o, minCosine: clipMin, exclude: [...exact, ...near],
+          onProgress: (p) => setStatus(`Comparing photos by meaning: ${n(Math.min(p.done, p.total))} of ${n(p.total)} steps`),
+        });
+      }
       unhashed = all.filter(r => r.kind === 'photo' && !r.dhash && !r.missing && r.thumb == null && !o.isTrashed(r)).length;
 
-      const live = new Set([...exact, ...near].map(g => g.key));
+      const live = new Set(allGroups().map(g => g.key));
       for (const k of keep.keys()) if (!live.has(k)) keep.delete(k);
       computed = true;
-      const groups = exact.length + near.length;
+      const groups = exact.length + near.length + byMeaning.length;
       setStatus(groups
-        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos.`
+        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos${useClip && clipReady() ? `, and ${plural(byMeaning.length, 'group')} similar by meaning` : ''}.`
         : 'No duplicates found.');
     } catch (e) {
       setStatus(`Could not finish: ${e?.message ?? e}`);
@@ -14801,7 +16011,7 @@ function initDupes(lib, ui) {
     if (again) { again = false; return compute(); }
     // A new count redraws the sidebar through refreshView, which also remounts
     // the open panel; it would remount another view's panel too, so skip it then.
-    const count = exact.length + near.length;
+    const count = allGroups().length;
     const other = !isOpen() && ui.current?.().view === 'x';
     if (count !== lastCount && !other) { lastCount = count; ui.refreshView?.(); if (isOpen()) return; }
     draw();
@@ -14823,7 +16033,8 @@ function initDupes(lib, ui) {
     if (!keep.has(g.key)) keep.set(g.key, new Set([g.keeper]));
     return keep.get(g.key);
   };
-  const visibleGroups = () => [...exact, ...near].slice(0, shown);
+  const allGroups = () => [...exact, ...near, ...byMeaning];
+  const visibleGroups = () => allGroups().slice(0, shown);
   const suggestedTrash = (groups) => groups.flatMap(g => { const k = marked(g); return k.size ? g.ids.filter(id => !k.has(id)) : []; });
 
   function drawHeader() {
@@ -14842,8 +16053,14 @@ function initDupes(lib, ui) {
           <span class="dup-thr-value">${threshold}</span>
         </label>
         <span id="dup-thr-note" class="dup-note">Lower finds only near copies; higher also finds bursts.</span>
+        <label class="lib-check dup-clip"><input type="checkbox" class="dup-clip-on" ${useClip ? 'checked' : ''} ${clipReady() ? '' : 'disabled'}> Also use meaning (CLIP)</label>
+        ${useClip && clipReady() ? `<label class="dup-clip-min">Meaning: how close
+          <input type="range" min="${CLIP_MIN_LIMIT}" max="${CLIP_MAX_LIMIT}" step="0.01" value="${clipMin}">
+          <span class="dup-clip-value">${clipMin.toFixed(2)}</span>
+        </label>` : ''}
         <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested (${n(count)})</button>
       </div>
+      ${clipReady() ? '' : '<p class="dup-note">Turn on Search by meaning to also compare photos by what they show.</p>'}
       ${unhashed ? `<p class="dup-note">${plural(unhashed, 'photo')} have no thumbnail yet, so they are not compared for similarity.</p>` : ''}`;
   }
 
@@ -14865,7 +16082,8 @@ function initDupes(lib, ui) {
 
   function groupHtml(g) {
     const k = marked(g);
-    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
+    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}`
+      : g.kind === 'clip' ? `Similar by meaning, ${plural(g.ids.length, 'photo')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
     return `<section class="dup-group" data-key="${esc(g.key)}">
       <header class="dup-ghead">
         <h3>${esc(title)}</h3>
@@ -14879,14 +16097,15 @@ function initDupes(lib, ui) {
     if (!isOpen()) return;
     drawHeader();
     const body = host.querySelector('.dup-body');
-    const all = [...exact, ...near];
+    const all = allGroups();
     const groups = all.slice(0, shown);
     if (!computed) { body.innerHTML = ''; return; }
     if (!all.length) { body.innerHTML = '<p class="dup-empty">No duplicates in the library.</p>'; return; }
-    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near');
+    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near'), clipShown = groups.filter(g => g.kind === 'clip');
     body.innerHTML = `
       ${exactShown.length ? `<h2 class="dup-section">Exact copies (${n(exact.length)})</h2>${exactShown.map(groupHtml).join('')}` : ''}
       ${nearShown.length ? `<h2 class="dup-section">Similar photos (${n(near.length)})</h2>${nearShown.map(groupHtml).join('')}` : ''}
+      ${clipShown.length ? `<h2 class="dup-section">Similar by meaning (${n(byMeaning.length)})</h2>${clipShown.map(groupHtml).join('')}` : ''}
       ${all.length > shown ? `<button type="button" class="btn dup-more">Show ${n(Math.min(PAGE, all.length - shown))} more of ${n(all.length - shown)}</button>` : ''}`;
     observeThumbs(body);
   }
@@ -14918,7 +16137,7 @@ function initDupes(lib, ui) {
     } catch (e) { say(e?.message ?? String(e), 'error'); }
   }
 
-  const groupByKey = (key) => [...exact, ...near].find(g => g.key === key);
+  const groupByKey = (key) => allGroups().find(g => g.key === key);
 
   function onClick(e) {
     const t = e.target;
@@ -14937,6 +16156,12 @@ function initDupes(lib, ui) {
 
   function onChange(e) {
     const t = e.target;
+    if (t.matches('.dup-clip-on')) {
+      useClip = t.checked;
+      try { localStorage.setItem(CLIP_ON_KEY, useClip ? '1' : '0'); } catch { /* storage blocked */ }
+      compute();
+      return;
+    }
     if (t.matches('input[type="checkbox"][data-group]')) {
       const g = groupByKey(t.dataset.group); if (!g) return;
       const k = marked(g);
@@ -14951,6 +16176,14 @@ function initDupes(lib, ui) {
   let thrTimer = null;
   function onInput(e) {
     const t = e.target;
+    if (t.matches('.dup-clip-min input')) {
+      clipMin = Number(t.value);
+      const v = host.querySelector('.dup-clip-value'); if (v) v.textContent = clipMin.toFixed(2);
+      try { localStorage.setItem(CLIP_MIN_KEY, String(clipMin)); } catch { /* storage blocked */ }
+      clearTimeout(thrTimer);
+      thrTimer = setTimeout(() => compute(), 250);
+      return;
+    }
     if (!t.matches('.dup-threshold input')) return;
     threshold = Number(t.value);
     const v = host.querySelector('.dup-thr-value'); if (v) v.textContent = String(threshold);
@@ -14962,7 +16195,7 @@ function initDupes(lib, ui) {
   ui.registerView({
     id: 'duplicates',
     label: 'Duplicates',
-    count: () => (computed ? exact.length + near.length : null),
+    count: () => (computed ? allGroups().length : null),
     render(el) {
       el.innerHTML = '<div class="dup-root"><div class="dup-head"></div><div class="dup-body"></div></div>';
       host = el.querySelector('.dup-root');
@@ -15063,6 +16296,1650 @@ function initWatch(lib, { Observer = globalThis.FileSystemObserver, delay = DEBO
 return { DEBOUNCE_MS, status, initWatch };
 })();
 
+const __m_library_places = (() => {
+// Places (spec rows P1 and P2): the nearest named place for a photo's GPS position, and
+// the country outlines for the map. Pure and Node-testable: the data comes from two
+// same-origin files built by scripts/build-places.mjs (assets/places/cities.bin and
+// countries.json), fetched once, the first time places are asked for. No other request
+// is made, so a photo's position never leaves the device.
+//
+//   createPlaces({ fetch, base }) -> places
+//     places.load()                    fetch and index the data (once; later calls share it)
+//     places.ready                     true once load() has finished
+//     places.nearestCity(lat, lon)     -> { name, country, distanceKm } | null
+//     places.placeOf(record)           -> { city, country, countryName, distanceKm } | null, cached per record
+//     places.countryName(cc)           -> GeoNames name for an ISO code
+//     places.outlines()                -> [{ cc, name, rings: [[lon, lat, ...], ...] }]
+//   groupByPlace(records, places)      -> countries with cities and photo ids, largest first
+//   clusterPoints(points, cellSize)    -> grid clusters for map pins
+//   parseCities(arrayBuffer)           -> the decoded gazetteer (format in build-places.mjs)
+//
+// The nearest place is found with a k-d tree over unit vectors on the sphere, so the
+// answer is exact (the same as checking every place) and needs no special case at the
+// poles or the 180th meridian.
+
+const ATTRIBUTION = 'Place names from GeoNames (geonames.org), CC BY 4.0. Country outlines from Natural Earth, public domain.';
+const EARTH_KM = 6371.0088;
+const RAD = Math.PI / 180;
+
+function parseCities(buf) {
+  const dv = new DataView(buf);
+  const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
+  if (magic !== 'SLPC' || dv.getUint32(4, true) !== 1) throw new Error('cities.bin: unknown format');
+  const n = dv.getUint32(8, true), nc = dv.getUint32(12, true);
+  const codes = [];
+  for (let i = 0; i < nc; i++) codes.push(String.fromCharCode(dv.getUint8(16 + i * 2), dv.getUint8(17 + i * 2)));
+  const head = 16 + Math.ceil((nc * 2) / 4) * 4;
+  const lat = new Int32Array(buf, head, n);
+  const lon = new Int32Array(buf, head + n * 4, n);
+  const cc = new Uint8Array(buf, head + n * 8, n);
+  const names = new TextDecoder().decode(new Uint8Array(buf, head + n * 9)).split('\n');
+  if (names.length !== n) throw new Error('cities.bin: name count differs from place count');
+  return { n, codes, lat, lon, cc, names };
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const a = Math.sin((lat2 - lat1) * RAD / 2) ** 2 + Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.sin((lon2 - lon1) * RAD / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// k-d tree stored as a permutation of point indices: the median of each range is the node.
+function buildTree(xyz, n) {
+  const order = new Int32Array(n);
+  for (let i = 0; i < n; i++) order[i] = i;
+  const split = (lo, hi, axis) => {
+    if (hi - lo <= 1) return;
+    const sub = Array.from(order.subarray(lo, hi)).sort((a, b) => xyz[a * 3 + axis] - xyz[b * 3 + axis]);
+    order.set(sub, lo);
+    const mid = (lo + hi) >> 1, next = (axis + 1) % 3;
+    split(lo, mid, next);
+    split(mid + 1, hi, next);
+  };
+  split(0, n, 0);
+  return order;
+}
+
+function toXyz(lat, lon) {
+  const la = lat * RAD, lo = lon * RAD, c = Math.cos(la);
+  return [c * Math.cos(lo), c * Math.sin(lo), Math.sin(la)];
+}
+
+function createPlaces({ fetch: fetchFn = globalThis.fetch?.bind(globalThis), base = './assets/places/' } = {}) {
+  let data = null, xyz = null, order = null, countries = null, names = {};
+  let loading = null;
+  const cache = new Map(); // record id -> { key, place }
+
+  const places = {
+    ready: false,
+    load() {
+      loading ??= (async () => {
+        const [cb, cj] = await Promise.all([
+          fetchFn(base + 'cities.bin').then(r => { if (!r.ok) throw new Error(`cities.bin: HTTP ${r.status}`); return r.arrayBuffer(); }),
+          fetchFn(base + 'countries.json').then(r => { if (!r.ok) throw new Error(`countries.json: HTTP ${r.status}`); return r.json(); }),
+        ]);
+        data = parseCities(cb);
+        xyz = new Float64Array(data.n * 3);
+        for (let i = 0; i < data.n; i++) xyz.set(toXyz(data.lat[i] / 1e5, data.lon[i] / 1e5), i * 3);
+        order = buildTree(xyz, data.n);
+        countries = cj.countries;
+        names = cj.names || {};
+        places.ready = true;
+        return places;
+      })();
+      loading.catch(() => { loading = null; });
+      return loading;
+    },
+
+    nearestCity(lat, lon) {
+      if (!data || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      const [qx, qy, qz] = toXyz(lat, lon);
+      let best = -1, bestD = Infinity;
+      const visit = (lo, hi, axis) => {
+        if (lo >= hi) return;
+        const mid = (lo + hi) >> 1, p = order[mid];
+        const dx = xyz[p * 3] - qx, dy = xyz[p * 3 + 1] - qy, dz = xyz[p * 3 + 2] - qz;
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bestD) { bestD = d; best = p; }
+        const diff = (axis === 0 ? qx : axis === 1 ? qy : qz) - xyz[p * 3 + axis];
+        const next = (axis + 1) % 3;
+        const [near, far] = diff < 0 ? [[lo, mid], [mid + 1, hi]] : [[mid + 1, hi], [lo, mid]];
+        visit(near[0], near[1], next);
+        if (diff * diff < bestD) visit(far[0], far[1], next);
+      };
+      visit(0, data.n, 0);
+      if (best < 0) return null;
+      return {
+        name: data.names[best],
+        country: data.codes[data.cc[best]],
+        distanceKm: haversineKm(lat, lon, data.lat[best] / 1e5, data.lon[best] / 1e5),
+      };
+    },
+
+    placeOf(rec) {
+      if (!rec || rec.lat == null || rec.lon == null || !data) return null;
+      const key = `${rec.lat},${rec.lon}`;
+      const hit = cache.get(rec.id);
+      if (hit && hit.key === key) return hit.place;
+      const c = places.nearestCity(rec.lat, rec.lon);
+      const place = c ? { city: c.name, country: c.country, countryName: places.countryName(c.country), distanceKm: c.distanceKm } : null;
+      cache.set(rec.id, { key, place });
+      return place;
+    },
+
+    countryName(cc) { return names[cc] || cc; },
+    outlines() { return countries || []; },
+    // For tests and the brute-force check: the raw gazetteer.
+    _data() { return data; },
+  };
+  return places;
+}
+
+// Photos grouped by country, then by nearest place. Counts are photos, sorted largest first.
+function groupByPlace(records, places) {
+  const byCountry = new Map();
+  for (const r of records) {
+    const p = places.placeOf(r);
+    if (!p) continue;
+    let c = byCountry.get(p.country);
+    if (!c) byCountry.set(p.country, c = { cc: p.country, name: p.countryName, count: 0, ids: [], cities: new Map() });
+    c.count++; c.ids.push(r.id);
+    let city = c.cities.get(p.city);
+    if (!city) c.cities.set(p.city, city = { name: p.city, count: 0, ids: [] });
+    city.count++; city.ids.push(r.id);
+  }
+  const bySize = (a, b) => b.count - a.count || a.name.localeCompare(b.name);
+  return [...byCountry.values()]
+    .map(c => ({ ...c, cities: [...c.cities.values()].sort(bySize) }))
+    .sort(bySize);
+}
+
+// Grid clustering for map pins: points are { x, y, id } in screen pixels; one cluster per
+// occupied cell, placed at the mean of its points.
+function clusterPoints(points, cellSize) {
+  const cells = new Map();
+  for (const p of points) {
+    const k = `${Math.floor(p.x / cellSize)},${Math.floor(p.y / cellSize)}`;
+    let c = cells.get(k);
+    if (!c) cells.set(k, c = { x: 0, y: 0, ids: [] });
+    c.x += p.x; c.y += p.y; c.ids.push(p.id);
+  }
+  return [...cells.values()].map(c => ({ x: c.x / c.ids.length, y: c.y / c.ids.length, ids: c.ids }));
+}
+
+return { ATTRIBUTION, parseCities, haversineKm, createPlaces, groupByPlace, clusterPoints };
+})();
+
+const __m_ui_library_places = (() => {
+// Places view (spec rows P1, P2, P3). initPlaces(lib, ui) adds two sidebar views:
+//   Places        a panel with a List tab (countries and nearest places with photo counts)
+//                 and a Map tab (Natural Earth outlines on a canvas, photo pins clustered by
+//                 grid cell, drag to pan, wheel to zoom, click a pin to see its photos)
+//   Place photos  the grid filtered to the place or pin last clicked
+// Place data loads from Slate's own origin (src/library/places.js); nothing about a photo's
+// position is sent anywhere.
+//
+// P3: "Use a map file (.pmtiles)" reads a PMTiles file the user picks, through the pmtiles
+// library's FileSource (File.slice, no network), and draws it with MapLibre GL JS. Both
+// libraries load from jsdelivr at pinned versions the first time the button is used. The
+// file itself never leaves the device. Labels are not drawn, because MapLibre needs a font
+// server for them.
+
+const createPlaces = __m_library_places.createPlaces;
+const groupByPlace = __m_library_places.groupByPlace;
+const clusterPoints = __m_library_places.clusterPoints;
+const ATTRIBUTION = __m_library_places.ATTRIBUTION;
+const esc = __m_core_html.esc;
+
+const MAPLIBRE_URL = 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.16.0/dist/maplibre-gl.mjs';
+const MAPLIBRE_CSS = 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.16.0/dist/maplibre-gl.css';
+const PMTILES_URL = 'https://cdn.jsdelivr.net/npm/pmtiles@4.5.0/+esm';
+
+const CELL = 44;          // pin cluster cell, CSS pixels
+const MAX_SCALE = 4000;   // pixels per degree at the deepest zoom
+
+function initPlaces(lib, ui, { places = createPlaces() } = {}) {
+  let tab = 'list';
+  let picked = null;      // { title, ids } for the Place photos view
+  let gpsCount = null;    // photos with a position; null = recount
+  lib.on('records', () => { gpsCount = null; });
+  lib.on('choices', () => { gpsCount = null; });
+
+  const located = () => lib.search({}).filter(r => r.lat != null && r.lon != null);
+
+  // A pin's title: its place, or "near <place>" for a cluster.
+  function titleFor(ids) {
+    const p = places.placeOf(lib.get(ids[0]));
+    if (!p) return 'pin';
+    return ids.length === 1 ? p.city : `near ${p.city}`;
+  }
+
+  function showPhotos(title, ids) {
+    picked = { title: title ?? titleFor(ids), ids: [...ids] };
+    ui.refreshView();
+    const btn = document.querySelector('.lib-nav[data-xview="place-photos"]');
+    if (btn) btn.click();
+    else ui.toast(`${ids.length} photos in ${title}`);
+  }
+
+  ui.registerView({
+    id: 'places',
+    label: 'Places',
+    count: () => (gpsCount ??= located().length),
+    render(el) {
+      el.innerHTML = `<div class="plc-root">
+        <div class="plc-head">
+          <div class="plc-tabs" role="tablist">
+            <button class="btn plc-tab" data-tab="list" role="tab">List</button>
+            <button class="btn plc-tab" data-tab="map" role="tab">Map</button>
+          </div>
+          <button class="btn plc-pm" hidden>Use a map file (.pmtiles)…</button>
+          <input type="file" class="plc-file" accept=".pmtiles" hidden>
+        </div>
+        <div class="plc-body"><p class="plc-note">Loading places…</p></div>
+        <p class="plc-attr">${esc(ATTRIBUTION)}</p>
+      </div>`;
+      const root = el.querySelector('.plc-root'), body = el.querySelector('.plc-body');
+      const pmBtn = el.querySelector('.plc-pm'), fileIn = el.querySelector('.plc-file');
+      let cleanupTab = null, alive = true, redrawTimer = 0;
+
+      const draw = () => {
+        if (!alive || !places.ready) return;
+        try { cleanupTab?.(); } catch { /* old tab gone */ }
+        cleanupTab = null;
+        for (const b of root.querySelectorAll('.plc-tab')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+        pmBtn.hidden = tab !== 'map';
+        const recs = located();
+        gpsCount = recs.length;
+        if (tab === 'list') drawList(body, recs);
+        else cleanupTab = drawMap(body, recs);
+      };
+
+      root.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-tab]');
+        if (t) { tab = t.dataset.tab; draw(); return; }
+        if (e.target.closest('.plc-pm')) { fileIn.value = ''; fileIn.click(); return; }
+        const p = e.target.closest('[data-place]');
+        if (p) {
+          const g = groupByPlace(located(), places).find(c => c.cc === p.dataset.cc);
+          const city = p.dataset.place === '*' ? null : g?.cities.find(c => c.name === p.dataset.place);
+          if (city) showPhotos(`${city.name}, ${g.name}`, city.ids);
+          else if (g) showPhotos(g.name, g.ids);
+        }
+      });
+      fileIn.addEventListener('change', async () => {
+        const file = fileIn.files?.[0];
+        if (!file) return;
+        try { cleanupTab?.(); } catch { /* old tab gone */ }
+        cleanupTab = null;
+        body.innerHTML = '<p class="plc-note">Loading the map library…</p>';
+        try {
+          const stop = await drawBasemap(body, file, located(), showPhotos, () => draw());
+          if (alive) cleanupTab = stop; else stop();
+        }
+        catch (err) {
+          console.error('[slate places] map file', err);
+          body.innerHTML = `<p class="plc-note">Could not open ${esc(file.name)}: ${esc(err.message)}</p>`;
+        }
+      });
+
+      const offRecords = lib.on('records', () => { clearTimeout(redrawTimer); redrawTimer = setTimeout(() => { if (!body.querySelector('.plc-gl')) draw(); }, 800); });
+      places.load().then(draw, (err) => {
+        if (alive) body.innerHTML = `<p class="plc-note">Place data did not load: ${esc(err.message)}</p>`;
+      });
+      return () => {
+        alive = false;
+        clearTimeout(redrawTimer);
+        offRecords();
+        try { cleanupTab?.(); } catch { /* panel gone */ }
+      };
+    },
+  });
+
+  ui.registerView({
+    id: 'place-photos',
+    get label() { return picked ? `Place: ${picked.title}` : 'Place photos'; },
+    count: () => (picked ? picked.ids.length : null),
+    ids: () => picked?.ids ?? [],
+  });
+
+  function drawList(body, recs) {
+    const groups = groupByPlace(recs, places);
+    const none = lib.search({}).length - recs.length;
+    if (!groups.length) {
+      body.innerHTML = `<p class="plc-note">No photos have a location yet. Photos taken with location turned on carry GPS in their EXIF data or XMP sidecar.</p>`;
+      return;
+    }
+    body.innerHTML = `<p class="plc-note">${recs.length.toLocaleString('en-GB')} photos in ${groups.length} ${groups.length === 1 ? 'country' : 'countries'}${none ? `; ${none.toLocaleString('en-GB')} ${none === 1 ? 'has' : 'have'} no location` : ''}. Each photo is placed at the nearest town of 5,000 people or more.</p>
+      <div class="plc-list">${groups.map(g => `
+        <details class="plc-country"${groups.length <= 3 ? ' open' : ''}>
+          <summary><span class="plc-cname">${esc(g.name)}</span><span class="plc-count">${g.count.toLocaleString('en-GB')}</span></summary>
+          <button class="plc-city plc-all" data-cc="${esc(g.cc)}" data-place="*">All of ${esc(g.name)}<span class="plc-count">${g.count.toLocaleString('en-GB')}</span></button>
+          ${g.cities.map(c => `<button class="plc-city" data-cc="${esc(g.cc)}" data-place="${esc(c.name)}">${esc(c.name)}<span class="plc-count">${c.count.toLocaleString('en-GB')}</span></button>`).join('')}
+        </details>`).join('')}
+      </div>`;
+  }
+
+  // ── P2: outline map on a canvas, equirectangular ─────────────────────────
+  function drawMap(body, recs) {
+    body.innerHTML = '<div class="plc-map"><canvas class="plc-canvas" tabindex="0" aria-label="Map of photo locations. Drag to pan, scroll to zoom, click a pin to see its photos."></canvas><p class="plc-hint">Drag to pan, scroll to zoom, click a pin to see its photos.</p></div>';
+    const wrap = body.querySelector('.plc-map'), cv = body.querySelector('canvas'), ctx = cv.getContext('2d');
+    const css = getComputedStyle(body);
+    const col = (v, d) => css.getPropertyValue(v).trim() || d;
+    const colours = { sea: col('--bg-0', '#111'), land: col('--bg-2', '#333'), edge: col('--bg-3', '#555'), pin: col('--accent', '#3b82f6'), text: col('--accent-contrast', '#fff') };
+    const pts = recs.map(r => ({ lat: r.lat, lon: r.lon, id: r.id }));
+    const paths = places.outlines().map(c => {
+      const p = new Path2D();
+      for (const ring of c.rings) { p.moveTo(ring[0], -ring[1]); for (let i = 2; i < ring.length; i += 2) p.lineTo(ring[i], -ring[i + 1]); p.closePath(); }
+      return p;
+    });
+    // View: (cx, cy) is the map point at the canvas centre, in degrees; s is pixels per degree.
+    let w = 0, h = 0, cx = 0, cy = 0, s = 1, fitted = false, clusters = [];
+
+    function fit() {
+      if (pts.length) {
+        let a = 90, b = -90, c = 180, d = -180;
+        for (const p of pts) { a = Math.min(a, p.lat); b = Math.max(b, p.lat); c = Math.min(c, p.lon); d = Math.max(d, p.lon); }
+        const pad = 10;
+        cx = (c + d) / 2; cy = (a + b) / 2;
+        s = Math.min(w / Math.max(d - c + pad * 2, 20), h / Math.max(b - a + pad * 2, 10));
+      } else { cx = 0; cy = 15; s = w / 360; }
+      s = Math.max(Math.min(s, MAX_SCALE), w / 360);
+    }
+    const toX = lon => (lon - cx) * s + w / 2, toY = lat => (cy - lat) * s + h / 2;
+
+    function paint() {
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = colours.sea; ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(w / 2 - cx * s, h / 2 + cy * s);
+      ctx.scale(s, s);
+      ctx.fillStyle = colours.land; ctx.strokeStyle = colours.edge; ctx.lineWidth = 1 / s;
+      for (const p of paths) { ctx.fill(p, 'evenodd'); ctx.stroke(p); }
+      ctx.restore();
+      clusters = clusterPoints(pts.map(p => ({ x: toX(p.lon), y: toY(p.lat), id: p.id })).filter(p => p.x > -CELL && p.y > -CELL && p.x < w + CELL && p.y < h + CELL), CELL);
+      ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const c of clusters) {
+        c.r = c.ids.length === 1 ? 5 : Math.min(22, 9 + Math.log2(c.ids.length) * 2);
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fillStyle = colours.pin; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = colours.text; ctx.stroke();
+        if (c.ids.length > 1) { ctx.fillStyle = colours.text; ctx.fillText(c.ids.length > 999 ? `${Math.round(c.ids.length / 1000)}k` : String(c.ids.length), c.x, c.y); }
+      }
+    }
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      w = Math.max(200, Math.floor(r.width)); h = Math.max(200, Math.floor(r.height));
+      const dpr = window.devicePixelRatio || 1;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+      if (!fitted) { fit(); fitted = true; }
+      paint();
+    }
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+
+    function zoomAt(px, py, f) {
+      const lon = cx + (px - w / 2) / s, lat = cy - (py - h / 2) / s;
+      s = Math.max(w / 360, Math.min(MAX_SCALE, s * f));
+      cx = lon - (px - w / 2) / s; cy = lat + (py - h / 2) / s;
+      clampView(); paint();
+    }
+    function clampView() { cx = Math.max(-180, Math.min(180, cx)); cy = Math.max(-85, Math.min(85, cy)); }
+
+    let drag = null;
+    const onWheel = (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015)); };
+    const onDown = (e) => { drag = { x: e.clientX, y: e.clientY, cx, cy, moved: false }; cv.setPointerCapture(e.pointerId); };
+    const onMove = (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      cx = drag.cx - dx / s; cy = drag.cy + dy / s; clampView(); paint();
+    };
+    const onUp = (e) => {
+      const d = drag; drag = null;
+      if (!d || d.moved) return;
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const hit = clusters.find(c => Math.hypot(c.x - x, c.y - y) <= c.r + 3);
+      if (!hit) return;
+      showPhotos(null, hit.ids);
+    };
+    const onKey = (e) => {
+      const step = 60 / s;
+      if (e.key === '+' || e.key === '=') zoomAt(w / 2, h / 2, 1.5);
+      else if (e.key === '-') zoomAt(w / 2, h / 2, 1 / 1.5);
+      else if (e.key === 'ArrowLeft') { cx -= step; clampView(); paint(); }
+      else if (e.key === 'ArrowRight') { cx += step; clampView(); paint(); }
+      else if (e.key === 'ArrowUp') { cy += step; clampView(); paint(); }
+      else if (e.key === 'ArrowDown') { cy -= step; clampView(); paint(); }
+      else return;
+      e.preventDefault(); e.stopPropagation();
+    };
+    cv.addEventListener('wheel', onWheel, { passive: false });
+    cv.addEventListener('pointerdown', onDown);
+    cv.addEventListener('pointermove', onMove);
+    cv.addEventListener('pointerup', onUp);
+    cv.addEventListener('keydown', onKey);
+    return () => { ro.disconnect(); };
+  }
+}
+
+// ── P3: vector or raster basemap from a user's PMTiles file ──────────────────
+let libsPromise = null;
+function loadMapLibs() {
+  libsPromise ??= (async () => {
+    if (!document.querySelector(`link[href="${MAPLIBRE_CSS}"]`)) {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet'; l.href = MAPLIBRE_CSS;
+      document.head.appendChild(l);
+    }
+    const [maplibregl, pmtiles] = await Promise.all([import(MAPLIBRE_URL), import(PMTILES_URL)]);
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile);
+    return { maplibregl, pmtiles, protocol };
+  })();
+  libsPromise.catch(() => { libsPromise = null; });
+  return libsPromise;
+}
+
+let mapSeq = 0;
+async function drawBasemap(body, file, recs, showPhotos, back) {
+  const { maplibregl, pmtiles, protocol } = await loadMapLibs();
+  const source = new pmtiles.FileSource(file);
+  const key = `slate-map-${++mapSeq}`;
+  source.getKey = () => key; // a fixed key, so a file name with spaces or slashes stays a valid URL
+  const archive = new pmtiles.PMTiles(source);
+  protocol.add(archive);
+  const header = await archive.getHeader();
+  const meta = await archive.getMetadata().catch(() => ({}));
+  const url = `pmtiles://${key}`;
+  const bounds = [header.minLon, header.minLat, header.maxLon, header.maxLat];
+
+  const style = { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#dfe6ea' } }] };
+  const attribution = typeof meta.attribution === 'string' ? meta.attribution : '';
+  if (header.tileType === 1) {
+    style.sources.base = { type: 'vector', tiles: [`${url}/{z}/{x}/{y}`], minzoom: header.minZoom, maxzoom: header.maxZoom, bounds, attribution };
+    for (const vl of meta.vector_layers || []) {
+      const water = /water|ocean|sea/i.test(vl.id);
+      style.layers.push(
+        { id: `${vl.id}-fill`, type: 'fill', source: 'base', 'source-layer': vl.id, filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': water ? '#a9c9de' : '#f2efe9', 'fill-opacity': water ? 1 : 0.6 } },
+        { id: `${vl.id}-line`, type: 'line', source: 'base', 'source-layer': vl.id, filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': water ? '#8fb3cc' : '#b8b2a7', 'line-width': 0.8 } },
+      );
+    }
+    if (!meta.vector_layers?.length) throw new Error('the file lists no vector layers');
+  } else if ([2, 3, 4, 5].includes(header.tileType)) {
+    style.sources.base = { type: 'raster', tiles: [`${url}/{z}/{x}/{y}`], tileSize: 256, minzoom: header.minZoom, maxzoom: header.maxZoom, bounds, attribution };
+    style.layers.push({ id: 'base', type: 'raster', source: 'base' });
+  } else {
+    throw new Error('this file holds a tile type Slate cannot draw (MapLibre Tiles or unknown)');
+  }
+
+  body.innerHTML = `<div class="plc-map plc-glwrap"><div class="plc-gl"></div>
+    <p class="plc-hint">${esc(file.name)}, read from your disk. <button class="btn plc-back">Back to the outline map</button></p></div>`;
+  const map = new maplibregl.Map({ container: body.querySelector('.plc-gl'), style, bounds, fitBoundsOptions: { padding: 20 }, attributionControl: { compact: true } });
+  body.querySelector('.plc-back').addEventListener('click', () => back());
+  map.on('load', () => {
+    map.addSource('photos', {
+      type: 'geojson', cluster: true, clusterRadius: 40,
+      data: { type: 'FeatureCollection', features: recs.map(r => ({ type: 'Feature', properties: { id: r.id }, geometry: { type: 'Point', coordinates: [r.lon, r.lat] } })) },
+    });
+    map.addLayer({ id: 'pins', type: 'circle', source: 'photos', paint: {
+      'circle-color': '#3b82f6', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,
+      'circle-radius': ['case', ['has', 'point_count'], ['min', 22, ['+', 8, ['*', 2, ['log2', ['get', 'point_count']]]]], 6],
+    } });
+    map.on('click', 'pins', async (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      if (f.properties.cluster) {
+        const leaves = await map.getSource('photos').getClusterLeaves(f.properties.cluster_id, Infinity, 0);
+        showPhotos(null, leaves.map(l => l.properties.id));
+      } else showPhotos(null, [f.properties.id]);
+    });
+    map.on('mouseenter', 'pins', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'pins', () => { map.getCanvas().style.cursor = ''; });
+  });
+  return () => { map.remove(); };
+}
+
+return { MAPLIBRE_URL, MAPLIBRE_CSS, PMTILES_URL, initPlaces };
+})();
+
+const __m_ops_ocr = (() => {
+// Extract text from the open image (plan/pending.md, 2026-10-14) with Tesseract.js (Apache-2.0).
+// Indra OCR was the first candidate, but its weights carry a modified OpenRAIL-M licence
+// ("cannot compete with our API"), so Slate does not ship it.
+//
+// Like the rare-format decoders, the library loads on first use from esm.sh at an exact
+// version. Its worker, core and English data then download from jsdelivr (about 5 MB, cached
+// by the browser). The image itself never leaves the page: recognition runs in a local worker.
+//
+// The photo library (src/library/textindex.js, row X3) uses the same worker: it passes a Blob
+// from ocrImage(file), a version of the photo at most 1600 px on the long edge.
+
+const TESSERACT_URL = 'https://esm.sh/tesseract.js@7.0.0';
+const OCR_MAX_EDGE = 1600;
+let workerPromise = null;
+
+async function getWorker(lang, onProgress) {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const mod = await import(/* @vite-ignore */ TESSERACT_URL);
+      const createWorker = mod.createWorker ?? mod.default?.createWorker;
+      if (!createWorker) throw new Error('the text recogniser did not load');
+      return createWorker(lang, 1, { logger: (m) => onProgressRef.fn?.(m) });
+    })().catch((err) => { workerPromise = null; throw err; });
+  }
+  onProgressRef.fn = onProgress;
+  return workerPromise;
+}
+const onProgressRef = { fn: null };
+
+// A PNG or the Blob itself, from a Blob, an ImageBitmap, an OffscreenCanvas or an HTMLCanvasElement.
+async function toBlob(source) {
+  if (typeof Blob !== 'undefined' && source instanceof Blob) return source;
+  let canvas = source;
+  if (!source.convertToBlob && !source.toBlob) {
+    canvas = new OffscreenCanvas(source.width, source.height);
+    canvas.getContext('2d').drawImage(source, 0, 0);
+  }
+  return canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/png' }) : new Promise(r => canvas.toBlob(r, 'image/png'));
+}
+
+// Returns { text, confidence }. `source` is a Blob, an ImageBitmap or a canvas.
+async function extractText(source, { lang = 'eng', onProgress } = {}) {
+  const worker = await getWorker(lang, onProgress);
+  const { data } = await worker.recognize(await toBlob(source));
+  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
+}
+
+// A version of a photo file for recognition: a PNG Blob at most `max` px on the long edge.
+// The browser applies the EXIF orientation while it decodes.
+async function ocrImage(file, max = OCR_MAX_EDGE) {
+  const full = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, max / Math.max(full.width, full.height));
+    const w = Math.max(1, Math.round(full.width * scale)), h = Math.max(1, Math.round(full.height * scale));
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext('2d').drawImage(full, 0, 0, w, h);
+    return await canvas.convertToBlob({ type: 'image/png' });
+  } finally { full.close?.(); }
+}
+
+// Trim trailing spaces on each line and collapse runs of three or more blank lines.
+function cleanText(text) {
+  return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+return { TESSERACT_URL, OCR_MAX_EDGE, extractText, ocrImage, cleanText };
+})();
+
+const __m_library_textindex = (() => {
+// Read text in photos (spec row X3). When the setting "Read text in photos" is on,
+// Slate runs Tesseract.js (src/ops/ocr.js) over every photo in the library through
+// lib.jobs (kind 'ocr', so the Pause button pauses it), and the search box then
+// also matches the words it found. "Read text" in the action bar runs it now for
+// the selection, whether the setting is on or not.
+//
+// The text stays in this browser: lib.store kv under 'textindex', one object of
+// id -> { t: text, s: "size:mtime" }. It is never written to the library file.
+// A photo whose size or modified time changes is read again.
+//
+// initTextIndex(lib, { recognise, loadImage, saveDelay }) -> api
+//   api.ready              resolves once the setting and the text are loaded
+//   api.enabled() / api.setEnabled(on)
+//   api.textOf(id)         the text read from that photo, '' when it has none, undefined when unread
+//   api.runFor(ids)        read these photos first; returns how many were queued
+//   api.count()            how many photos have been read
+//   api.forget()           delete every stored text
+//   api.flush()            write the text now
+// It also sets lib.textOf (the hook query.js reads as `opts.textOf`) and
+// lib.services.textIndex, and emits lib 'text' { ids } after each save.
+// `recognise(blob) -> { text }` and `loadImage(file) -> blob` default to ocr.js; tests pass fakes.
+
+const extractText = __m_ops_ocr.extractText;
+const ocrImage = __m_ops_ocr.ocrImage;
+
+const TEXT_SETTING_KEY = 'setting:readText';
+const TEXT_INDEX_KEY = 'textindex';
+const SAVE_DELAY_MS = 2000;
+
+const sigOf = (r) => `${r.size}:${r.mtime}`;
+
+function initTextIndex(lib, { recognise = (b) => extractText(b), loadImage = ocrImage, saveDelay = SAVE_DELAY_MS } = {}) {
+  const entries = new Map();   // id -> { t, s }
+  const queued = new Set();    // ids waiting or running in lib.jobs
+  const changed = new Set();   // ids read since the last save
+  let on = false;
+  let timer = null;
+
+  const kv = (fn, ...a) => Promise.resolve(lib.store?.[fn]?.(...a));
+
+  const eligible = (r) => !!r && r.kind === 'photo' && !r.missing && !lib.choice(r.id).trashed;
+  const needs = (id) => { const r = lib.get(id); return eligible(r) && !queued.has(id) && entries.get(id)?.s !== sigOf(r); };
+
+  async function readOne({ id }, signal) {
+    try {
+      const r = lib.get(id);
+      if (signal?.aborted || !eligible(r)) return;
+      const img = await loadImage(await lib.getFile(id));
+      if (signal?.aborted) return;
+      const { text } = await recognise(img);
+      entries.set(id, { t: String(text ?? ''), s: sigOf(r) });
+      changed.add(id);
+      scheduleSave();
+    } finally { queued.delete(id); }
+  }
+
+  function add(ids) {
+    if (!ids.length) return;
+    for (const id of ids) queued.add(id);
+    lib.jobs.add('ocr', ids.map(id => ({ id })), readOne);
+  }
+
+  function enqueueAll() { add([...lib.records.keys()].filter(needs)); }
+
+  function scheduleSave() {
+    clearTimeout(timer);
+    timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not save the text read from photos: ${e.message}` })); }, saveDelay);
+  }
+
+  const api = {
+    ready: null,
+    enabled: () => on,
+    async setEnabled(value) {
+      on = !!value;
+      await kv('setKv', TEXT_SETTING_KEY, on);
+      if (on) enqueueAll();
+      else { lib.jobs.cancel('ocr'); queued.clear(); }
+    },
+    textOf: (id) => entries.get(id)?.t,
+    count: () => entries.size,
+    // Puts these photos ahead of the rest of the queue.
+    runFor(ids) {
+      const first = [...new Set(ids)].filter(id => eligible(lib.get(id)) && entries.get(id)?.s !== sigOf(lib.get(id)));
+      const rest = [...queued].filter(id => !first.includes(id));
+      if (queued.size) { lib.jobs.cancel('ocr'); queued.clear(); }
+      add(first);
+      add(rest.filter(needs));
+      return first.length;
+    },
+    async forget() {
+      clearTimeout(timer);
+      entries.clear(); changed.clear();
+      await kv('deleteKv', TEXT_INDEX_KEY);
+      lib.emit('text', { ids: null });
+    },
+    async flush() {
+      clearTimeout(timer);
+      const ids = [...changed]; changed.clear();
+      await kv('setKv', TEXT_INDEX_KEY, Object.fromEntries(entries));
+      lib.emit('text', { ids });
+    },
+  };
+
+  api.ready = Promise.all([kv('getKv', TEXT_SETTING_KEY), kv('getKv', TEXT_INDEX_KEY)])
+    .then(([setting, saved]) => {
+      on = setting === true;
+      for (const [id, e] of Object.entries(saved ?? {})) if (!entries.has(id)) entries.set(id, e);
+      if (on && lib.records.size) enqueueAll();
+    }).catch(() => {});
+
+  lib.on('records', (ev = {}) => {
+    // Rebuild clears every kv entry; write the setting and the text back.
+    if (ev.reason === 'rebuild') {
+      kv('setKv', TEXT_SETTING_KEY, on).catch(() => {});
+      if (entries.size) scheduleSave();
+    }
+    if (Array.isArray(ev.ids)) {
+      for (const id of ev.ids) if (!lib.records.has(id) && entries.delete(id)) scheduleSave();
+      if (on) add(ev.ids.filter(needs));
+    } else if (on) enqueueAll();
+  });
+
+  lib.textOf = api.textOf;
+  lib.services.textIndex = api;
+  return api;
+}
+
+return { TEXT_SETTING_KEY, TEXT_INDEX_KEY, initTextIndex };
+})();
+
+const __m_library_locked = (() => {
+// Locked hidden photos (spec row O9). "Lock hidden photos" sets a passphrase; from
+// then on the Hidden view shows nothing until the passphrase is entered, once per
+// session (the unlocked state lives in memory only, so a reload locks again).
+//
+// What it does: while locked, lib.search() matches no hidden photo (query.js
+// `lockHidden`), so the Hidden view, the trash and the agent commands list no
+// hidden id and show no hidden thumbnail. What it does not do: the files are not
+// encrypted, and each folder's library file keeps its "hidden" entries as before.
+// It hides photos from casual viewers of this browser; anyone with the folder
+// sees every file.
+//
+// The verifier lives in lib.store kv under 'lock:hidden':
+//   { v: 1, kdf: 'PBKDF2-SHA-256', iterations: 600000, salt: base64 (16 bytes), hash: base64 (32 bytes) }
+// "Reset lock" deletes it after a confirmation; it unhides nothing.
+//
+// createLock(store, { crypto, iterations }) -> lock (no library needed; the tests use this)
+//   lock.ready, lock.isSet(), lock.isLocked(), lock.set(pass), lock.unlock(pass) -> boolean,
+//   lock.lock(), lock.reset(), lock.onChange(fn)
+// initLocked(lib) -> lock, and sets lib.hiddenLocked() and lib.services.lock. Each change
+// emits lib 'choices' { ids: null, reason: 'lock' } so the view queries again.
+
+const LOCK_KEY = 'lock:hidden';
+const LOCK_ITERATIONS = 600000;
+const MIN_PASSPHRASE = 4;
+
+const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+const unb64 = (s) => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
+
+async function derive(crypto, pass, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256));
+}
+
+function sameBytes(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
+}
+
+function createLock(store, { crypto = globalThis.crypto, iterations = LOCK_ITERATIONS } = {}) {
+  let verifier = null;   // the stored object, or null when no lock is set
+  let unlocked = false;
+  let loaded = false;    // until the verifier is read, hidden photos stay out of sight
+  const listeners = new Set();
+  const changed = () => { for (const fn of listeners) { try { fn(); } catch { /* a listener never stops the lock */ } } };
+
+  const lock = {
+    ready: Promise.resolve(store?.getKv?.(LOCK_KEY)).then(v => { verifier = v?.salt && v?.hash ? v : null; }).catch(() => {}).finally(() => { loaded = true; }),
+    isSet: () => !!verifier,
+    isLocked: () => !loaded || (!!verifier && !unlocked),
+    onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+
+    async set(pass) {
+      await lock.ready;
+      if (verifier) throw new Error('A lock is already set. Reset it first to choose a new passphrase.');
+      if (typeof pass !== 'string' || pass.length < MIN_PASSPHRASE) throw new Error(`The passphrase needs at least ${MIN_PASSPHRASE} characters.`);
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const hash = await derive(crypto, pass, salt, iterations);
+      const v = { v: 1, kdf: 'PBKDF2-SHA-256', iterations, salt: b64(salt), hash: b64(hash) };
+      await store.setKv(LOCK_KEY, v);
+      verifier = v;
+      unlocked = false;
+      changed();
+    },
+
+    async unlock(pass) {
+      await lock.ready;
+      if (!verifier) return true;
+      const hash = await derive(crypto, String(pass ?? ''), unb64(verifier.salt), verifier.iterations ?? LOCK_ITERATIONS);
+      if (!sameBytes(hash, unb64(verifier.hash))) return false;
+      unlocked = true;
+      changed();
+      return true;
+    },
+
+    lock() { if (verifier && unlocked) { unlocked = false; changed(); } },
+
+    async reset() {
+      await store.deleteKv(LOCK_KEY);
+      verifier = null;
+      unlocked = false;
+      changed();
+    },
+
+    // Writes the verifier back (Rebuild index clears every kv entry).
+    async restore() { if (verifier) await store.setKv(LOCK_KEY, verifier); },
+  };
+  return lock;
+}
+
+function initLocked(lib, opts) {
+  const lock = createLock(lib.store, opts);
+  lib.hiddenLocked = () => lock.isLocked();
+  lib.services.lock = lock;
+  lock.onChange(() => lib.emit('choices', { ids: null, reason: 'lock' }));
+  lock.ready.then(() => lib.emit('choices', { ids: null, reason: 'lock' }));
+  lib.on('records', (ev) => { if (ev?.reason === 'rebuild') lock.restore().catch(e => lib.emit('error', { message: `Could not keep the lock after the rebuild: ${e.message}` })); });
+  return lock;
+}
+
+return { LOCK_KEY, LOCK_ITERATIONS, MIN_PASSPHRASE, createLock, initLocked };
+})();
+
+const __m_library_faces = (() => {
+// Faces (spec rows F1 to F3): find faces in photos, group them into people,
+// and let the person name, merge, hide and correct those groups.
+//
+// Off by default. Nothing runs, and nothing downloads, until the person turns
+// it on from the People view, which first says what happens (OPT_IN_TEXT).
+// While on:
+//   - Models download once into Cache Storage 'slate-faces-models' (MODELS has
+//     the URLs, sizes and licences), run with ONNX Runtime Web on WebAssembly
+//     in a worker.
+//   - Each photo (videos are skipped) is decoded at most 640 px on the long
+//     edge, YuNet finds faces and five landmarks, each face is aligned to
+//     112 x 112 with a similarity transform, and SFace turns it into a
+//     128-number vector. Work runs on lib.jobs as kind 'faces'.
+//   - Faces and people live only in this browser, in IndexedDB 'slate.faces'.
+//     Nothing goes into the photo files unless "Write XMP sidecars" is on, and
+//     then only the rectangles and names of named people (MWG regions, xmp.js).
+//   - deleteAll() removes the database, the downloaded models and the setting.
+//
+// Grouping follows Immich's incremental DBSCAN: a face with at least MIN_FACES
+// faces (itself included) within MAX_DISTANCE (cosine distance) is a core
+// face; it joins the person of its nearest grouped neighbour, or starts a new
+// person. Faces with fewer neighbours join the nearest grouped neighbour's
+// person when one is in range, and otherwise stay ungrouped. A face marked "not
+// this person" never rejoins that person and never starts a new one. The model id is
+// stored with every vector; vectors from another model are dropped and redone.
+//
+// initFaces(lib) -> api (also lib.services.faces):
+//   ready, enabled(), setEnabled(on), pause(), resume(), paused(), status(),
+//   deleteAll(), people({ hidden }), person(pid), facesOf(pid), photosOf(pid),
+//   facesIn(photoId), name(pid, name), merge(intoPid, fromPid), hide(pid, on),
+//   notThisPerson(faceId), setCover(pid, faceId), coverFace(pid),
+//   regionsFor(photoId), on(fn)
+//
+// Pure parts, exported for tests and copied into the worker by toString():
+//   decodeYunet, nms, similarityTransform, warpAffine, l2normalise, cosineDistance,
+//   clusterFaces (with the people state helpers mergePeople, markNotPerson).
+
+const parseRegions = __m_library_xmp.parseRegions;
+const sidecarNames = __m_library_xmp.sidecarNames;
+
+const SETTING_KEY = 'setting:faces';
+const DB_NAME = 'slate.faces';
+const MODEL_CACHE = 'slate-faces-models';
+const ORT_VERSION = '1.29.0';
+const ORT_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+const MODELS = {
+  detector: {
+    id: 'yunet-2023mar', licence: 'MIT', bytes: 232589,
+    url: 'https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx',
+  },
+  recogniser: {
+    id: 'sface-2021dec-int8', licence: 'Apache-2.0', bytes: 9896933,
+    url: 'https://huggingface.co/opencv/face_recognition_sface/resolve/3d7082438a6e4551e840c9b2bb60b71e8da4b524/face_recognition_sface_2021dec_int8.onnx',
+  },
+  runtime: { id: `onnxruntime-web@${ORT_VERSION}`, licence: 'MIT', bytes: 14036063, url: `${ORT_BASE}ort.wasm.min.mjs` },
+};
+const MODEL_ID = `${MODELS.detector.id}+${MODELS.recogniser.id}`;
+const DOWNLOAD_MB = Math.round((MODELS.detector.bytes + MODELS.recogniser.bytes + MODELS.runtime.bytes) / 1e6);
+
+const OPT_IN_TEXT = [
+  `Slate downloads three files once: the YuNet face finder (0.2 MB, MIT licence), the SFace face recogniser (9.9 MB, Apache-2.0) and ONNX Runtime Web (14 MB, MIT), about ${DOWNLOAD_MB} MB in all, from Hugging Face and jsDelivr.`,
+  'Slate then finds faces in your photos and groups them into people on this device. No photo and no face leaves it.',
+  'Face data stays in this browser. Names go into your photo files only if you turn on "Write XMP sidecars".',
+  'You can turn faces off and remove every face, person and name with "Delete all face data".',
+];
+
+const DETECT_SIZE = 640;
+const MIN_SCORE = 0.7;          // Immich's default minimum detection score
+// Faces under 32 px (at 640 px) are skipped: on OpenCV's crowd selfie, pairs of
+// different people under 24 px reached cosine similarity 0.59, while every pair
+// at 32 px or more stayed at 0.41 or below.
+const MIN_FACE_PX = 32;
+const NMS_IOU = 0.3;
+const MAX_DISTANCE = 0.5;       // cosine distance; SFace's own same-person cut is 0.637
+const MIN_FACES = 3;
+// ArcFace's five-point template for a 112 x 112 crop (OpenCV FaceRecognizerSF uses it).
+const TEMPLATE = [38.2946, 51.6963, 73.5318, 51.5014, 56.0252, 71.7366, 41.5493, 92.3655, 70.7299, 92.2041];
+
+// ── pure parts ──────────────────────────────────────────────────────────────
+
+// YuNet 2023mar output (a fixed 640 x 640 input) to faces in input pixels.
+// out: { cls_8, obj_8, bbox_8, kps_8, ... } Float32Arrays. Returns
+// [{ box: [x, y, w, h], landmarks: [x0, y0, ... x4, y4], score }].
+function decodeYunet(out, size, minScore) {
+  const faces = [];
+  for (const s of [8, 16, 32]) {
+    const cols = size / s, rows = size / s;
+    const cls = out['cls_' + s], obj = out['obj_' + s], bb = out['bbox_' + s], kp = out['kps_' + s];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const score = Math.sqrt(Math.min(1, Math.max(0, cls[i])) * Math.min(1, Math.max(0, obj[i])));
+      if (score < minScore) continue;
+      const cx = (c + bb[i * 4]) * s, cy = (r + bb[i * 4 + 1]) * s;
+      const w = Math.exp(bb[i * 4 + 2]) * s, h = Math.exp(bb[i * 4 + 3]) * s;
+      const landmarks = [];
+      for (let k = 0; k < 5; k++) landmarks.push((kp[i * 10 + 2 * k] + c) * s, (kp[i * 10 + 2 * k + 1] + r) * s);
+      faces.push({ box: [cx - w / 2, cy - h / 2, w, h], landmarks, score });
+    }
+  }
+  return faces;
+}
+
+// Greedy non-maximum suppression on [x, y, w, h] boxes, best score first.
+function nms(faces, iouMax) {
+  const iou = (a, b) => {
+    const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
+    const x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    return inter / (a[2] * a[3] + b[2] * b[3] - inter || 1);
+  };
+  const keep = [];
+  for (const f of [...faces].sort((a, b) => b.score - a.score)) if (keep.every(k => iou(k.box, f.box) <= iouMax)) keep.push(f);
+  return keep;
+}
+
+// The least-squares similarity transform (scale, rotation, shift; no
+// reflection) taking src points to dst points, both flat [x0, y0, x1, y1, ...].
+// Returns the 2 x 3 matrix [a, b, tx, c, d, ty]: x' = a x + b y + tx, y' = c x + d y + ty.
+function similarityTransform(src, dst) {
+  const n = src.length / 2;
+  let sx = 0, sy = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++) { sx += src[2 * i]; sy += src[2 * i + 1]; dx += dst[2 * i]; dy += dst[2 * i + 1]; }
+  sx /= n; sy /= n; dx /= n; dy /= n;
+  let p = 0, q = 0, norm = 0;
+  for (let i = 0; i < n; i++) {
+    const ax = src[2 * i] - sx, ay = src[2 * i + 1] - sy, bx = dst[2 * i] - dx, by = dst[2 * i + 1] - dy;
+    p += ax * bx + ay * by; q += ax * by - ay * bx; norm += ax * ax + ay * ay;
+  }
+  const a = norm ? p / norm : 1, c = norm ? q / norm : 0;   // a = s cos(t), c = s sin(t)
+  return [a, -c, dx - (a * sx - c * sy), c, a, dy - (c * sx + a * sy)];
+}
+
+// Warp RGBA pixels (width w, height h) through matrix m into an out x out
+// RGBA crop, sampling bilinearly; outside the image is black (as cv2.warpAffine).
+function warpAffine(px, w, h, m, out) {
+  const [a, b, tx, c, d, ty] = m;
+  const det = a * d - b * c;
+  const ia = d / det, ib = -b / det, ic = -c / det, id = a / det;
+  const res = new Uint8ClampedArray(out * out * 4);
+  for (let v = 0; v < out; v++) for (let u = 0; u < out; u++) {
+    const X = u - tx, Y = v - ty;
+    const x = ia * X + ib * Y, y = ic * X + id * Y;
+    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+    const o = (v * out + u) * 4;
+    for (let ch = 0; ch < 3; ch++) {
+      let acc = 0;
+      for (const [xx, yy, wt] of [[x0, y0, (1 - fx) * (1 - fy)], [x0 + 1, y0, fx * (1 - fy)], [x0, y0 + 1, (1 - fx) * fy], [x0 + 1, y0 + 1, fx * fy]]) {
+        if (wt && xx >= 0 && yy >= 0 && xx < w && yy < h) acc += px[(yy * w + xx) * 4 + ch] * wt;
+      }
+      res[o + ch] = acc;
+    }
+    res[o + 3] = 255;
+  }
+  return res;
+}
+
+function l2normalise(v) {
+  let s = 0;
+  for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+  s = Math.sqrt(s) || 1;
+  const o = new Float32Array(v.length);
+  for (let i = 0; i < v.length; i++) o[i] = v[i] / s;
+  return o;
+}
+
+// Vectors are unit length, so cosine distance is 1 minus the dot product.
+function cosineDistance(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return 1 - s;
+}
+
+// ── people state ────────────────────────────────────────────────────────────
+// state = { people: { [pid]: { id, name, hidden, cover } },
+//           assign: { [faceId]: pid },
+//           notPerson: { [faceId]: [pid, ...] },   // "not this person" marks
+//           next: number }                         // next person number
+
+function emptyState() { return { people: {}, assign: {}, notPerson: {}, next: 1 }; }
+
+function newPerson(state) {
+  let id;
+  do id = 'p' + state.next++; while (state.people[id]);
+  state.people[id] = { id, name: '', hidden: false, cover: null };
+  return id;
+}
+
+// faces: [{ id, vector }]. Assigns ungrouped faces in place; returns the number assigned.
+function clusterFaces(faces, state, { maxDistance = MAX_DISTANCE, minFaces = MIN_FACES } = {}) {
+  const allowed = (fid, pid) => !!state.people[pid] && !(state.notPerson[fid] ?? []).includes(pid);
+  const ungrouped = faces.filter(f => !state.assign[f.id] || !state.people[state.assign[f.id]]);
+  const near = new Map();
+  for (const f of ungrouped) {
+    const list = [];
+    for (const g of faces) if (g !== f) { const dist = cosineDistance(f.vector, g.vector); if (dist <= maxDistance) list.push([dist, g.id]); }
+    near.set(f.id, list.sort((x, y) => x[0] - y[0]));
+  }
+  const nearestPerson = (f) => {
+    for (const [, gid] of near.get(f.id)) { const pid = state.assign[gid]; if (pid && allowed(f.id, pid)) return pid; }
+    return null;
+  };
+  let assigned = 0;
+  for (const f of ungrouped) {                              // core faces
+    if (near.get(f.id).length + 1 < minFaces) continue;
+    // A face marked "not this person" joins another person but never starts one.
+    const pid = nearestPerson(f) ?? (state.notPerson[f.id]?.length ? null : newPerson(state));
+    if (pid) { state.assign[f.id] = pid; assigned++; }
+  }
+  for (const f of ungrouped) {                              // border faces
+    if (state.assign[f.id]) continue;
+    const pid = nearestPerson(f);
+    if (pid) { state.assign[f.id] = pid; assigned++; }
+  }
+  return assigned;
+}
+
+// Move every face of `from` into `into`; keeps into's name unless it has none.
+function mergePeople(state, into, from) {
+  if (into === from || !state.people[into] || !state.people[from]) return false;
+  for (const [fid, pid] of Object.entries(state.assign)) if (pid === from) state.assign[fid] = into;
+  for (const list of Object.values(state.notPerson)) { const i = list.indexOf(from); if (i >= 0) list[i] = into; }
+  if (!state.people[into].name) state.people[into].name = state.people[from].name;
+  delete state.people[from];
+  return true;
+}
+
+// The face leaves its person and never rejoins that person automatically.
+function markNotPerson(state, faceId) {
+  const pid = state.assign[faceId];
+  if (!pid) return null;
+  delete state.assign[faceId];
+  (state.notPerson[faceId] ??= []).includes(pid) || state.notPerson[faceId].push(pid);
+  if (state.people[pid]?.cover === faceId) state.people[pid].cover = null;
+  return pid;
+}
+
+// Intersection over union of two normalised [x, y, w, h] boxes.
+function boxIou(a, b) {
+  const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
+  const x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  return inter / (a[2] * a[3] + b[2] * b[3] - inter || 1);
+}
+
+// ── storage: IndexedDB 'slate.faces' (or a Map in Node) ─────────────────────
+//   photos  keyPath 'photoId'   { photoId, sig, model, faces: [face], xmp: regions|null }
+//   kv      'people'            the people state
+// face = { id, box: [x, y, w, h] (0 to 1 of the photo), landmarks: [10 numbers, 0 to 1], score, vector: Float32Array(128) }
+
+function memoryFaceStore() {
+  const photos = new Map(), kv = new Map();
+  const clone = (v) => structuredClone(v);
+  return {
+    async allPhotos() { return [...photos.values()].map(clone); },
+    async putPhoto(p) { photos.set(p.photoId, clone(p)); },
+    async deletePhotos(ids) { for (const id of ids) photos.delete(id); },
+    async getKv(k) { return kv.has(k) ? clone(kv.get(k)) : undefined; },
+    async setKv(k, v) { kv.set(k, clone(v)); },
+    async destroy() { photos.clear(); kv.clear(); },
+  };
+}
+
+function idbReq(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function idbDone(tx) { return new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error); }); }
+
+async function idbFaceStore(name = DB_NAME) {
+  let db = null;
+  const open = () => db ?? (db = new Promise((resolve, reject) => {
+    const o = indexedDB.open(name, 1);
+    o.onupgradeneeded = () => { o.result.createObjectStore('photos', { keyPath: 'photoId' }); o.result.createObjectStore('kv'); };
+    o.onsuccess = () => resolve(o.result);
+    o.onerror = () => reject(o.error);
+  }));
+  const tx = async (store, mode, fn) => { const d = await open(); const t = d.transaction(store, mode); const r = fn(t.objectStore(store)); await idbDone(t); return r; };
+  return {
+    async allPhotos() { const d = await open(); return idbReq(d.transaction('photos').objectStore('photos').getAll()); },
+    async putPhoto(p) { await tx('photos', 'readwrite', s => s.put(p)); },
+    async deletePhotos(ids) { await tx('photos', 'readwrite', s => { for (const id of ids) s.delete(id); }); },
+    async getKv(k) { const d = await open(); return idbReq(d.transaction('kv').objectStore('kv').get(k)); },
+    async setKv(k, v) { await tx('kv', 'readwrite', s => s.put(v, k)); },
+    async destroy() {
+      if (db) { (await db).close(); db = null; }
+      await new Promise((res) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = r.onerror = r.onblocked = () => res(); });
+    },
+  };
+}
+
+// ── the worker ──────────────────────────────────────────────────────────────
+// Messages in:  { op: 'detect', id, file }   (a Blob; decoded here)
+// Messages out: { id, faces: [face without id], w, h } or { id, error }
+// The pure functions above are copied in by toString(), so one copy is tested.
+
+const WORKER_BODY = `
+let ready = null;
+async function modelBytes(url) {
+  const cache = await caches.open(${JSON.stringify(MODEL_CACHE)});
+  let res = await cache.match(url);
+  if (!res) {
+    const got = await fetch(url);
+    if (!got.ok) throw new Error('could not download ' + url.slice(url.lastIndexOf('/') + 1) + ' (HTTP ' + got.status + ')');
+    await cache.put(url, got.clone());
+    res = got;
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+function load() {
+  return ready ??= (async () => {
+    const ort = await import(CFG.ortUrl);
+    ort.env.wasm.wasmPaths = CFG.ortBase;
+    ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+    const opts = { executionProviders: ['wasm'] };
+    const det = await ort.InferenceSession.create(await modelBytes(CFG.detUrl), opts);
+    const rec = await ort.InferenceSession.create(await modelBytes(CFG.recUrl), opts);
+    return { ort, det, rec };
+  })().catch(e => { ready = null; throw e; });
+}
+async function detect(file) {
+  const { ort, det, rec } = await load();
+  const bmp = await createImageBitmap(file);
+  const W = bmp.width, H = bmp.height, S = CFG.size;
+  const k = Math.min(1, S / Math.max(W, H));
+  const w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  const cv = new OffscreenCanvas(S, S);
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+  g.drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  const px = g.getImageData(0, 0, S, S).data;
+  const plane = S * S, inp = new Float32Array(3 * plane);
+  for (let i = 0; i < plane; i++) { inp[i] = px[i * 4 + 2]; inp[plane + i] = px[i * 4 + 1]; inp[2 * plane + i] = px[i * 4]; }  // BGR, 0 to 255
+  const o = await det.run({ input: new ort.Tensor('float32', inp, [1, 3, S, S]) });
+  const out = {}; for (const key in o) out[key] = o[key].data;
+  const found = nms(decodeYunet(out, S, CFG.minScore), CFG.nmsIou).filter(f => Math.min(f.box[2], f.box[3]) >= CFG.minPx).slice(0, 50);
+  const faces = [];
+  for (const f of found) {
+    const crop = warpAffine(px, S, S, similarityTransform(f.landmarks, CFG.template), 112);
+    const p2 = 112 * 112, t = new Float32Array(3 * p2);
+    for (let i = 0; i < p2; i++) { t[i] = crop[i * 4]; t[p2 + i] = crop[i * 4 + 1]; t[2 * p2 + i] = crop[i * 4 + 2]; }  // RGB, 0 to 255
+    const r = await rec.run({ data: new ort.Tensor('float32', t, [1, 3, 112, 112]) });
+    const vector = l2normalise(r.fc1.data);
+    const [x, y, bw, bh] = f.box;
+    const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(w, x + bw), y1 = Math.min(h, y + bh);
+    faces.push({
+      box: [x0 / w, y0 / h, Math.max(0, x1 - x0) / w, Math.max(0, y1 - y0) / h],
+      landmarks: f.landmarks.map((v, i) => v / (i % 2 ? h : w)),
+      score: f.score, vector,
+    });
+  }
+  return { faces, w: W, h: H };
+}
+// One photo at a time: the sessions are not run concurrently.
+let chain = Promise.resolve();
+self.onmessage = (e) => {
+  const { id, file } = e.data;
+  chain = chain.then(() => detect(file)).then(r => self.postMessage({ id, ...r }), err => self.postMessage({ id, error: String(err && err.message || err) }));
+};
+`;
+
+function workerSource() {
+  const cfg = {
+    ortUrl: MODELS.runtime.url, ortBase: ORT_BASE, detUrl: MODELS.detector.url, recUrl: MODELS.recogniser.url,
+    size: DETECT_SIZE, minScore: MIN_SCORE, nmsIou: NMS_IOU, minPx: MIN_FACE_PX, template: TEMPLATE,
+  };
+  return `const CFG = ${JSON.stringify(cfg)};\n${[decodeYunet, nms, similarityTransform, warpAffine, l2normalise].map(f => f.toString()).join('\n')}\n${WORKER_BODY}`;
+}
+
+function makeDetector() {
+  let w = null, seq = 0;
+  const waiting = new Map();
+  const start = () => {
+    const url = URL.createObjectURL(new Blob([workerSource()], { type: 'application/javascript' }));
+    w = new Worker(url, { type: 'module' });
+    w.addEventListener('message', (e) => { const p = waiting.get(e.data.id); if (p) { waiting.delete(e.data.id); p(e.data); } });
+    w.addEventListener('error', (e) => {
+      console.error('[slate faces] worker error:', e.message);
+      for (const p of waiting.values()) p({ error: e.message || 'the face worker failed to start' });
+      waiting.clear(); w.terminate(); w = null;
+    });
+  };
+  return {
+    detect(file) {
+      if (!w) start();
+      const id = ++seq;
+      return new Promise((resolve) => { waiting.set(id, resolve); w.postMessage({ id, file }); });
+    },
+    stop() { w?.terminate(); w = null; for (const p of waiting.values()) p({ error: 'stopped' }); waiting.clear(); },
+  };
+}
+
+// ── the service ─────────────────────────────────────────────────────────────
+
+const sigOf = (r) => `${r.size}:${r.mtime}`;
+const RECLUSTER_MS = 1500;
+
+function initFaces(lib, { faceStore = null, detector = null, readSidecar = null } = {}) {
+  let on = false, paused = false, loaded = false;
+  let fstore = faceStore;
+  let det = detector;
+  const photos = new Map();          // photoId -> { photoId, sig, model, faces, xmp }
+  let state = emptyState();
+  let lastError = '';
+  let reclusterTimer = null;
+  const listeners = new Set();
+  const changed = (what) => { for (const fn of listeners) { try { fn(what); } catch { /* a listener never stops the service */ } } };
+
+  const getStore = async () => fstore ??= (typeof indexedDB !== 'undefined' ? await idbFaceStore() : memoryFaceStore());
+
+  async function loadData() {
+    if (loaded) return;
+    const s = await getStore();
+    for (const p of await s.allPhotos()) {
+      if (p.model !== MODEL_ID) continue;          // another model's vectors are redone
+      p.faces.forEach(f => { f.vector = f.vector instanceof Float32Array ? f.vector : Float32Array.from(f.vector); });
+      photos.set(p.photoId, p);
+    }
+    state = (await s.getKv('people')) ?? emptyState();
+    loaded = true;
+  }
+  const saveState = () => getStore().then(s => s.setKv('people', state)).catch(e => lib.emit('error', { message: `Could not save people: ${e.message}` }));
+
+  const allFaces = () => { const out = []; for (const p of photos.values()) for (const f of p.faces) out.push(f); return out; };
+  const faceById = (fid) => photos.get(fid.slice(0, fid.lastIndexOf('#')))?.faces.find(f => f.id === fid) ?? null;
+
+  // Named XMP regions name a person who has none yet, when a face overlaps the region.
+  function nameFromXmp() {
+    let n = 0;
+    for (const p of photos.values()) {
+      if (!p.xmp?.regions?.length) continue;
+      for (const f of p.faces) {
+        const pid = state.assign[f.id], person = pid && state.people[pid];
+        if (!person || person.name) continue;
+        const hit = p.xmp.regions.find(r => r.name && boxIou([r.x - r.w / 2, r.y - r.h / 2, r.w, r.h], f.box) > 0.3);
+        if (hit) { person.name = hit.name; n++; }
+      }
+    }
+    return n;
+  }
+
+  function recluster() {
+    clearTimeout(reclusterTimer); reclusterTimer = null;
+    const faces = allFaces();
+    // Assignments to faces that no longer exist are dropped.
+    const live = new Set(faces.map(f => f.id));
+    for (const fid of Object.keys(state.assign)) if (!live.has(fid)) delete state.assign[fid];
+    clusterFaces(faces, state);
+    nameFromXmp();
+    const used = new Set(Object.values(state.assign));
+    for (const pid of Object.keys(state.people)) if (!used.has(pid) && !state.people[pid].name) delete state.people[pid];
+    saveState();
+    changed('people');
+  }
+  const scheduleRecluster = () => { clearTimeout(reclusterTimer); reclusterTimer = setTimeout(recluster, RECLUSTER_MS); };
+
+  const wanted = (r) => r && r.kind !== 'video' && !r.missing && !lib.choice?.(r.id)?.trashed;
+  const todo = () => [...lib.records.values()].filter(r => wanted(r) && photos.get(r.id)?.sig !== sigOf(r));
+
+  async function defaultSidecar(id) {
+    const r = lib.get(id), root = r && lib.roots?.get(r.rootId);
+    if (!r?.sidecar || root?.mode !== 'fsa') return null;
+    const dir = await lib.getHandle(id, { parent: true });
+    for (const n of sidecarNames(r.name)) {
+      try { return await (await (await dir.getFileHandle(n)).getFile()).text(); } catch { /* try the next name */ }
+    }
+    return null;
+  }
+
+  const queued = new Set();           // photo ids on lib.jobs now, so a records event never adds one twice
+  async function processOne(rec, signal) {
+    try { await detectOne(rec, signal); } finally { queued.delete(rec.id); }
+  }
+  async function detectOne(rec, signal) {
+    if (signal?.aborted || !on) return;
+    const file = await lib.getFile(rec.id);
+    det ??= makeDetector();
+    const res = await det.detect(file);
+    if (signal?.aborted || !on) return;
+    if (res.error) { lastError = res.error; throw new Error(res.error); }
+    lastError = '';
+    let xmp = null;
+    try { xmp = parseRegions(await (readSidecar ?? defaultSidecar)(rec.id)); } catch { /* no sidecar */ }
+    const faces = res.faces.map((f, i) => ({ ...f, id: `${rec.id}#${i}` }));
+    const entry = { photoId: rec.id, sig: sigOf(rec), model: MODEL_ID, faces, xmp };
+    // A changed file gets new face ids; drop the old ones' assignments.
+    for (const old of photos.get(rec.id)?.faces ?? []) { delete state.assign[old.id]; delete state.notPerson[old.id]; }
+    photos.set(rec.id, entry);
+    await (await getStore()).putPhoto(entry);
+    scheduleRecluster();
+    changed('photos');
+  }
+
+  function enqueue(recs) {
+    recs = recs.filter(r => !queued.has(r.id));
+    if (!on || paused || !recs.length) return;
+    for (const r of recs) queued.add(r.id);
+    lib.jobs.add('faces', recs, processOne);
+  }
+
+  lib.on('records', ({ ids } = {}) => {
+    if (!on || paused) return;
+    if (!Array.isArray(ids)) { enqueue(todo()); return; }
+    enqueue(ids.map(id => lib.get(id)).filter(r => wanted(r) && photos.get(r.id)?.sig !== sigOf(r)));
+  });
+
+  async function start() {
+    await loadData();
+    lib.jobs.cancel('faces'); queued.clear();
+    enqueue(todo());
+    recluster();
+  }
+
+  const ready = Promise.resolve(lib.store?.getKv?.(SETTING_KEY)).then(v => { on = v === true; if (on) return start(); }).catch(e => { lastError = e.message; });
+
+  const writeXmp = (photoIds) => { if (photoIds.length) lib.services.xmpWrite?.queue?.(photoIds); };
+  const photosOfPid = (pid) => [...new Set(Object.entries(state.assign).filter(([, p]) => p === pid).map(([fid]) => fid.slice(0, fid.lastIndexOf('#'))))];
+
+  const api = {
+    ready,
+    enabled: () => on,
+    paused: () => paused,
+    lastError: () => lastError,
+    async setEnabled(v) {
+      on = !!v;
+      await lib.store?.setKv?.(SETTING_KEY, on);
+      if (on) { paused = false; await start(); }
+      else { lib.jobs.cancel('faces'); queued.clear(); det?.stop?.(); }
+      changed('setting');
+    },
+    pause() { paused = true; lib.jobs.cancel('faces'); queued.clear(); changed('setting'); },
+    resume() { paused = false; enqueue(todo()); changed('setting'); },
+    status() {
+      const total = [...lib.records.values()].filter(wanted).length;
+      let done = 0, faces = 0;
+      for (const r of lib.records.values()) { const p = photos.get(r.id); if (wanted(r) && p?.sig === sigOf(r)) { done++; faces += p.faces.length; } }
+      const people = Object.values(state.people);
+      return { on, paused, total, done, faces, people: people.length, named: people.filter(p => p.name).length, error: lastError };
+    },
+    hasData: () => photos.size > 0 || Object.keys(state.people).length > 0,
+    // Turns faces off and removes every face, vector, person, name and the downloaded models.
+    async deleteAll() {
+      on = false; paused = false;
+      lib.jobs.cancel('faces'); queued.clear();
+      det?.stop?.();
+      clearTimeout(reclusterTimer);
+      photos.clear();
+      state = emptyState();
+      loaded = false;
+      await (await getStore()).destroy();
+      fstore = faceStore;
+      if (typeof caches !== 'undefined') await caches.delete(MODEL_CACHE).catch(() => {});
+      await lib.store?.setKv?.(SETTING_KEY, false);
+      changed('deleted');
+    },
+
+    people({ hidden = false } = {}) {
+      const counts = new Map();
+      for (const pid of Object.values(state.assign)) counts.set(pid, (counts.get(pid) ?? 0) + 1);
+      return Object.values(state.people)
+        .filter(p => hidden || !p.hidden)
+        .map(p => ({ ...p, faces: counts.get(p.id) ?? 0, photos: photosOfPid(p.id).length }))
+        .filter(p => p.faces > 0)
+        .sort((a, b) => (!!b.name - !!a.name) || b.faces - a.faces);
+    },
+    person: (pid) => state.people[pid] ?? null,
+    facesOf: (pid) => Object.entries(state.assign).filter(([, p]) => p === pid).map(([fid]) => faceById(fid)).filter(Boolean),
+    photosOf: (pid) => photosOfPid(pid).filter(id => lib.get(id)).sort((a, b) => (lib.get(b).time ?? 0) - (lib.get(a).time ?? 0)),
+    facesIn: (photoId) => (photos.get(photoId)?.faces ?? []).map(f => ({ ...f, person: state.assign[f.id] ?? null })),
+    coverFace(pid) {
+      const p = state.people[pid];
+      if (!p) return null;
+      const cover = p.cover && state.assign[p.cover] === pid ? faceById(p.cover) : null;
+      return cover ?? api.facesOf(pid).sort((a, b) => b.score * b.box[2] - a.score * a.box[2])[0] ?? null;
+    },
+
+    name(pid, name) {
+      const p = state.people[pid];
+      if (!p) throw new Error('no such person');
+      p.name = String(name ?? '').trim().slice(0, 100);
+      saveState(); changed('people'); writeXmp(photosOfPid(pid));
+      return p;
+    },
+    merge(into, from) {
+      const touched = photosOfPid(from);
+      if (!mergePeople(state, into, from)) throw new Error('pick two different people');
+      saveState(); changed('people'); writeXmp(touched);
+      return state.people[into];
+    },
+    hide(pid, v = true) {
+      const p = state.people[pid];
+      if (!p) throw new Error('no such person');
+      p.hidden = !!v;
+      saveState(); changed('people');
+      return p;
+    },
+    notThisPerson(faceId) {
+      const pid = markNotPerson(state, faceId);
+      if (!pid) throw new Error('that face is not in a person');
+      // Drop a person left with no faces, unless it has a name.
+      if (!Object.values(state.assign).includes(pid) && !state.people[pid]?.name) delete state.people[pid];
+      saveState(); changed('people'); writeXmp([faceId.slice(0, faceId.lastIndexOf('#'))]);
+      return pid;
+    },
+    setCover(pid, faceId) {
+      if (state.assign[faceId] !== pid) throw new Error('that face is not in this person');
+      state.people[pid].cover = faceId;
+      saveState(); changed('people');
+    },
+
+    // MWG regions for xmpwrite.js: the named people in a photo (hidden ones too:
+    // hiding is a People view choice, not an edit), plus
+    // regions already in the sidecar that none of them overlaps. undefined
+    // (leave the sidecar's regions alone) when faces are off or none is named.
+    regionsFor(photoId) {
+      if (!on) return undefined;
+      const p = photos.get(photoId);
+      if (!p) return undefined;
+      const ours = [];
+      for (const f of p.faces) {
+        const person = state.people[state.assign[f.id]];
+        if (!person?.name) continue;
+        const [x, y, w, h] = f.box;
+        ours.push({ name: person.name, type: 'Face', x: x + w / 2, y: y + h / 2, w, h, box: f.box });
+      }
+      if (!ours.length) return undefined;
+      const kept = (p.xmp?.regions ?? []).filter(r => !ours.some(o => boxIou(o.box, [r.x - r.w / 2, r.y - r.h / 2, r.w, r.h]) > 0.3));
+      const rec = lib.get(photoId);
+      return { w: rec?.w ?? 0, h: rec?.h ?? 0, regions: [...ours.map(({ box, ...r }) => r), ...kept] };
+    },
+
+    on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    _recluster: recluster,
+  };
+  lib.services.faces = api;
+  return api;
+}
+
+return { SETTING_KEY, DB_NAME, MODEL_CACHE, ORT_VERSION, ORT_BASE, MODELS, MODEL_ID, DOWNLOAD_MB, OPT_IN_TEXT, DETECT_SIZE, MIN_SCORE, MIN_FACE_PX, NMS_IOU, MAX_DISTANCE, MIN_FACES, TEMPLATE, decodeYunet, nms, similarityTransform, warpAffine, l2normalise, cosineDistance, emptyState, clusterFaces, mergePeople, markNotPerson, boxIou, memoryFaceStore, idbFaceStore, workerSource, initFaces };
+})();
+
+const __m_ui_library_people = (() => {
+// The People view (spec rows F1 and F2). Off: what turning faces on does, and
+// a button to turn it on. On: progress, Pause, Delete all face data, and a
+// grid of people (their cover face). A person's page names them, hides them,
+// merges them into another person, sets the cover, marks a face as not this
+// person, and lists their photos (a click opens one in the editor).
+//
+// initPeople(lib, ui) registers the view. The service is lib.services.faces
+// (src/library/faces.js); names and groups live in this browser only.
+
+const esc = __m_core_html.esc;
+const OPT_IN_TEXT = __m_library_faces.OPT_IN_TEXT;
+const MIN_FACES = __m_library_faces.MIN_FACES;
+
+const n = (x) => x.toLocaleString('en-GB');
+const plural = (c, one, many = one + 's') => `${n(c)} ${c === 1 ? one : many}`;
+
+// CSS for a face crop out of the photo's thumbnail: the box grows by a fifth on each side.
+function cropStyle(box) {
+  let [x, y, w, h] = box;
+  const pad = 0.2;
+  x -= w * pad; y -= h * pad; w *= 1 + 2 * pad; h *= 1 + 2 * pad;
+  w = Math.min(1, w); h = Math.min(1, h);
+  x = Math.min(Math.max(0, x), 1 - w); y = Math.min(Math.max(0, y), 1 - h);
+  const pos = (p, s) => (s >= 1 ? 0 : (p / (1 - s)) * 100);
+  return `background-size:${100 / w}% ${100 / h}%;background-position:${pos(x, w)}% ${pos(y, h)}%`;
+}
+
+function initPeople(lib, ui) {
+  const faces = lib.services.faces;
+  if (!faces) throw new Error('initPeople needs lib.services.faces (initFaces first)');
+  let page = null;              // null = the people grid, else a person id
+  let showHidden = false;
+  let confirming = false;
+  let host = null;
+
+  const say = (m, level = 'info') => ui.toast?.(m, level);
+  // A background update never redraws over a name or a choice being made.
+  const redraw = () => {
+    if (!host?.isConnected) return;
+    const a = document.activeElement;
+    if (a && host.contains(a) && /^(INPUT|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return;
+    draw();
+  };
+
+  function loadCrops(root) {
+    for (const el of root.querySelectorAll('[data-crop]')) {
+      Promise.resolve(lib.services.thumbs?.url?.(el.dataset.crop)).then(u => { if (u) el.style.backgroundImage = `url("${u}")`; }).catch(() => {});
+    }
+    for (const img of root.querySelectorAll('img[data-id]')) {
+      Promise.resolve(lib.services.thumbs?.url?.(img.dataset.id)).then(u => { if (u) img.src = u; }).catch(() => {});
+    }
+  }
+
+  const faceTile = (f, extra = '') => `<span class="ppl-face" data-crop="${esc(f.id.slice(0, f.id.lastIndexOf('#')))}" style="${cropStyle(f.box)}">${extra}</span>`;
+
+  function drawOff(el) {
+    const s = faces.status();
+    el.innerHTML = `<div class="ppl-intro">
+      <h2>People</h2>
+      <p>Faces are off. Turn them on to find faces in your photos and group them by person.</p>
+      <p>When you turn faces on:</p>
+      <ul>${OPT_IN_TEXT.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+      <div class="ppl-row"><button type="button" class="btn btn-primary" data-act="on">Turn on faces</button>
+      ${faces.hasData() ? '<button type="button" class="btn btn-danger" data-act="delete">Delete all face data</button>' : ''}</div>
+      ${s.error ? `<p class="ppl-error">${esc(s.error)}</p>` : ''}
+    </div>`;
+  }
+
+  function header() {
+    const s = faces.status();
+    const progress = s.done < s.total ? `Looked at ${n(s.done)} of ${plural(s.total, 'photo')}` : `Looked at ${plural(s.total, 'photo')}`;
+    return `<div class="ppl-head">
+      <div class="ppl-status">${progress}, found ${plural(s.faces, 'face')} and ${plural(s.people, 'person', 'people')}.${s.paused ? ' Paused.' : ''}</div>
+      ${s.error ? `<p class="ppl-error">The last photo failed: ${esc(s.error)}</p>` : ''}
+      <div class="ppl-row">
+        ${s.paused ? '<button type="button" class="btn" data-act="resume">Resume</button>' : (s.done < s.total ? '<button type="button" class="btn" data-act="pause">Pause</button>' : '')}
+        <label class="ppl-check"><input type="checkbox" data-act="hidden"${showHidden ? ' checked' : ''}> Show hidden people</label>
+        <button type="button" class="btn" data-act="off">Turn off faces</button>
+        <button type="button" class="btn btn-danger" data-act="delete">Delete all face data</button>
+      </div>
+      ${confirming ? `<div class="ppl-confirm" role="alert"><p>Delete ${plural(s.faces, 'face')}, ${plural(s.people, 'person', 'people')}, every name and the downloaded models from this browser? Your photos and their sidecars stay as they are. This cannot be undone.</p>
+        <div class="ppl-row"><button type="button" class="btn" data-act="cancel">Cancel</button><button type="button" class="btn btn-danger" data-act="confirm-delete">Delete face data</button></div></div>` : ''}
+    </div>`;
+  }
+
+  function drawGrid(el) {
+    const people = faces.people({ hidden: showHidden });
+    el.innerHTML = `<div class="ppl-root">${header()}
+      ${people.length ? `<div class="ppl-grid">${people.map(p => {
+        const f = faces.coverFace(p.id);
+        return `<button type="button" class="ppl-card${p.hidden ? ' ppl-hidden' : ''}" data-person="${esc(p.id)}">
+          ${f ? faceTile(f) : '<span class="ppl-face"></span>'}
+          <span class="ppl-name">${p.name ? esc(p.name) : 'Add a name'}</span>
+          <span class="ppl-count">${plural(p.photos, 'photo')}${p.hidden ? ', hidden' : ''}</span></button>`;
+      }).join('')}</div>` : `<p class="ppl-empty">No people yet. A person appears once the same face is found in ${MIN_FACES} photos.</p>`}
+    </div>`;
+  }
+
+  function drawPerson(el, pid) {
+    const p = faces.person(pid);
+    if (!p) { page = null; drawGrid(el); return; }
+    const list = faces.facesOf(pid);
+    const cover = faces.coverFace(pid);
+    const others = faces.people({ hidden: true }).filter(o => o.id !== pid);
+    const photos = faces.photosOf(pid);
+    el.innerHTML = `<div class="ppl-root">
+      <div class="ppl-row"><button type="button" class="btn" data-act="back">Back to people</button></div>
+      <div class="ppl-person">
+        ${cover ? faceTile(cover) : ''}
+        <form class="ppl-form" data-form="name"><label>Name <input type="text" maxlength="100" value="${esc(p.name)}" placeholder="Add a name"></label>
+          <button type="submit" class="btn btn-primary">Save name</button></form>
+        <div class="ppl-row">
+          <button type="button" class="btn" data-act="hide">${p.hidden ? 'Show this person' : 'Hide this person'}</button>
+          ${others.length ? `<label>Merge into <select data-merge><option value="">Choose a person</option>${others.map(o => `<option value="${esc(o.id)}">${esc(o.name || `Unnamed (${plural(o.photos, 'photo')})`)}</option>`).join('')}</select></label>
+          <button type="button" class="btn" data-act="merge">Merge</button>` : ''}
+        </div>
+      </div>
+      <h3 class="ppl-section">Faces (${n(list.length)})</h3>
+      <div class="ppl-faces">${list.map(f => `<div class="ppl-facecell${cover?.id === f.id ? ' ppl-cover' : ''}">${faceTile(f)}
+        <button type="button" class="btn" data-act="cover" data-face="${esc(f.id)}"${cover?.id === f.id ? ' disabled' : ''}>Set as cover</button>
+        <button type="button" class="btn" data-act="wrong" data-face="${esc(f.id)}">Not this person</button></div>`).join('')}</div>
+      <h3 class="ppl-section">Photos (${n(photos.length)})</h3>
+      <div class="ppl-photos">${photos.map(id => `<button type="button" class="ppl-photo" data-open="${esc(id)}" title="${esc(lib.get(id)?.name ?? '')}"><img alt="" data-id="${esc(id)}"></button>`).join('')}</div>
+    </div>`;
+  }
+
+  function draw() {
+    if (!faces.enabled()) drawOff(host);
+    else if (page) drawPerson(host, page);
+    else drawGrid(host);
+    loadCrops(host);
+  }
+
+  async function act(e) {
+    const t = e.target.closest('[data-act], [data-person], [data-open]');
+    if (!t || !host.contains(t)) return;
+    try {
+      if (t.dataset.person) { page = t.dataset.person; return draw(); }
+      if (t.dataset.open) return ui.openInEditor(t.dataset.open);
+      switch (t.dataset.act) {
+        case 'on': await faces.setEnabled(true); say('Faces are on. Models download first, then photos are looked at in the background.'); break;
+        case 'off': await faces.setEnabled(false); say('Faces are off. Face data stays until you delete it.'); break;
+        case 'pause': faces.pause(); break;
+        case 'resume': faces.resume(); break;
+        case 'hidden': showHidden = t.checked; break;
+        case 'delete': if (!faces.enabled()) { await faces.deleteAll(); say('Deleted all face data.', 'ok'); } else confirming = true; break;
+        case 'cancel': confirming = false; break;
+        case 'confirm-delete': confirming = false; page = null; await faces.deleteAll(); say('Deleted all face data.', 'ok'); break;
+        case 'back': page = null; break;
+        case 'hide': { const p = faces.hide(page, !faces.person(page).hidden); say(p.hidden ? 'Hidden. Show hidden people to see them again.' : 'Shown.'); break; }
+        case 'merge': {
+          const from = page, into = host.querySelector('[data-merge]')?.value;
+          if (!into) { say('Choose a person to merge into.'); return; }
+          faces.merge(into, from); page = into; say('Merged.', 'ok'); break;
+        }
+        case 'cover': faces.setCover(page, t.dataset.face); break;
+        case 'wrong': faces.notThisPerson(t.dataset.face); say('Removed that face from this person.'); break;
+        default: return;
+      }
+      draw(); ui.refreshView?.();
+    } catch (err) { say(err?.message ?? String(err), 'error'); }
+  }
+
+  function onSubmit(e) {
+    if (e.target.dataset.form !== 'name') return;
+    e.preventDefault();
+    try { faces.name(page, e.target.querySelector('input').value); say('Name saved.', 'ok'); draw(); ui.refreshView?.(); }
+    catch (err) { say(err?.message ?? String(err), 'error'); }
+  }
+
+  ui.registerView({
+    id: 'people',
+    label: 'People',
+    count: () => (faces.enabled() ? faces.people().length : null),
+    render(el) {
+      host = el;
+      el.addEventListener('click', act);
+      el.addEventListener('submit', onSubmit);
+      el.addEventListener('keydown', (e) => e.stopPropagation()); // typing a name never reaches the grid keys
+      draw();
+      let timer = null;
+      const off = faces.on(() => { clearTimeout(timer); timer = setTimeout(redraw, 400); });
+      return () => { off(); clearTimeout(timer); host = null; };
+    },
+  });
+}
+
+return { cropStyle, initPeople };
+})();
+
 const __m_library_boot = (() => {
 // Boots the photo library inside Slate. Called once from app.js after the editor is up.
 // Wires the core (library.js) to its browser services and its UI, then loads the index.
@@ -15087,6 +17964,12 @@ const initXmpWrite = __m_library_xmpwrite.initXmpWrite;
 const initImport = __m_ui_library_import.initImport;
 const initDupes = __m_ui_library_dupes.initDupes;
 const initWatch = __m_library_watch.initWatch;
+const initPlaces = __m_ui_library_places.initPlaces;
+const initTextIndex = __m_library_textindex.initTextIndex;
+const initLocked = __m_library_locked.initLocked;
+const initFaces = __m_library_faces.initFaces;
+const createClip = __m_library_clip.createClip;
+const initPeople = __m_ui_library_people.initPeople;
 const importTakeoutZips = __m_ui_library_import.importTakeoutZips;
 const ZIP_URL = __m_ui_library_import.ZIP_URL;
 const exportFiles = __m_library_export.exportFiles;
@@ -15108,13 +17991,19 @@ async function initLibrary() {
   lib.services.trash = createTrash();
   _lib = lib;
 
+  lib.services.clip = createClip(lib);
   const ui = initLibraryView(lib);
   lib.services.ui = ui;
   initOrganise(lib, ui);
+  initTextIndex(lib);
+  initLocked(lib);
   initMemories(lib, ui);
   initXmpWrite(lib);
+  initFaces(lib);
+  initPeople(lib, ui);
   initImport(lib, ui);
   initDupes(lib, ui);
+  initPlaces(lib, ui);
   initDoor(lib, ui);
 
   await lib.load();
@@ -17497,48 +20386,6 @@ async function replayOps(ops) {
 }
 
 return { initOpRunner, replayOps };
-})();
-
-const __m_ops_ocr = (() => {
-// Extract text from the open image (plan/pending.md, 2026-10-14) with Tesseract.js (Apache-2.0).
-// Indra OCR was the first candidate, but its weights carry a modified OpenRAIL-M licence
-// ("cannot compete with our API"), so Slate does not ship it.
-//
-// Like the rare-format decoders, the library loads on first use from esm.sh at an exact
-// version. Its worker, core and English data then download from jsdelivr (about 5 MB, cached
-// by the browser). The image itself never leaves the page: recognition runs in a local worker.
-
-const TESSERACT_URL = 'https://esm.sh/tesseract.js@7.0.0';
-let workerPromise = null;
-
-async function getWorker(lang, onProgress) {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const mod = await import(/* @vite-ignore */ TESSERACT_URL);
-      const createWorker = mod.createWorker ?? mod.default?.createWorker;
-      if (!createWorker) throw new Error('the text recogniser did not load');
-      return createWorker(lang, 1, { logger: (m) => onProgressRef.fn?.(m) });
-    })().catch((err) => { workerPromise = null; throw err; });
-  }
-  onProgressRef.fn = onProgress;
-  return workerPromise;
-}
-const onProgressRef = { fn: null };
-
-// Returns { text, words, confidence }. `canvas` is an OffscreenCanvas or HTMLCanvasElement.
-async function extractText(canvas, { lang = 'eng', onProgress } = {}) {
-  const worker = await getWorker(lang, onProgress);
-  const blob = canvas.convertToBlob ? await canvas.convertToBlob({ type: 'image/png' }) : await new Promise(r => canvas.toBlob(r, 'image/png'));
-  const { data } = await worker.recognize(blob);
-  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
-}
-
-// Trim trailing spaces on each line and collapse runs of three or more blank lines.
-function cleanText(text) {
-  return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-return { TESSERACT_URL, extractText, cleanText };
 })();
 
 const __m_ui_modals = (() => {

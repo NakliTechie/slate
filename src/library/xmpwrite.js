@@ -54,7 +54,7 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
     const dir = await lib.getHandle(id, { parent: true });
     const [full, stem] = sidecarNames(r.name);
     const existing = (await readText(dir, full)) ?? (stem ? await readText(dir, stem) : null);
-    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing });
+    const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing, regions: lib.services.faces?.regionsFor?.(id) });
     if (text === existing) return false;
     const fh = await dir.getFileHandle(full, { create: true });
     const w = await fh.createWritable();
@@ -65,6 +65,13 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
 
   const api = {
     ready,
+    // Ask for these photos' sidecars to be written (faces.js calls it when people are named).
+    queue(ids) {
+      if (!on || !ids?.length) return;
+      for (const id of ids) pending.add(id);
+      clearTimeout(timer);
+      timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not write XMP sidecars: ${e.message}` })); }, delay);
+    },
     enabled: () => on,
     async setEnabled(v) {
       on = !!v;

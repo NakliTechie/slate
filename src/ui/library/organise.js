@@ -1,7 +1,8 @@
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
 // the Trash view actions, and Export (copy the originals of the selection or an
-// album into a folder). Every action goes through runCommand(), so the
+// album into a folder), Read text for the selection (row X3, textindex.js) and
+// the lock on hidden photos in the Hidden view (row O9, locked.js). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
 // initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
@@ -525,6 +526,68 @@ export function initOrganise(lib, ui) {
     catch (e) { fail(e); }
   }
 
+  // ── read text (X3) ─────────────────────────────────────────────────────
+  function readText(ids) {
+    const ti = lib.services.textIndex;
+    if (!ti) return;
+    if (!ids.length) { say('Select a photo first', 'warn'); return; }
+    const n = ti.runFor(ids);
+    say(n ? `Reading the text in ${plural(n, 'photo')}. Search finds it when it is done.` : 'Slate has already read the text in these photos', n ? 'info' : 'ok');
+  }
+
+  // ── lock on hidden photos (O9) ─────────────────────────────────────────
+  const NOT_ENCRYPTED = 'This hides photos from casual viewers of this browser. It does not encrypt the files on disk: anyone who opens the folder sees every photo.';
+
+  function passDialog(title, intro, fields, okLabel, submit) {
+    openDialog(title, (body, close) => {
+      body.innerHTML = `${intro.map(t => `<p class="org-text">${esc(t)}</p>`).join('')}
+        <form class="org-form">
+          ${fields.map((f, i) => `<label class="org-label">${esc(f.label)}<input type="password" class="org-input" autocomplete="${f.auto}" data-pass="${i}"${i ? '' : ' autofocus'}></label>`).join('')}
+          <p class="org-error" role="alert" hidden></p>
+          <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+          <button type="submit" class="btn btn-primary">${esc(okLabel)}</button></div></form>`;
+      const err = body.querySelector('.org-error'), go = body.querySelector('[type="submit"]');
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const values = [...body.querySelectorAll('[data-pass]')].map(x => x.value);
+        go.disabled = true; err.hidden = true;
+        try {
+          const problem = await submit(values);
+          if (!problem) { close(); return; }
+          err.textContent = problem;
+        } catch (x) { err.textContent = x?.message ?? String(x); }
+        err.hidden = false; go.disabled = false;
+        body.querySelector('[data-pass="0"]').select();
+      });
+    });
+  }
+
+  function setLock() {
+    const lk = lib.services.lock;
+    passDialog('Lock hidden photos', ['From now on the Hidden view shows nothing until you enter this passphrase, once each session.', NOT_ENCRYPTED, 'Slate cannot recover a forgotten passphrase. Reset lock then removes the lock and leaves the photos hidden but viewable.'],
+      [{ label: 'Passphrase', auto: 'new-password' }, { label: 'Passphrase again', auto: 'new-password' }], 'Lock',
+      async ([a, b]) => {
+        if (a !== b) return 'The two passphrases differ.';
+        await lk.set(a);
+        say('Hidden photos are locked', 'ok');
+        return null;
+      });
+  }
+
+  function unlock() {
+    const lk = lib.services.lock;
+    passDialog('Unlock hidden photos', ['Enter the passphrase to show the hidden photos until you close Slate or lock them again.'],
+      [{ label: 'Passphrase', auto: 'current-password' }], 'Unlock',
+      async ([a]) => (await lk.unlock(a)) ? null : 'That passphrase is not right.');
+  }
+
+  async function resetLock() {
+    const ok = await confirmDialog('Reset lock', 'Remove the passphrase? Hidden photos become viewable in the Hidden view to anyone who uses this browser. They stay hidden from the other views, and nothing is deleted.', 'Remove lock');
+    if (!ok) return;
+    try { await lib.services.lock.reset(); say('The lock is removed. Hidden photos are viewable in the Hidden view.', 'ok'); } catch (e) { fail(e); }
+  }
+
   // ── action bar ─────────────────────────────────────────────────────────
   if (!ui.actionsEl || typeof document === 'undefined') return;
   const bar = document.createElement('div');
@@ -539,7 +602,9 @@ export function initOrganise(lib, ui) {
     const allFav = n > 0 && ids.every(id => lib.choice(id).fav);
     const allHidden = n > 0 && ids.every(id => lib.choice(id).hidden);
     const trashed = v.view === 'trash' ? lib.counts().trashed : 0;
-    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed].join('|');
+    const lk = lib.services.lock;
+    const lockState = !lk ? '' : lk.isLocked() ? (lk.isSet() ? 'locked' : '') : lk.isSet() ? 'open' : 'none';
+    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed, lockState, !!lib.services.textIndex].join('|');
     if (next === sig) return;
     sig = next;
     const off = n ? '' : ' disabled';
@@ -550,6 +615,16 @@ export function initOrganise(lib, ui) {
         <button type="button" class="btn btn-danger" data-act="empty"${trashed ? '' : ' disabled'}>Empty trash</button>`;
       return;
     }
+    const hiddenView = v.view === 'hidden';
+    if (hiddenView && lockState === 'locked') {
+      bar.innerHTML = `<span class="org-count">Hidden photos are locked</span>
+        <button type="button" class="btn btn-primary" data-act="unlock" aria-haspopup="dialog">Unlock…</button>
+        <button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`;
+      return;
+    }
+    const lockBtns = !hiddenView ? ''
+      : lockState === 'open' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="relock">Lock now</button><button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`
+      : lockState === 'none' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="set-lock" aria-haspopup="dialog" title="Ask for a passphrase before the Hidden view shows anything">Lock hidden photos…</button>` : '';
     bar.innerHTML = `${count}
       <button type="button" class="btn" data-act="favourite" aria-pressed="${allFav}" title="Favourite (F)"${off}>${allFav ? 'Unfavourite' : 'Favourite'}</button>
       <button type="button" class="btn" data-act="rate" aria-haspopup="menu" title="Rate (0 to 5)"${off}>Rate</button>
@@ -564,7 +639,8 @@ export function initOrganise(lib, ui) {
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
-      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>`;
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>
+      ${lib.services.textIndex ? `<button type="button" class="btn" data-act="read-text" title="Find the words in these photos so search matches them"${off}>Read text</button>` : ''}${lockBtns}`;
   }
 
   bar.addEventListener('click', (e) => {
@@ -594,6 +670,11 @@ export function initOrganise(lib, ui) {
       case 'export': exportTo(() => ids, ''); break;
       case 'move': moveDialog(ids); break;
       case 'rename': renameDialog(ids); break;
+      case 'read-text': readText(ids); break;
+      case 'set-lock': setLock(); break;
+      case 'unlock': unlock(); break;
+      case 'relock': lib.services.lock?.lock(); say('Hidden photos are locked', 'ok'); break;
+      case 'reset-lock': resetLock(); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }

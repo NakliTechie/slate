@@ -1,6 +1,10 @@
 // The Library mode: sidebar, search and filters, the virtualised grid with
 // day and month headers, the month scrubber, selection, keyboard, the
 // full-size viewer, the job status line and the storage panel.
+// Search by meaning (rows Q2 and Q3, clip.js): a "Meaning" toggle beside the
+// search box (or a leading ~) ranks the grid by CLIP similarity to the text,
+// "Find similar" in the viewer ranks it by similarity to one photo, and the
+// "Search by meaning" sidebar view turns the feature on and off.
 // The editor stays underneath; the library covers it while open.
 // Interface: docs/architecture.md, "The view".
 
@@ -16,6 +20,7 @@ import { createPhotoViewer, formatDuration, formatTaken } from './photo-viewer.j
 import { openStoragePanel, needsDownload } from './storage.js';
 import { downloadLibFile } from '../../library/persist.js';
 import { openImportDialog } from './import.js';
+import { createClip, pickWeights, WEIGHTS, MODEL_ID } from '../../library/clip.js';
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
 const STACKS_KEY = 'slate.v1.library.stacks';
@@ -35,6 +40,7 @@ export function initLibraryView(lib) {
       <h1 class="lib-title">Library</h1>
       <div class="lib-search" role="search">
         <input type="search" class="lib-q" placeholder="Search names, folders, tags, cameras, dates" aria-label="Search photos (/)" autocomplete="off">
+        <button type="button" class="btn btn-sm lib-meaning" data-act="meaning" aria-pressed="false" title="Search by what photos show (or type ~ first)">Meaning</button>
       </div>
       <button class="btn" data-act="filters" aria-expanded="false" aria-controls="lib-filters">Filters</button>
       <div class="lib-zoom" role="group" aria-label="Tile size">
@@ -63,6 +69,7 @@ export function initLibraryView(lib) {
           <h2 class="lib-viewname">Timeline</h2>
           <span class="lib-count"></span>
           <span class="lib-month" aria-hidden="true"></span>
+          <span class="lib-ranked" hidden><span class="lib-ranked-text"></span> <button type="button" class="btn btn-sm" data-act="clear-ranked">Clear</button></span>
           <label class="lib-check lib-stacks"><input type="checkbox" class="lib-stacks-on"> Stack similar files</label>
         </div>
         <div class="lib-gridwrap">
@@ -95,6 +102,7 @@ export function initLibraryView(lib) {
   const jobEl = $('.lib-job'), pauseBtn = $('.lib-pause'), storageDlg = $('.lib-storage');
   const panelEl = $('.lib-panel');
   const stacksBox = $('.lib-stacks-on');
+  const meaningBtn = $('.lib-meaning'), rankedEl = $('.lib-ranked'), rankedText = $('.lib-ranked-text');
   // Views other modules add to the sidebar (ui.registerView): a view gives `ids()` to show
   // those photos in the grid, or `render(el, ctx)` to draw its own panel (returning a cleanup).
   const extraViews = new Map();
@@ -105,6 +113,8 @@ export function initLibraryView(lib) {
   let cur = { view: 'timeline' };
   let q = '';
   let filters = {};
+  // Ranked results (rows Q2, Q3): { kind: 'meaning'|'similar', text?, id?, label, scores: Map id -> cosine }.
+  let meaning = false, ranked = null, rankPending = false, rankSeq = 0;
   let list = [], ids = [], indexOf = new Map();
   let layout = buildLayout([], { width: 1 });
   let months = [];
@@ -134,12 +144,16 @@ export function initLibraryView(lib) {
     registerView(def) {
       if (!def?.id || !def.label || (!def.ids && !def.render)) throw new Error('a view needs id, label and ids() or render()');
       extraViews.set(def.id, def);
-      queueSidebar?.();
+      // Deferred: a view may register while initLibraryView is still running, before queueSidebar exists.
+      queueMicrotask(() => queueSidebar());
     },
-    refreshView() { if (cur.view === 'x') { if (extraViews.get(cur.xview)?.render) mountPanel(); else scheduleRequery(); } queueSidebar?.(); },
+    refreshView() { if (cur.view === 'x') { if (extraViews.get(cur.xview)?.render) mountPanel(); else scheduleRequery(); } queueMicrotask(() => queueSidebar()); },
     actionsEl: $('.lib-actions'),
     toast: (message, level = 'info') => emit('toast', { message, level }),
   };
+
+  // The meaning service; boot.js may set it first, otherwise the view makes it.
+  const clip = lib.services.clip ?? (lib.services.clip = createClip(lib));
 
   const viewer = createPhotoViewer(lib, $('.lib-viewer'), {
     getList: () => list,
@@ -147,6 +161,8 @@ export function initLibraryView(lib) {
     onShow: (i) => { focusId = ids[i]; },
     onClose: () => { const i = indexOf.get(focusId); if (i != null) setFocus(i); else grid.focus(); },
     onEdit: (id) => openInEditor(id),
+    canSimilar: (id) => clip.enabled() && clip.has(id),
+    onSimilar: (id) => findSimilar(id),
   });
 
   // ── entry points into the mode ───────────────────────────────────────────
@@ -199,7 +215,9 @@ export function initLibraryView(lib) {
     const opts = currentOpts();
     const searching = !!q || Object.keys(filters).length > 0;
     const view = searching && cur.view === 'timeline' ? 'search' : cur.view;
-    const out = { view, opts };
+    const out = { view: ranked || rankPending ? 'search' : view, opts };
+    if (ranked?.kind === 'meaning') out.meaning = ranked.text;
+    if (ranked?.kind === 'similar') out.similarTo = ranked.id;
     if (cur.albumId) out.albumId = cur.albumId;
     if (cur.rootId) out.rootId = cur.rootId;
     if (cur.folder != null) out.folder = cur.folder;
@@ -275,7 +293,7 @@ export function initLibraryView(lib) {
   }
   function currentOpts() {
     const o = { ...baseOpts(), ...filters };
-    if (q) o.q = q;
+    if (q && !meaningText()) o.q = q;
     if (cur.view === 'videos') o.kind = 'video';
     if (cur.view === 'favourites') o.fav = true;
     return o;
@@ -288,8 +306,13 @@ export function initLibraryView(lib) {
     if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
     list = lib.search(currentOpts());
     if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
+    if (ranked) {
+      const sc = ranked.scores;
+      list = list.filter(r => sc.has(r.id)).sort((a, b) => sc.get(b.id) - sc.get(a.id));
+    } else if (rankPending) list = [];
+    renderRanked();
     stackMembers = new Map();
-    if (stacking && cur.view !== 'trash') ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
+    if (stacking && cur.view !== 'trash' && !ranked) ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
@@ -310,7 +333,7 @@ export function initLibraryView(lib) {
   function relayoutOrRequery() { if (dirty) requery(); else relayout(scrollAnchor()); }
 
   // ── layout and rendering ─────────────────────────────────────────────────
-  const sortable = () => true; // every view sorts by capture time, newest first
+  const sortable = () => !ranked; // every view sorts by capture time, newest first; ranked results by score
   function relayout(keep) {
     const width = grid.clientWidth - PAD * 2;
     if (width <= 0) return;
@@ -472,6 +495,8 @@ export function initLibraryView(lib) {
 
   // ── header, counts, empty state ──────────────────────────────────────────
   function viewTitle() {
+    if (ranked) return ranked.kind === 'similar' ? 'Similar photos' : 'Search by meaning';
+    if (rankPending) return 'Searching by meaning';
     if (q || Object.keys(filters).length) { if (cur.view === 'timeline') return 'Search results'; }
     switch (cur.view) {
       case 'favourites': return 'Favourites';
@@ -503,9 +528,11 @@ export function initLibraryView(lib) {
     }
     if (list.length) { emptyEl.hidden = true; return; }
     const busy = !lib.jobs.status().idle;
-    const msg = busy ? 'Reading your folders. Photos appear here as they are found.'
+    const msg = rankPending ? 'Searching by meaning.'
+      : ranked ? (ranked.kind === 'similar' ? 'No similar photos found.' : 'No photos match this meaning closely enough.')
+      : busy ? 'Reading your folders. Photos appear here as they are found.'
       : q || Object.keys(filters).length ? 'No photos match this search.'
-        : { trash: 'The trash is empty.', hidden: 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[cur.view] ?? 'No photos here.';
+        : { trash: 'The trash is empty.', hidden: lib.hiddenLocked?.() ? 'Hidden photos are locked. Unlock them to see them.' : 'No hidden photos.', favourites: 'No favourites yet.', videos: 'No videos.', album: 'This album is empty.' }[cur.view] ?? 'No photos here.';
     emptyEl.hidden = false;
     emptyEl.innerHTML = `<div class="lib-empty-inner"><p>${esc(msg)}</p></div>`;
   }
@@ -621,6 +648,7 @@ export function initLibraryView(lib) {
 
   function switchView() {
     sel = new Set(); anchor = -1; focusId = null;
+    if (ranked?.kind === 'similar') { ranked = null; rankSeq++; }
     viewer.close();
     mountPanel();
     grid.scrollTop = 0;
@@ -644,6 +672,8 @@ export function initLibraryView(lib) {
     else if (a === 'zoom-out') setZoom(zoom - 1);
     else if (a === 'slideshow') startSlideshow();
     else if (a === 'storage') openStoragePanel(lib, storageDlg);
+    else if (a === 'meaning') toggleMeaning();
+    else if (a === 'clear-ranked') clearRanked();
   });
 
   function pickFiles() {
@@ -716,7 +746,151 @@ export function initLibraryView(lib) {
   let qTimer = null;
   search.addEventListener('input', () => {
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => { q = search.value.trim(); grid.scrollTop = 0; requery(); viewChanged(); }, 150);
+    qTimer = setTimeout(() => {
+      q = search.value.trim();
+      if (ranked?.kind === 'similar') ranked = null;
+      grid.scrollTop = 0;
+      if (meaningText()) runMeaning(); else { if (ranked || rankPending) { ranked = null; rankPending = false; rankSeq++; } requery(); }
+      viewChanged();
+    }, 150);
+  });
+
+  // ── search by meaning (rows Q2, Q3) ──────────────────────────────────────
+  // The text of a meaning query: the box text when the toggle is on, or after a leading ~.
+  function meaningText() {
+    if (!clip.enabled()) return '';
+    if (q.startsWith('~')) return q.slice(1).trim();
+    return meaning ? q : '';
+  }
+
+  async function runMeaning() {
+    const text = meaningText();
+    if (ranked?.kind === 'meaning' && ranked.text === text) { requery(); return; }
+    const my = ++rankSeq;
+    ranked = null; rankPending = true;
+    requery();
+    try {
+      const hits = await clip.searchText(text);
+      if (my !== rankSeq) return;
+      ranked = { kind: 'meaning', text, label: `Closest to “${text}”`, scores: new Map(hits.map(h => [h.id, h.score])) };
+    } catch (err) {
+      if (my === rankSeq) ui.toast(`Search by meaning failed: ${err?.message ?? err}`, 'error');
+    } finally {
+      if (my === rankSeq) { rankPending = false; requery(); viewChanged(); }
+    }
+  }
+
+  function findSimilar(id) {
+    const rec = lib.get(id);
+    if (!rec) return;
+    const hits = clip.similar(id);
+    rankSeq++; rankPending = false;
+    q = ''; search.value = '';
+    if (cur.view !== 'timeline') { cur = { view: 'timeline' }; switchView(); }
+    ranked = { kind: 'similar', id, label: `Like ${rec.name}`, scores: new Map([[id, 2], ...hits.map(h => [h.id, h.score])]) };
+    grid.scrollTop = 0;
+    requery();
+    renderSidebar();
+    viewChanged();
+  }
+
+  function clearRanked() {
+    rankSeq++; rankPending = false;
+    q = ''; search.value = '';
+    ranked = null;
+    requery();
+    viewChanged();
+  }
+
+  function toggleMeaning() {
+    if (!clip.enabled()) { cur = { view: 'x', xview: 'meaning' }; switchView(); return; }
+    meaning = !meaning;
+    renderMeaningBtn();
+    if (q) { if (meaningText()) runMeaning(); else { ranked = null; rankPending = false; rankSeq++; requery(); } }
+    search.focus();
+  }
+
+  function renderMeaningBtn() {
+    const on = clip.enabled();
+    meaningBtn.setAttribute('aria-pressed', String(on && meaning));
+    meaningBtn.title = on ? 'Search by what photos show (or type ~ first)' : 'Turn on search by meaning';
+    search.placeholder = on && meaning ? 'Describe what the photo shows' : 'Search names, folders, tags, cameras, dates';
+  }
+
+  function renderRanked() {
+    rankedEl.hidden = !ranked;
+    if (ranked) rankedText.textContent = `${ranked.label}, best match first`;
+  }
+
+  clip.onChange(() => {
+    renderMeaningBtn();
+    queueSidebar();
+    if (!clip.enabled() && (ranked || rankPending || meaning)) { meaning = false; ranked = null; rankPending = false; rankSeq++; scheduleRequery(); }
+    if (viewer.isOpen()) viewer.refresh();
+  });
+
+  // The "Search by meaning" view: what it downloads, the switch, and the vector store.
+  const mb = (b) => `${Math.round(b / 1e6).toLocaleString('en-GB')} MB`;
+  let weightsGuess = null;
+  ui.registerView({
+    id: 'meaning',
+    label: 'Search by meaning',
+    count: () => (clip.enabled() ? clip.count() : null),
+    render(host) {
+      const root = document.createElement('div');
+      root.className = 'mng-root';
+      host.appendChild(root);
+      let queued = false;
+      const draw = () => {
+        queued = false;
+        if (!root.isConnected) return;
+        const s = clip.status();
+        if (!s.on) {
+          const dtype = weightsGuess;
+          const w = dtype ? WEIGHTS[dtype] : null;
+          root.innerHTML = `<h2>Search by meaning</h2>
+            <p>Find photos by what they show, such as “dog on a beach” or “birthday cake”, and find photos that look like the one you are viewing. Duplicates can also use it to find near copies that fingerprints miss.</p>
+            <p>Turning this on downloads the ${esc(MODEL_ID)} model (OpenAI CLIP ViT-B/32, MIT licence) from Hugging Face, once${w ? `: about <strong>${mb(w.bytes)}</strong>` : ''}. Slate then reads each photo’s 256 px thumbnail on this device to make a small vector for it. No photo and no search text leaves this device.</p>
+            <p class="mng-note">${dtype ? (dtype === 'fp16' ? 'This browser will run the model on the graphics card (WebGPU, 16-bit weights).' : 'This browser will run the model on the processor (WebAssembly, 8-bit weights), which is slower.') : 'Checking this browser'}</p>
+            <button type="button" class="btn btn-primary" data-mng="on" ${dtype ? '' : 'disabled'}>Download ${w ? mb(w.bytes) + ' ' : ''}and turn on</button>`;
+          return;
+        }
+        const job = lib.jobs.status().kinds.clip;
+        const left = job ? Math.max(0, job.total - job.done - job.failed) : 0;
+        const model = s.model === 'loading'
+          ? (s.progress ? `Downloading the model: ${mb(s.progress.loaded)} of ${mb(s.progress.total)}` : 'Loading the model')
+          : s.model === 'ready' ? `Model ready on ${s.device === 'webgpu' ? 'WebGPU' : 'WebAssembly'}`
+            : s.model === 'error' ? `The model did not load: ${esc(s.error)}` : 'The model loads when it is first needed';
+        root.innerHTML = `<h2>Search by meaning</h2>
+          <dl class="mng-facts">
+            <dt>Model</dt><dd>${model}</dd>
+            <dt>Photos with a vector</dt><dd>${s.count.toLocaleString('en-GB')} of ${s.indexable.toLocaleString('en-GB')}${left ? `, ${left.toLocaleString('en-GB')} in the queue` : ''}</dd>
+            <dt>Vector store</dt><dd>${mb(s.bytes)} in this browser</dd>
+          </dl>
+          <p>Press Meaning beside the search box, or type ~ before a search, then describe the photo. In the viewer, Find similar shows the photos closest to the one you are viewing.</p>
+          <div class="mng-actions">
+            ${s.model === 'error' ? '<button type="button" class="btn" data-mng="retry">Try again</button>' : ''}
+            <button type="button" class="btn btn-danger" data-mng="off">Turn off and delete vectors</button>
+          </div>`;
+      };
+      const queue = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
+      if (!weightsGuess) pickWeights().then(d => { weightsGuess = d; queue(); });
+      draw();
+      root.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-mng]');
+        if (!b) return;
+        b.disabled = true;
+        try {
+          if (b.dataset.mng === 'on') await clip.enable(weightsGuess);
+          else if (b.dataset.mng === 'off') { await clip.disable(); ui.toast('Search by meaning is off and its vectors are deleted.', 'ok'); }
+          else if (b.dataset.mng === 'retry') await clip.retry();
+        } catch (err) { ui.toast(err?.message ?? String(err), 'error'); }
+        queue();
+      });
+      const offClip = clip.onChange(queue);
+      const offJobs = lib.jobs.onProgress((p) => { if (p.kind === 'clip') queue(); });
+      return () => { offClip(); offJobs(); };
+    },
   });
 
   function toggleFilters() {
@@ -997,7 +1171,7 @@ export function initLibraryView(lib) {
     if (isL) { e.preventDefault(); e.stopImmediatePropagation(); hideLibrary(); return; }
     if (inInput) {
       if (t === search) {
-        if (e.key === 'Escape') { e.preventDefault(); if (search.value) { search.value = ''; q = ''; requery(); viewChanged(); } else grid.focus(); }
+        if (e.key === 'Escape') { e.preventDefault(); if (search.value || ranked) clearRanked(); else grid.focus(); }
         else if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); grid.focus(); if (focusId == null && ids.length) setFocus(0); }
       }
       return; // the editor ignores keys typed in inputs; the input keeps them
@@ -1054,7 +1228,7 @@ export function initLibraryView(lib) {
   });
 
   // ── job status line (row L5) ─────────────────────────────────────────────
-  const KIND_NAMES = { scan: 'reading files', thumbs: 'thumbnails', meta: 'details' };
+  const KIND_NAMES = { scan: 'reading files', thumbs: 'thumbnails', meta: 'details', clip: 'meaning vectors' };
   let jobQueued = false;
   function renderJobs() {
     jobQueued = false;
@@ -1088,6 +1262,8 @@ export function initLibraryView(lib) {
     if (open) { refreshTiles(new Set(ev.ids)); viewer.refresh(); }
   });
   lib.on('choices', () => { queueSidebar(); scheduleRequery(); });
+  // Text read from photos (textindex.js): an active search may now match more.
+  lib.on('text', () => { if (q) scheduleRequery(); });
   lib.on('albums', () => { queueSidebar(); if (cur.view === 'album' || q) scheduleRequery(); else if (open) renderHead(); });
   lib.on('roots', () => {
     if (cur.view === 'folder' && !lib.roots.has(cur.rootId)) cur = { view: 'timeline' };
@@ -1102,5 +1278,6 @@ export function initLibraryView(lib) {
   lib.on('error', (ev) => emit('error', { message: ev?.message ?? 'Library error' }));
 
   renderJobs();
+  renderMeaningBtn();
   return ui;
 }

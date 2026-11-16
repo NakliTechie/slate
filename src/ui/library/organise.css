@@ -88,3 +88,4 @@
 .org-old { color: var(--fg-2); }
 .org-new { color: var(--fg-0); }
 .org-error { color: var(--danger); }
+.org-dialog input[type="password"] { font: inherit; }

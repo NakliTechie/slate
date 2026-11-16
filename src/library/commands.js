@@ -25,7 +25,7 @@ const dryRun = { type: 'boolean', description: 'report what would change and cha
 const obj = (properties = {}, required = []) => ({ type: 'object', properties, required });
 
 const SEARCH_PROPS = {
-  q: { type: 'string', description: 'words to match in file name, folder, tags, album names, camera; a year (2024) or month name (March) matches capture dates' },
+  q: { type: 'string', description: 'words to match in file name, folder, tags, album names, camera, captions and text read from photos; a year (2024) or month name (March) matches capture dates' },
   from: { type: 'string', description: 'capture date on or after, YYYY-MM-DD' },
   to: { type: 'string', description: 'capture date before, YYYY-MM-DD' },
   kind: { type: 'string', enum: ['photo', 'video'] },
@@ -111,6 +111,13 @@ export const COMMANDS = [
   { name: 'library.tags', label: 'List tags', description: 'List every tag in the library with how many photos carry it.', scope: 'read', input: obj(),
     run: (lib) => ({ tags: [...lib.tags()].sort((x, y) => y[1] - x[1]).map(([tag, count]) => ({ tag, count })) }) },
 
+  { name: 'library.search_meaning', label: 'Search by meaning', description: 'Find photos by what they show, for example "a dog on a beach at sunset", using the CLIP vectors made on this device. Needs Search by meaning turned on in the Library.', scope: 'read', input: obj({ text: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['text']),
+    run: async (lib, a) => {
+      if (!lib.services.clip) throw new Error('Search by meaning is not available');
+      const hits = (await lib.services.clip.searchText(a.text)).slice(0, a.limit ?? 50);
+      return { items: hits.map(h => ({ ...summary(lib, lib.get(h.id)), score: Math.round(h.score * 1000) / 1000 })).filter(x => x.id) };
+    } },
+
   // ── one photo ────────────────────────────────────────────────────────────
   { name: 'photo.get', label: 'Photo details', description: 'Full details of one photo: dates, size, camera, place, tags, albums, rating and flag.', scope: 'read', input: obj({ id: { type: 'string' } }, ['id']),
     run: (lib, a) => {
@@ -123,6 +130,12 @@ export const COMMANDS = [
       const dataUrl = await lib.services.thumbs?.dataUrl?.(a.id);
       if (!dataUrl) throw new Error('no thumbnail yet; try again when the library has finished indexing');
       return { id: a.id, dataUrl };
+    } },
+  { name: 'photo.similar', label: 'Find similar', description: 'The photos that look most like one photo, by their CLIP vectors. Needs Search by meaning turned on.', scope: 'read', input: obj({ id: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, ['id']),
+    run: (lib, a) => {
+      if (!lib.get(a.id)) throw new Error(`unknown photo id: ${a.id}`);
+      const hits = (lib.services.clip?.similar(a.id) ?? []).slice(0, a.limit ?? 30);
+      return { items: hits.map(h => ({ ...summary(lib, lib.get(h.id)), score: Math.round(h.score * 1000) / 1000 })) };
     } },
   { name: 'photo.open', label: 'Open in editor', description: 'Open one photo in Slate\'s editor.', scope: 'read', input: obj({ id: { type: 'string' } }, ['id']), shortcut: 'E', shows: true,
     run: async (lib, a, ctx) => { if (!lib.get(a.id)) throw new Error(`unknown photo id: ${a.id}`); await ctx?.ui?.openInEditor?.(a.id); return { opened: a.id }; } },

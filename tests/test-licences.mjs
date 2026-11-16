@@ -55,7 +55,7 @@ for (const l of bundled) {
 check(() => {
   for (const l of LICENCES) {
     for (const k of ['name', 'version', 'licence', 'loaded', 'use', 'source']) assert.ok(l[k], `${l.name}: ${k} missing`);
-    assert.ok(['bundled', 'esm.sh'].includes(l.loaded), `${l.name}: loaded is bundled or esm.sh`);
+    assert.ok(['bundled', 'esm.sh', 'jsdelivr', 'huggingface', 'same-origin'].includes(l.loaded), `${l.name}: loaded is bundled, esm.sh, jsdelivr, huggingface or same-origin`);
   }
 }, 'every licences.js entry has name, version, licence, loading and source');
 
@@ -67,6 +67,17 @@ check(() => {
   const missing = names.filter(name => !LICENCES.some(l => l.name === name));
   assert.deepEqual(missing, [], 'SECURITY.md packages missing from licences.js');
 }, 'every package in the SECURITY.md supply-chain table is in licences.js');
+
+check(() => {
+  // Search by meaning: Transformers.js and the CLIP weights are listed, and clip.js pins what licences.js names.
+  const clip = readFileSync(new URL('src/library/clip.js', root), 'utf8');
+  const tjs = LICENCES.find(l => l.name === '@huggingface/transformers');
+  const model = LICENCES.find(l => l.name === 'Xenova/clip-vit-base-patch32');
+  assert.ok(tjs && model, 'transformers.js or the CLIP weights missing from licences.js');
+  assert.match(clip, new RegExp(`TJS_VERSION = '${tjs.version.replace(/\./g, '\\.')}'`), 'clip.js pins another Transformers.js version');
+  assert.ok(clip.includes(`MODEL_REVISION = '${model.version.replace('revision ', '')}`), 'clip.js pins another model revision');
+  assert.ok(security.includes('Xenova/clip-vit-base-patch32') && security.includes(model.licence), 'SECURITY.md does not name the model and its licence');
+}, 'Search by meaning names Transformers.js and the CLIP weights, at the pinned versions');
 
 check(() => assert.match(html, /'Licences'/), 'Help has a Licences section');
 

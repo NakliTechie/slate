@@ -49,6 +49,12 @@
 !scripts/test-all.mjs
 !scripts/live-check*.mjs
 
+# Places data (spec rows P1, P2): built by scripts/build-places.mjs, served same-origin
+!scripts/build-places.mjs
+!assets/
+!assets/places/
+!assets/places/**
+
 # macOS
 .DS_Store
 **/.DS_Store

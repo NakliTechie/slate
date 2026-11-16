@@ -6,10 +6,13 @@
 // initDupes(lib, ui) registers the view. Content hashes run on lib.jobs as kind
 // 'dupes'; fingerprints (dHash) come from thumbs.js, and thumbs.rehash() fills
 // them for photos thumbnailed before Slate took them.
+// "Also use meaning (CLIP)" (row D4) adds a third pass over the vectors that
+// Search by meaning keeps (lib.services.clip, clip.js): photos whose cosine is
+// at or above the slider value, leaving out pairs the first two passes grouped.
 
 import { runCommand } from '../../library/commands.js';
 import { esc } from '../../core/html.js';
-import { exactGroups, nearGroupsAsync, sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT } from '../../library/dupes.js';
+import { exactGroups, nearGroupsAsync, clipGroupsAsync, sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT } from '../../library/dupes.js';
 
 const TRASH_CAP = 5000;        // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -17,6 +20,8 @@ const PAGE = 40;               // groups drawn at a time
 const RECOMPUTE_MS = 1200;
 const THRESHOLD_KEY = 'slate.dupes.threshold';
 const SHA_PATCH_BATCH = 200;
+const CLIP_ON_KEY = 'slate.dupes.clip';
+const CLIP_MIN_KEY = 'slate.dupes.clipmin';
 
 const n = (x) => x.toLocaleString('en-GB');
 const plural = (c, one, many = one + 's') => `${n(c)} ${c === 1 ? one : many}`;
@@ -32,10 +37,17 @@ const dateOf = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', 
 export function initDupes(lib, ui) {
   let threshold = DEFAULT_MAX_DISTANCE;
   try { const t = Number(localStorage.getItem(THRESHOLD_KEY)); if (t >= 1 && t <= MAX_DISTANCE_LIMIT) threshold = t; } catch { /* storage blocked */ }
+  let useClip = false, clipMin = CLIP_DEFAULT_MIN;
+  try {
+    useClip = localStorage.getItem(CLIP_ON_KEY) === '1';
+    const m = Number(localStorage.getItem(CLIP_MIN_KEY)); if (m >= CLIP_MIN_LIMIT && m <= CLIP_MAX_LIMIT) clipMin = m;
+  } catch { /* storage blocked */ }
+  const clip = () => lib.services.clip ?? null;
+  const clipReady = () => !!(clip()?.enabled() && clip().count());
 
   const sha = new Map();       // id -> content hash found this session (also patched onto the record)
   const keep = new Map();      // group key -> Set of ids marked to keep
-  let exact = [], near = [];
+  let exact = [], near = [], byMeaning = [];
   let computed = false, stale = true, busy = false, again = false;
   let status = '', unhashed = 0, lastCount = null;
   let shown = PAGE;
@@ -125,14 +137,23 @@ export function initDupes(lib, ui) {
         ...o, maxDistance: threshold,
         onProgress: (p) => setStatus(`Comparing fingerprints: ${n(p.done)} of ${n(p.total)}`),
       }), exact);
+      // 4. Similar by meaning, when asked for and the vectors exist.
+      byMeaning = [];
+      if (useClip && clipReady()) {
+        setStatus('Comparing photos by meaning');
+        byMeaning = await clipGroupsAsync(all, (id) => clip().vectorOf(id), {
+          ...o, minCosine: clipMin, exclude: [...exact, ...near],
+          onProgress: (p) => setStatus(`Comparing photos by meaning: ${n(Math.min(p.done, p.total))} of ${n(p.total)} steps`),
+        });
+      }
       unhashed = all.filter(r => r.kind === 'photo' && !r.dhash && !r.missing && r.thumb == null && !o.isTrashed(r)).length;
 
-      const live = new Set([...exact, ...near].map(g => g.key));
+      const live = new Set(allGroups().map(g => g.key));
       for (const k of keep.keys()) if (!live.has(k)) keep.delete(k);
       computed = true;
-      const groups = exact.length + near.length;
+      const groups = exact.length + near.length + byMeaning.length;
       setStatus(groups
-        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos.`
+        ? `Found ${plural(exact.length, 'group')} of exact copies and ${plural(near.length, 'group')} of similar photos${useClip && clipReady() ? `, and ${plural(byMeaning.length, 'group')} similar by meaning` : ''}.`
         : 'No duplicates found.');
     } catch (e) {
       setStatus(`Could not finish: ${e?.message ?? e}`);
@@ -142,7 +163,7 @@ export function initDupes(lib, ui) {
     if (again) { again = false; return compute(); }
     // A new count redraws the sidebar through refreshView, which also remounts
     // the open panel; it would remount another view's panel too, so skip it then.
-    const count = exact.length + near.length;
+    const count = allGroups().length;
     const other = !isOpen() && ui.current?.().view === 'x';
     if (count !== lastCount && !other) { lastCount = count; ui.refreshView?.(); if (isOpen()) return; }
     draw();
@@ -164,7 +185,8 @@ export function initDupes(lib, ui) {
     if (!keep.has(g.key)) keep.set(g.key, new Set([g.keeper]));
     return keep.get(g.key);
   };
-  const visibleGroups = () => [...exact, ...near].slice(0, shown);
+  const allGroups = () => [...exact, ...near, ...byMeaning];
+  const visibleGroups = () => allGroups().slice(0, shown);
   const suggestedTrash = (groups) => groups.flatMap(g => { const k = marked(g); return k.size ? g.ids.filter(id => !k.has(id)) : []; });
 
   function drawHeader() {
@@ -183,8 +205,14 @@ export function initDupes(lib, ui) {
           <span class="dup-thr-value">${threshold}</span>
         </label>
         <span id="dup-thr-note" class="dup-note">Lower finds only near copies; higher also finds bursts.</span>
+        <label class="lib-check dup-clip"><input type="checkbox" class="dup-clip-on" ${useClip ? 'checked' : ''} ${clipReady() ? '' : 'disabled'}> Also use meaning (CLIP)</label>
+        ${useClip && clipReady() ? `<label class="dup-clip-min">Meaning: how close
+          <input type="range" min="${CLIP_MIN_LIMIT}" max="${CLIP_MAX_LIMIT}" step="0.01" value="${clipMin}">
+          <span class="dup-clip-value">${clipMin.toFixed(2)}</span>
+        </label>` : ''}
         <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested (${n(count)})</button>
       </div>
+      ${clipReady() ? '' : '<p class="dup-note">Turn on Search by meaning to also compare photos by what they show.</p>'}
       ${unhashed ? `<p class="dup-note">${plural(unhashed, 'photo')} have no thumbnail yet, so they are not compared for similarity.</p>` : ''}`;
   }
 
@@ -206,7 +234,8 @@ export function initDupes(lib, ui) {
 
   function groupHtml(g) {
     const k = marked(g);
-    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
+    const title = g.kind === 'exact' ? `Exact copies, ${plural(g.ids.length, 'file')}`
+      : g.kind === 'clip' ? `Similar by meaning, ${plural(g.ids.length, 'photo')}` : `Similar photos, ${plural(g.ids.length, 'photo')}`;
     return `<section class="dup-group" data-key="${esc(g.key)}">
       <header class="dup-ghead">
         <h3>${esc(title)}</h3>
@@ -220,14 +249,15 @@ export function initDupes(lib, ui) {
     if (!isOpen()) return;
     drawHeader();
     const body = host.querySelector('.dup-body');
-    const all = [...exact, ...near];
+    const all = allGroups();
     const groups = all.slice(0, shown);
     if (!computed) { body.innerHTML = ''; return; }
     if (!all.length) { body.innerHTML = '<p class="dup-empty">No duplicates in the library.</p>'; return; }
-    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near');
+    const exactShown = groups.filter(g => g.kind === 'exact'), nearShown = groups.filter(g => g.kind === 'near'), clipShown = groups.filter(g => g.kind === 'clip');
     body.innerHTML = `
       ${exactShown.length ? `<h2 class="dup-section">Exact copies (${n(exact.length)})</h2>${exactShown.map(groupHtml).join('')}` : ''}
       ${nearShown.length ? `<h2 class="dup-section">Similar photos (${n(near.length)})</h2>${nearShown.map(groupHtml).join('')}` : ''}
+      ${clipShown.length ? `<h2 class="dup-section">Similar by meaning (${n(byMeaning.length)})</h2>${clipShown.map(groupHtml).join('')}` : ''}
       ${all.length > shown ? `<button type="button" class="btn dup-more">Show ${n(Math.min(PAGE, all.length - shown))} more of ${n(all.length - shown)}</button>` : ''}`;
     observeThumbs(body);
   }
@@ -259,7 +289,7 @@ export function initDupes(lib, ui) {
     } catch (e) { say(e?.message ?? String(e), 'error'); }
   }
 
-  const groupByKey = (key) => [...exact, ...near].find(g => g.key === key);
+  const groupByKey = (key) => allGroups().find(g => g.key === key);
 
   function onClick(e) {
     const t = e.target;
@@ -278,6 +308,12 @@ export function initDupes(lib, ui) {
 
   function onChange(e) {
     const t = e.target;
+    if (t.matches('.dup-clip-on')) {
+      useClip = t.checked;
+      try { localStorage.setItem(CLIP_ON_KEY, useClip ? '1' : '0'); } catch { /* storage blocked */ }
+      compute();
+      return;
+    }
     if (t.matches('input[type="checkbox"][data-group]')) {
       const g = groupByKey(t.dataset.group); if (!g) return;
       const k = marked(g);
@@ -292,6 +328,14 @@ export function initDupes(lib, ui) {
   let thrTimer = null;
   function onInput(e) {
     const t = e.target;
+    if (t.matches('.dup-clip-min input')) {
+      clipMin = Number(t.value);
+      const v = host.querySelector('.dup-clip-value'); if (v) v.textContent = clipMin.toFixed(2);
+      try { localStorage.setItem(CLIP_MIN_KEY, String(clipMin)); } catch { /* storage blocked */ }
+      clearTimeout(thrTimer);
+      thrTimer = setTimeout(() => compute(), 250);
+      return;
+    }
     if (!t.matches('.dup-threshold input')) return;
     threshold = Number(t.value);
     const v = host.querySelector('.dup-thr-value'); if (v) v.textContent = String(threshold);
@@ -303,7 +347,7 @@ export function initDupes(lib, ui) {
   ui.registerView({
     id: 'duplicates',
     label: 'Duplicates',
-    count: () => (computed ? exact.length + near.length : null),
+    count: () => (computed ? allGroups().length : null),
     render(el) {
       el.innerHTML = '<div class="dup-root"><div class="dup-head"></div><div class="dup-body"></div></div>';
       host = el.querySelector('.dup-root');

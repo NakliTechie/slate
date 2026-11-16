@@ -9,7 +9,8 @@
 // parseXmp(text) -> { tags: string[], rating: number, label: string|null,
 //                     time: number|null, lat: number|null, lon: number|null }
 // sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
-// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
+// buildXmp({ rating, flag, label, tags, regions, existing }) -> XMP packet text (see below)
+// parseRegions(text) -> MWG face regions (spec row F3), see "face regions" below
 
 import { normTag, wallClockToTime } from './schema.js';
 
@@ -102,6 +103,47 @@ export function parseXmp(text) {
   return { tags, rating, label, time, lat, lon };
 }
 
+// ── face regions (MWG) ──────────────────────────────────────────────────────
+// The Metadata Working Group regions schema, as digiKam, Lightroom and Picasa
+// write it:
+//   <mwg-rs:Regions rdf:parseType="Resource">
+//    <mwg-rs:AppliedToDimensions stDim:w="4000" stDim:h="3000" stDim:unit="pixel"/>
+//    <mwg-rs:RegionList><rdf:Bag><rdf:li><rdf:Description mwg-rs:Name="Asha" mwg-rs:Type="Face">
+//      <mwg-rs:Area stArea:x="0.5" stArea:y="0.4" stArea:w="0.1" stArea:h="0.12" stArea:unit="normalized"/>
+//    </rdf:Description></rdf:li></rdf:Bag></mwg-rs:RegionList>
+//   </mwg-rs:Regions>
+// stArea x and y are the centre of the rectangle; all four are fractions of
+// the image (0 to 1). Each field may be an attribute or an element.
+//
+// parseRegions(text) -> { w, h, regions: [{ name, type, x, y, w, h }] } | null
+//   name is '' when the region has none. Regions with no usable area are dropped.
+
+export function parseRegions(text) {
+  const src = String(text ?? '');
+  const body = elementBody(src, 'mwg-rs:Regions');
+  if (body == null) return null;
+  const dims = { w: Number(single(body, 'stDim:w')) || 0, h: Number(single(body, 'stDim:h')) || 0 };
+  const listBody = elementBody(body, 'mwg-rs:RegionList') ?? '';
+  const regions = [];
+  for (const m of listBody.matchAll(/<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/g)) {
+    const li = m[0];
+    const num = (q) => { const v = Number(single(li, q)); return Number.isFinite(v) ? v : NaN; };
+    const r = { name: single(li, 'mwg-rs:Name') ?? '', type: single(li, 'mwg-rs:Type') ?? '', x: num('stArea:x'), y: num('stArea:y'), w: num('stArea:w'), h: num('stArea:h') };
+    if ([r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0) regions.push(r);
+  }
+  return { w: dims.w, h: dims.h, regions };
+}
+
+function regionsXml(reg, pad) {
+  const n = (v) => String(Math.round(v * 1e6) / 1e6);
+  const dim = reg.w > 0 && reg.h > 0 ? `${pad} <mwg-rs:AppliedToDimensions stDim:w="${Math.round(reg.w)}" stDim:h="${Math.round(reg.h)}" stDim:unit="pixel"/>\n` : '';
+  const lis = reg.regions.map(r =>
+    `${pad}   <rdf:li>\n${pad}    <rdf:Description${r.name ? ` mwg-rs:Name="${xmlEsc(r.name)}"` : ''} mwg-rs:Type="${xmlEsc(r.type || 'Face')}">\n` +
+    `${pad}     <mwg-rs:Area stArea:x="${n(r.x)}" stArea:y="${n(r.y)}" stArea:w="${n(r.w)}" stArea:h="${n(r.h)}" stArea:unit="normalized"/>\n` +
+    `${pad}    </rdf:Description>\n${pad}   </rdf:li>\n`).join('');
+  return `${pad}<mwg-rs:Regions rdf:parseType="Resource">\n${dim}${pad} <mwg-rs:RegionList>\n${pad}  <rdf:Bag>\n${lis}${pad}  </rdf:Bag>\n${pad} </mwg-rs:RegionList>\n${pad}</mwg-rs:Regions>\n`;
+}
+
 export function sidecarNames(name) {
   const i = name.lastIndexOf('.');
   const full = name + '.xmp', stem = (i < 0 ? name : name.slice(0, i)) + '.xmp';
@@ -121,11 +163,19 @@ export function sidecarNames(name) {
 // digiKam and darktable read. A pick writes nothing beyond its rating.
 // With `existing` (a sidecar's text), only these four properties are replaced,
 // in attribute or element form; every other property and namespace stays.
+// `regions` ({ w, h, regions } as parseRegions returns) also replaces
+// mwg-rs:Regions; left undefined, an existing mwg-rs:Regions stays as it is,
+// and an empty regions list removes it.
 
 const NS = {
   xmp: 'http://ns.adobe.com/xap/1.0/',
   dc: 'http://purl.org/dc/elements/1.1/',
   lr: 'http://ns.adobe.com/lightroom/1.0/',
+};
+const REGION_NS = {
+  'mwg-rs': 'http://www.metadataworkinggroup.com/schemas/regions/',
+  stArea: 'http://ns.adobe.com/xmp/sType/Area#',
+  stDim: 'http://ns.adobe.com/xap/1.0/sType/Dimensions#',
 };
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
@@ -143,7 +193,7 @@ function bag(qname, items, pad) {
   return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
 }
 
-export function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
+export function buildXmp({ rating = 0, flag = null, label, tags = [], regions, existing = null } = {}) {
   const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
   const clean = [...new Set(tags.map(normTag).filter(Boolean))];
   const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
@@ -155,6 +205,9 @@ export function buildXmp({ rating = 0, flag = null, label, tags = [], existing =
   if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
   if (leaves.length) props += bag('dc:subject', leaves, pad);
   if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
+  const writeRegions = regions !== undefined;
+  if (regions?.regions?.length) props += regionsXml(regions, pad);
+  const ns = regions?.regions?.length ? { ...NS, ...REGION_NS } : NS;
 
   let text = existing ? String(existing) : '';
   const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
@@ -165,7 +218,7 @@ export function buildXmp({ rating = 0, flag = null, label, tags = [], existing =
   <rdf:Description rdf:about=""
     xmlns:xmp="${NS.xmp}"
     xmlns:dc="${NS.dc}"
-    xmlns:lr="${NS.lr}">
+    xmlns:lr="${NS.lr}"${ns === NS ? '' : Object.entries(REGION_NS).map(([p, u]) => `\n    xmlns:${p}="${u}"`).join('')}>
 ${props}  </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>
@@ -173,9 +226,10 @@ ${props}  </rdf:Description>
 `;
   }
   for (const q of OWNED) text = removeProp(text, q);
+  if (writeRegions) text = removeProp(text, 'mwg-rs:Regions');
   const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
   let attrs = m[1];
-  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
+  for (const [p, uri] of Object.entries(ns)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
   const head = `<rdf:Description${attrs}>\n${props}`;
   const tail = m[2] ? '  </rdf:Description>' : '';
   return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');

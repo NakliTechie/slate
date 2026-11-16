@@ -45,7 +45,7 @@
         "properties": {
           "q": {
             "type": "string",
-            "description": "words to match in file name, folder, tags, album names, camera; a year (2024) or month name (March) matches capture dates"
+            "description": "words to match in file name, folder, tags, album names, camera, captions and text read from photos; a year (2024) or month name (March) matches capture dates"
           },
           "from": {
             "type": "string",
@@ -185,6 +185,28 @@
       }
     },
     {
+      "name": "library.search_meaning",
+      "label": "Search by meaning",
+      "description": "Find photos by what they show, for example \"a dog on a beach at sunset\", using the CLIP vectors made on this device. Needs Search by meaning turned on in the Library.",
+      "scope": "read",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    {
       "name": "photo.get",
       "label": "Photo details",
       "description": "Full details of one photo: dates, size, camera, place, tags, albums, rating and flag.",
@@ -211,6 +233,28 @@
         "properties": {
           "id": {
             "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "photo.similar",
+      "label": "Find similar",
+      "description": "The photos that look most like one photo, by their CLIP vectors. Needs Search by meaning turned on.",
+      "scope": "read",
+      "input": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
           }
         },
         "required": [

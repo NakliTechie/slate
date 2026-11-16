@@ -100,7 +100,7 @@ Read from `src/` on 2026-11-16:
 | O6 | Trash: delete moves the file into `.slate-trash/` under its root, with restore; empty trash is a separate confirmed action | G A I | v1 | Built (trash.js). Checked: live check: the file moves into .slate-trash and back; tests/test-library-core.mjs and test-library-organise.mjs empty trash and restore refusal. Empty trash not run live |
 | O7 | Edit from the library: open in the editor, save as a new version beside the original | S R | v1 | Built. Checked: live check: E opens the photo in the editor; Escape returns to the Library. Saving beside the original not driven live |
 | O8 | Batch from a selection: Slate's batch tools, contact sheet and gallery export run on the selected photos | S | v1 | Built (batch.js, gallery.js take a selection). Not driven live |
-| O9 | Locked folder: hidden photos behind a passphrase, encrypted at rest | G I | v1.x | Needs an encryption design; hide (O5) covers the common case |
+| O9 | Locked folder: hidden photos behind a passphrase, encrypted at rest | G I | v1.x | Built 2026-11-17 (locked.js: PBKDF2-SHA-256 with 600,000 iterations; hidden photos stay out of every view until unlocked this session; the dialog says files are not encrypted on disk; Reset lock). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): locked shows 0, a wrong passphrase is refused, the right one shows 1 |
 | O10 | Bulk rename and move between folders | D | v1.x | Built 2026-11-17 (move.js; Library.moveFiles and renameFiles re-key choices and albums; commands photo.move and photo.rename, destructive; dialogs require a dry run first). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): move keeps the favourite and undoes; rename from a template and undo; tests/test-library-move.mjs |
 
 ## 5. Search
@@ -108,9 +108,9 @@ Read from `src/` on 2026-11-16:
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
 | Q1 | Search box over filename, folder, tag, album, camera and date words ("2024", "March", "Canon") | B | v1 | Built. Checked: live check: / focuses search; "canon 2024" filters to 2,501 |
-| Q2 | Text search by meaning with CLIP-style embeddings in a worker (WebGPU, WASM fallback); model downloaded on opt-in | G A I E R | v1.x | First candidates MobileCLIP2-S2 or CLIP ViT-B/32; licence check first; gate is brute-force latency at 100,000 vectors |
-| Q3 | Find similar photos to this one | I D | v1.x | Same vectors as Q2 |
-| Q4 | Hindi and other Indic queries | R | v1.x | Only NLLB-CLIP models measured well, at about 4.7 GB class; or translate the query first |
+| Q2 | Text search by meaning with CLIP-style embeddings in a worker (WebGPU, WASM fallback); model downloaded on opt-in | G A I E R | v1.x | Built 2026-11-17 (clip.js: Xenova/clip-vit-base-patch32 at a pinned revision through Transformers.js 4.3.2 in a worker; opt-in, size stated first; q8 on WASM about 157 MB, fp16 on WebGPU about 307 MB; Int8 vectors from thumbnails; brute-force search; Meaning toggle and ~ prefix; command library.search_meaning). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): downloaded and embedded 24 photos on WASM; "red" and "blue" queries return 6 of 6 matching pictures first; tests/test-library-clip.mjs (100,000 vectors searched in 40 ms in Node) |
+| Q3 | Find similar photos to this one | I D | v1.x | Built 2026-11-17 (viewer: Find similar; command photo.similar). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): 6 of 6 similar to a red picture are red |
+| Q4 | Hindi and other Indic queries | R | v1.x | SKIPPED 2026-11-17: the only measured route, NLLB-CLIP, is about 4.7 GB, too large for a browser tab here; revisit if a small multilingual CLIP appears |
 
 ## 6. Duplicates
 
@@ -119,24 +119,24 @@ Read from `src/` on 2026-11-16:
 | D1 | Exact duplicates: same size and content hash, grouped for review | P I | v1.x | Built 2026-11-17 (dupes.js: same size, then SHA-256 of colliding files only). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-dupes.mjs. The synthetic folder had no exact copies, so exact grouping is checked in Node only |
 | D2 | Near-duplicates and bursts by perceptual hash (dHash or pHash), Hamming threshold set by Slate's own tests | D R | v1.x | Built 2026-11-17 (64-bit dHash from the thumbnail; bucket lookup; threshold slider 1 to 11, default 6 from synthetic images). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): 9 groups of similar photos; Node: matches brute force on 2,000 hashes, 100,000 grouped in 1.4 s |
 | D3 | Review screen: keep the best, trash the rest in one step | I | v1.x | Built 2026-11-17 (Duplicates view: keeper suggested by size, favourite, rating, age). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): keep-one trashes 59 others, Undo restores them |
-| D4 | Near-duplicates by CLIP similarity as a second pass | I R | v1.x | After Q2 |
+| D4 | Near-duplicates by CLIP similarity as a second pass | I R | v1.x | Built 2026-11-17 (Duplicates: "Also use meaning (CLIP)", cosine slider 0.92 to 0.99, default 0.95, pairs already found by dHash left out). Checked: tests/test-library-dupes.mjs (matches all-pairs at 0.95 and 0.98; 777 of 780 pairs at 0.92). Not driven live |
 
 ## 7. Places
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| P1 | Places list: photos grouped by country and nearest city from a bundled GeoNames gazetteer, offline | R | v1.x | `cities1000` or `cities5000`; CC BY 4.0 attribution required; download size to measure |
-| P2 | Map of pins over Natural Earth country outlines, drawn on a canvas, offline | R | v1.x | |
-| P3 | Vector basemap from a PMTiles file the user supplies, through MapLibre | R | v1.x | Gated on a prototype that reads a picked file, which the research could not confirm |
+| P1 | Places list: photos grouped by country and nearest city from a bundled GeoNames gazetteer, offline | R | v1.x | Built 2026-11-17 (assets/places/cities.bin: GeoNames cities5000, 64,693 places, 1.27 MB, CC BY 4.0, built by scripts/build-places.mjs; k-d tree nearest place; Places view lists countries and towns). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): Goa photos under India, Panjim; Lisbon under Portugal; tests/test-library-places.mjs matches brute force on 1,000 points |
+| P2 | Map of pins over Natural Earth country outlines, drawn on a canvas, offline | R | v1.x | Built 2026-11-17 (Map tab: Natural Earth outlines, 177 countries, 143 KB, clustered pins, pan and zoom). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): the canvas draws outlines and pins. Pin clicks not driven |
+| P3 | Vector basemap from a PMTiles file the user supplies, through MapLibre | R | v1.x | Built 2026-11-17 ("Use a map file (.pmtiles)…": MapLibre 6.16.0 and pmtiles 4.5.0 from jsDelivr on first use; pmtiles FileSource reads the picked file; no labels without a font server). Not driven live: no .pmtiles file here |
 | P4 | Online tiles or reverse geocoding from OpenStreetMap, Nominatim or MapTiler | I | Waived | OSM's tile policy forbids offline use and needs a Referer header; Nominatim bars bulk reverse geocoding; both send locations off the device (R) |
 
 ## 8. People
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| F1 | Face detection, embedding and clustering, off by default, explicit opt-in, delete-all-face-data button | G A D P I R | v1.x | YuNet with SFace (the permissive pairing PhotoPrism ships) on ONNX Runtime Web; incremental DBSCAN as Immich; model id stored with each vector |
-| F2 | Name, merge, hide a person; mark a face as wrong; set a cover | P I | v1.x | After F1 |
-| F3 | Read and write face regions in XMP (MWG regions) | D | v1.x | Interoperates with digiKam and Lightroom |
+| F1 | Face detection, embedding and clustering, off by default, explicit opt-in, delete-all-face-data button | G A D P I R | v1.x | Built 2026-11-17 (faces.js: opt-in with sizes stated; YuNet 2023mar and SFace 2021dec int8 from Hugging Face at pinned commits, onnxruntime-web 1.29.0 on WASM; faces under 32 px skipped; incremental grouping, 3 faces to form a person; Delete all face data). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): on OpenCV's YuNet example image at three scales, 6 faces form 2 people, each found in all 3 copies; tests/test-library-faces.mjs; the agent's one-off comparison with OpenCV in Python matched 35 faces |
+| F2 | Name, merge, hide a person; mark a face as wrong; set a cover | P I | v1.x | Built 2026-11-17 (People view: name, merge, hide, not this person, cover). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): the view shows the people. Naming and merging checked in Node only |
+| F3 | Read and write face regions in XMP (MWG regions) | D | v1.x | Built 2026-11-17 (xmp.js reads MWG regions; named people are written as regions when XMP writing is on). Checked: tests/test-library-faces.mjs round trip. Not driven live; the MWG orientation convention is not checked |
 | F4 | InsightFace `buffalo_l` models | R | Waived | Non-commercial research licence |
 
 ## 9. Import and export
@@ -155,7 +155,7 @@ Read from `src/` on 2026-11-16:
 |---|---|---|---|---|
 | X1 | Describe a photo on demand through the NakliOS host model (`naklios.ai`, vision gated by `experimental_aiVision`) | R | v1.x | Built 2026-11-16 in the editor's Image Info (src/ops/describe.js): shown only when the host offers vision; the dialog names the destination before sending; a JPEG of at most 1,536 px. Checked: tests/test-describe.mjs; scripts/live-check-describe.mjs 5/5 against a stubbed host. A real host model is not checked |
 | X2 | Bulk captions for the whole library | R | Waived | About 28 hours for 50,000 photos at 2 s each (arithmetic); text search (Q2) covers the use |
-| X3 | Extract text (OCR) and describe-image models already logged for Slate (Indra OCR, LFM3-VL-2B) searchable in the library | S | v1.x | Separate backlog items; indexed when present |
+| X3 | Extract text (OCR) and describe-image models already logged for Slate (Indra OCR, LFM3-VL-2B) searchable in the library | S | v1.x | Built 2026-11-17 (textindex.js: opt-in Read text in photos with Tesseract.js at about 1,600 px; text kept in this browser; search matches it; viewer shows it; Read text for a selection). Checked: `scripts/live-check-v1x3.mjs` 10/10 (Chrome over CDP, 2026-11-17): a receipt photo is found by a word printed on it |
 
 ## 11. Agent door and NakliOS
 

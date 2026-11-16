@@ -8,8 +8,9 @@
 //   nearGroups(records, opts)                 -> Group[]
 //   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
 //   rankKeeper(records, opts)        -> records sorted best keeper first
+//   clipGroups(records, vectorOf, opts) / clipGroupsAsync  -> Group[] of kind 'clip' (row D4, at the end)
 //
-// Group = { kind: 'exact'|'near', key, ids, keeper }; ids are best keeper first.
+// Group = { kind: 'exact'|'near'|'clip', key, ids, keeper }; ids are best keeper first.
 // opts.isTrashed(record) excludes a record (default: record.trashed);
 // opts.choiceOf(id) -> { fav, rating } feeds the keeper ranking.
 //
@@ -235,4 +236,142 @@ export function runOnJobs(jobs, kind, items, fn) {
       finally { if (--left === 0) finish(); }
     });
   });
+}
+
+// ── similar by meaning (row D4) ───────────────────────────────────────────
+//
+//   clipGroupsAsync(records, vectorOf, opts) -> Promise<Group[]> of kind 'clip'
+//
+// vectorOf(id) -> { q: Int8Array, inv } (clip.js VectorSet.view) or null.
+// Two photos join when their cosine is at least opts.minCosine (default 0.95).
+// opts.exclude: groups already found (exact and dHash near); a pair whose two
+// photos share one of those groups is skipped, so this pass adds only what the
+// fingerprints missed. opts.onProgress({ done, total }), opts.signal as above.
+//
+// Comparing every pair is too slow past a few thousand photos, so candidate
+// pairs come from random-hyperplane hashes (SimHash): CLIP_TABLES tables of 64
+// bits each, over vectors centred on the library's mean (CLIP vectors sit in a
+// narrow cone, and without centring most bits are the same for every photo).
+// Two hashes within CLIP_MAX_BITS bits in any table make a candidate, and every
+// candidate is checked with the exact cosine, so a group never holds a false
+// pair. A true pair can be missed: on the test's fake vectors the result equals
+// an all-pairs reference at 0.95 and 0.98 and misses 3 of about 700 pairs at
+// 0.92 (tests/test-library-dupes.mjs). Node takes about 4 s for 20,000 vectors
+// and 38 s for 100,000, most of it hashing.
+
+export const CLIP_DEFAULT_MIN = 0.95;
+export const CLIP_MIN_LIMIT = 0.92;
+export const CLIP_MAX_LIMIT = 0.99;
+const CLIP_TABLES = 4;
+const CLIP_MAX_BITS = 11;
+const CLIP_SEED = 0x5eed1234;
+
+// Seeded Gaussian planes (Box-Muller over a linear congruential generator).
+function gaussianPlanes(count, dim, seed) {
+  let s = seed >>> 0;
+  const u = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 1) / 4294967297; };
+  const out = new Float32Array(count * dim);
+  for (let i = 0; i < out.length; i += 2) {
+    const r = Math.sqrt(-2 * Math.log(u())), t = 2 * Math.PI * u();
+    out[i] = r * Math.cos(t);
+    if (i + 1 < out.length) out[i + 1] = r * Math.sin(t);
+  }
+  return out;
+}
+
+export function clipCosine(a, b) {
+  const q1 = a.q, q2 = b.q;
+  let dot = 0;
+  for (let j = 0; j < q1.length; j++) dot += q1[j] * q2[j];
+  return dot * a.inv * b.inv;
+}
+
+function* clipSteps(records, vectorOf, opts = {}) {
+  const min = Math.max(CLIP_MIN_LIMIT, Math.min(CLIP_MAX_LIMIT, Number(opts.minCosine ?? CLIP_DEFAULT_MIN)));
+  const list = [], vecs = [];
+  for (const r of live(records, opts)) { const v = vectorOf(r.id); if (v && v.inv) { list.push(r); vecs.push(v); } }
+  const n = list.length;
+  if (n < 2) return [];
+  const dim = vecs[0].q.length;
+  const STEP = 1000;
+  const total = n * 2;
+
+  // Centre, then hash: bit p of table t is sign(plane · (v - mean)).
+  const mean = new Float64Array(dim);
+  for (const v of vecs) for (let j = 0; j < dim; j++) mean[j] += v.q[j] * v.inv;
+  for (let j = 0; j < dim; j++) mean[j] /= n;
+  const P = CLIP_TABLES * 64;
+  const planes = gaussianPlanes(P, dim, CLIP_SEED);
+  const pm = new Float64Array(P);
+  for (let p = 0; p < P; p++) { let s = 0; const o = p * dim; for (let j = 0; j < dim; j++) s += planes[o + j] * mean[j]; pm[p] = s; }
+  const hi = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  const lo = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  for (let i = 0; i < n; i++) {
+    const { q, inv } = vecs[i];
+    for (let p = 0; p < P; p++) {
+      let s = 0;
+      const o = p * dim;
+      for (let j = 0; j < dim; j++) s += planes[o + j] * q[j];
+      if (s * inv > pm[p]) {
+        const t = (p / 64) | 0, b = p % 64;
+        if (b < 32) hi[t][i] |= (1 << b); else lo[t][i] |= (1 << (b - 32));
+      }
+    }
+    if ((i + 1) % STEP === 0) yield { done: i + 1, total };
+  }
+
+  const groupOf = new Int32Array(n).fill(-1);
+  const gid = new Map();
+  (opts.exclude ?? []).forEach((g, k) => { for (const id of g.ids) gid.set(id, k); });
+  for (let i = 0; i < n; i++) { const k = gid.get(list[i].id); if (k !== undefined) groupOf[i] = k; }
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const r = Math.floor(CLIP_MAX_BITS / 4);
+  for (let t = 0; t < CLIP_TABLES; t++) {
+    const H = hi[t], L = lo[t];
+    const block = (i, b) => b === 0 ? H[i] >>> 16 : b === 1 ? H[i] & 0xffff : b === 2 ? L[i] >>> 16 : L[i] & 0xffff;
+    const tables = [0, 1, 2, 3].map(() => new Map());
+    for (let i = 0; i < n; i++) for (let b = 0; b < 4; b++) { const m = tables[b], v = block(i, b), s = m.get(v); if (s) s.push(i); else m.set(v, [i]); }
+    for (let i = 0; i < n; i++) {
+      for (let b = 0; b < 4; b++) {
+        for (const v of neighbours(block(i, b), r)) {
+          const s = tables[b].get(v);
+          if (!s) continue;
+          for (const j of s) {
+            if (j <= i) continue;
+            if (groupOf[i] >= 0 && groupOf[i] === groupOf[j]) continue;
+            if (pop32((H[i] ^ H[j]) >>> 0) + pop32((L[i] ^ L[j]) >>> 0) > CLIP_MAX_BITS) continue;
+            const a = find(i), c = find(j);
+            if (a === c) continue;
+            if (clipCosine(vecs[i], vecs[j]) >= min) parent[a] = c;
+          }
+        }
+      }
+      if ((i + 1) % STEP === 0) yield { done: n + Math.round((t * n + i + 1) / CLIP_TABLES), total };
+    }
+  }
+
+  const comps = new Map();
+  for (let i = 0; i < n; i++) { const root = find(i), c = comps.get(root); if (c) c.push(list[i]); else comps.set(root, [list[i]]); }
+  const out = [];
+  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('clip', 'c:' + members.map(m => m.id).sort()[0], members, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+export function clipGroups(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) { const s = it.next(); if (s.done) return s.value; }
+}
+
+export async function clipGroupsAsync(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) {
+    const s = it.next();
+    if (s.done) return s.value;
+    opts.onProgress?.(s.value);
+    await new Promise(res => setTimeout(res, 0));
+    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  }
 }

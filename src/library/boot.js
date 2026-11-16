@@ -20,6 +20,12 @@ import { initXmpWrite } from './xmpwrite.js';
 import { initImport } from '../ui/library/import.js';
 import { initDupes } from '../ui/library/dupes.js';
 import { initWatch } from './watch.js';
+import { initPlaces } from '../ui/library/places.js';
+import { initTextIndex } from './textindex.js';
+import { initLocked } from './locked.js';
+import { initFaces } from './faces.js';
+import { createClip } from './clip.js';
+import { initPeople } from '../ui/library/people.js';
 import { importTakeoutZips, ZIP_URL } from '../ui/library/import.js';
 import { exportFiles } from './export.js';
 import { applyICloudCsv } from './icloud.js';
@@ -40,13 +46,19 @@ export async function initLibrary() {
   lib.services.trash = createTrash();
   _lib = lib;
 
+  lib.services.clip = createClip(lib);
   const ui = initLibraryView(lib);
   lib.services.ui = ui;
   initOrganise(lib, ui);
+  initTextIndex(lib);
+  initLocked(lib);
   initMemories(lib, ui);
   initXmpWrite(lib);
+  initFaces(lib);
+  initPeople(lib, ui);
   initImport(lib, ui);
   initDupes(lib, ui);
+  initPlaces(lib, ui);
   initDoor(lib, ui);
 
   await lib.load();

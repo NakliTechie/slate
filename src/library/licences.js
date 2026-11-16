@@ -2,7 +2,9 @@
 // `bundled` packages are vendored under src/vendor/ and built into index.html, so their
 // licence text ships here and in the vendored file's header. `esm.sh` packages are
 // fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
-// carry their own licence in what esm.sh serves.
+// carry their own licence in what esm.sh serves. `jsdelivr` packages load the same way from
+// cdn.jsdelivr.net, and `huggingface` entries are model weights downloaded from huggingface.co;
+// both only after the person turns on Search by meaning (src/library/clip.js).
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
 export const LICENCES = [
@@ -78,5 +80,15 @@ SOFTWARE.` },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
   { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
+  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning: runs the CLIP model in a worker, only after you turn it on', source: 'https://github.com/huggingface/transformers.js' },
+  { name: 'onnxruntime-web', version: '1.31.0-dev.20260914-8d85527a0', licence: 'MIT', loaded: 'jsdelivr', use: 'Fetched with @huggingface/transformers, with onnxruntime-common and its WebAssembly files', source: 'https://github.com/microsoft/onnxruntime' },
+  { name: 'onnxruntime-web (faces)', version: '1.29.0', licence: 'MIT', loaded: 'jsdelivr', use: 'Runs the face models, only after you turn on People', source: 'https://github.com/microsoft/onnxruntime' },
+  { name: 'YuNet face detector', version: '2023mar', licence: 'MIT', loaded: 'huggingface', use: 'Finds faces (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_detection_yunet' },
+  { name: 'SFace face recogniser', version: '2021dec int8', licence: 'Apache-2.0', loaded: 'huggingface', use: 'Groups faces of the same person (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_recognition_sface' },
+  { name: 'GeoNames cities5000', version: '2026-11-16', licence: 'CC BY 4.0', loaded: 'same-origin', use: 'Place names for Places (assets/places/cities.bin). Data from GeoNames, geonames.org', source: 'https://www.geonames.org/' },
+  { name: 'Natural Earth admin-0 countries', version: '5.1.2', licence: 'Public domain', loaded: 'same-origin', use: 'Country outlines for the Places map (assets/places/countries.json)', source: 'https://www.naturalearthdata.com/' },
+  { name: 'maplibre-gl', version: '6.16.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Draws a map from your own .pmtiles file in Places, only when you choose one', source: 'https://github.com/maplibre/maplibre-gl-js' },
+  { name: 'pmtiles', version: '4.5.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Reads your .pmtiles map file, with maplibre-gl', source: 'https://github.com/protomaps/PMTiles' },
+  { name: 'Xenova/clip-vit-base-patch32', version: 'revision 6b7c523', licence: 'MIT', loaded: 'huggingface', use: 'OpenAI CLIP ViT-B/32 weights (ONNX) for Search by meaning, downloaded once after you turn it on', source: 'https://huggingface.co/Xenova/clip-vit-base-patch32' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];

@@ -345,7 +345,7 @@ function licences() {
       ${bundled.map(l => line(l) + `<details class="help-licence"><summary>${esc(l.name)} licence</summary><pre class="help-p" style="white-space:pre-wrap;font-size:11px">${esc(l.text)}</pre></details>`).join('')}
     `)}
     ${section('Fetched on first use', `
-      <p class="help-p">These load from esm.sh, at a pinned version, the first time you open a file that needs them. Each carries its own licence.</p>
+      <p class="help-p">These load at a pinned version the first time a feature needs them: decoders from esm.sh when you open such a file; the CLIP, face and map libraries from jsDelivr and their models from Hugging Face only after you turn that feature on; place data from Slate's own site. Each carries its own licence.</p>
       ${fetched.map(line).join('')}
     `)}
   `;

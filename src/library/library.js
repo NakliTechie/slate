@@ -249,7 +249,9 @@ export class Library {
   // ── reads ───────────────────────────────────────────────────────────────
   get(id) { return this.records.get(id) ?? null; }
   choice(id) { return choiceOf(this.choices, id); }
-  search(opts = {}) { return query(this.records.values(), this.choices, this.albums, opts); }
+  // textOf (set by textindex.js) lets words match text read from photos; hiddenLocked (locked.js)
+  // keeps hidden photos out of every result until the passphrase is given this session.
+  search(opts = {}) { return query(this.records.values(), this.choices, this.albums, { textOf: this.textOf, ...opts, lockHidden: !!this.hiddenLocked?.() }); }
   tags() { return tagCounts(this.records.values(), this.choices); }
   folders() { return folderCounts(this.records.values()); }
   rating(id) { const r = this.records.get(id); return r ? effectiveRating(r, this.choice(id)) : 0; }

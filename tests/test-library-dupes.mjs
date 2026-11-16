@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import {
   dhashRGBA, hamming, exactGroups, nearGroups, nearGroupsAsync, rankKeeper,
   sizeCollisions, sha256Hex, dropCoveredNear, runOnJobs, MAX_DISTANCE_LIMIT,
+  clipGroups, clipGroupsAsync, clipCosine, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT,
 } from '../src/library/dupes.js';
 import { JobQueue } from '../src/library/jobs.js';
+import { VectorSet, normalise } from '../src/library/clip.js';
 
 let passed = 0;
 const test = async (name, fn) => { await fn(); passed++; console.log(`ok - ${name}`); };
@@ -184,6 +186,105 @@ await test('runOnJobs resolves when its items finish, and when the kind is cance
   q.cancel('dupes');
   await p;
   await runOnJobs(q, 'dupes', [], async () => {});
+});
+
+// ── similar by meaning (row D4) with fake CLIP vectors ───────────────────
+// Vectors sit in a narrow cone (a shared offset), as CLIP image vectors do; a
+// third are near copies of an earlier vector at cosine about 0.93 to 0.995.
+function fakeClip(count, seed, dim = 512) {
+  const r = rng(seed);
+  const g = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+  const offset = new Float32Array(dim); for (let j = 0; j < dim; j++) offset[j] = g();
+  const off = normalise(offset);
+  const set = new VectorSet(dim, count);
+  const base = [];
+  const recs = [];
+  for (let i = 0; i < count; i++) {
+    let v;
+    if (i > 10 && r() < 0.33) {
+      const src = base[Math.floor(r() * base.length)];
+      const noise = r() * 0.4;
+      v = new Float32Array(dim);
+      for (let j = 0; j < dim; j++) v[j] = src[j] + noise * g() / Math.sqrt(dim);
+    } else {
+      v = new Float32Array(dim);
+      for (let j = 0; j < dim; j++) v[j] = 1.2 * off[j] + g() / Math.sqrt(dim);
+    }
+    v = normalise(v);
+    base.push(v);
+    const id = `r/${String(i).padStart(5, '0')}.jpg`;
+    set.set(id, v);
+    recs.push({ id, w: 100, h: 100, mtime: i });
+  }
+  return { set, recs, vectorOf: (id) => set.view(id) };
+}
+
+function bruteClip(recs, vectorOf, min, exclude = []) {
+  const gid = new Map(); exclude.forEach((g, k) => g.ids.forEach(id => gid.set(id, k)));
+  const parent = recs.map((_, i) => i);
+  const find = (x) => { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; };
+  for (let i = 0; i < recs.length; i++) for (let j = i + 1; j < recs.length; j++) {
+    const a = gid.get(recs[i].id), b = gid.get(recs[j].id);
+    if (a !== undefined && a === b) continue;
+    if (clipCosine(vectorOf(recs[i].id), vectorOf(recs[j].id)) >= min) parent[find(i)] = find(j);
+  }
+  const m = new Map();
+  recs.forEach((r, i) => { const k = find(i); (m.get(k) ?? m.set(k, []).get(k)).push(r.id); });
+  return [...m.values()].filter(g => g.length > 1).map(g => g.sort().join(',')).sort();
+}
+
+await test('CLIP pass matches an all-pairs reference on 1,500 fake vectors at 0.95 and 0.98', () => {
+  const { recs, vectorOf } = fakeClip(1500, 11);
+  for (const min of [CLIP_DEFAULT_MIN, 0.98]) {
+    const got = clipGroups(recs, vectorOf, { minCosine: min });
+    assert.ok(got.every(g => g.kind === 'clip'));
+    assert.deepEqual(canon(got), bruteClip(recs, vectorOf, min), `cosine ${min}`);
+  }
+});
+
+await test('CLIP pass at the lowest slider value (0.92): no false pair, at least 99% of pairs found', () => {
+  const { recs, vectorOf } = fakeClip(1500, 11);
+  const got = clipGroups(recs, vectorOf, { minCosine: CLIP_MIN_LIMIT });
+  const ref = new Set(bruteClip(recs, vectorOf, CLIP_MIN_LIMIT).flatMap(g => g.split(',')));
+  const groupOf = new Map(); got.forEach((g, k) => g.ids.forEach(id => groupOf.set(id, k)));
+  for (const g of got) for (const id of g.ids) assert.ok(ref.has(id), `${id} is grouped but has no pair at ${CLIP_MIN_LIMIT}`);
+  let pairs = 0, found = 0;
+  for (let i = 0; i < recs.length; i++) for (let j = i + 1; j < recs.length; j++) {
+    if (clipCosine(vectorOf(recs[i].id), vectorOf(recs[j].id)) < CLIP_MIN_LIMIT) continue;
+    pairs++;
+    const a = groupOf.get(recs[i].id);
+    if (a !== undefined && a === groupOf.get(recs[j].id)) found++;
+  }
+  console.log(`  ${found} of ${pairs} pairs at cosine ${CLIP_MIN_LIMIT} or more are grouped`);
+  assert.ok(found / pairs >= 0.99);
+});
+
+await test('CLIP pass skips pairs already grouped by fingerprint, and trashed photos', () => {
+  const dim = 16;
+  const set = new VectorSet(dim);
+  const v = (k, e = 0) => { const a = new Float32Array(dim); a[k] = 1; a[(k + 1) % dim] = e; return a; };
+  set.set('a', v(0)); set.set('b', v(0, 0.05)); set.set('c', v(0, 0.1)); set.set('d', v(5)); set.set('e', v(5, 0.02)); set.set('t', v(9)); set.set('u', v(9, 0.01));
+  const recs = ['a', 'b', 'c', 'd', 'e', 't', 'u'].map((id, i) => ({ id, w: 10, h: 10, mtime: i, trashed: id === 'u' ? '2026-01-01' : undefined }));
+  const vectorOf = (id) => set.view(id);
+  // a, b and c are all similar; a-b and d-e are already a dHash group.
+  const exclude = [{ kind: 'near', key: 'a', ids: ['a', 'b'] }, { kind: 'near', key: 'd', ids: ['d', 'e'] }];
+  assert.deepEqual(canon(clipGroups(recs, vectorOf, { exclude })), ['a,b,c']);
+  assert.deepEqual(canon(clipGroups(recs, vectorOf)), ['a,b,c', 'd,e']);
+  assert.deepEqual(canon(clipGroups(recs, vectorOf, { exclude: [{ ids: ['a', 'b', 'c'] }, { ids: ['d', 'e'] }] })), []);
+  assert.deepEqual(clipGroups(recs.slice(0, 1), vectorOf), []);
+  assert.deepEqual(canon(clipGroups(recs, (id) => (id === 'c' ? null : vectorOf(id)), { exclude })), []);
+});
+
+await test('CLIP pass on 20,000 vectors reports progress and gives the same groups async (time printed)', async () => {
+  const { recs, vectorOf } = fakeClip(20000, 21);
+  let ticks = 0;
+  const t = performance.now();
+  const a = await clipGroupsAsync(recs, vectorOf, { onProgress: () => ticks++ });
+  const ms = performance.now() - t;
+  console.log(`  20,000 vectors at cosine 0.95: ${Math.round(ms)} ms, ${a.length} groups`);
+  assert.ok(ticks >= 20);
+  assert.deepEqual(canon(a), canon(clipGroups(recs, vectorOf)));
+  assert.ok(ms < 60000, `took ${Math.round(ms)} ms`);
 });
 
 console.log(`\n${passed} passed`);

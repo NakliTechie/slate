@@ -23,6 +23,8 @@ import { dayKey, monthKey, folderOf, monthName, emptyChoice } from './schema.js'
  * @property {'exclude'|'only'|'include'} [trashed='exclude']
  * @property {boolean} [missing]    true = only missing files; default excludes nothing
  * @property {'time-desc'|'time-asc'|'name'|'size'} [sort='time-desc']
+ * @property {(id: string) => string|undefined} [textOf]  text read from the photo (textindex.js, row X3); free-text words also match it
+ * @property {boolean} [lockHidden]  the hidden photos are locked (locked.js, row O9): no hidden photo matches, whatever `hidden` says
  */
 
 const MONTH_WORDS = new Map();
@@ -41,17 +43,18 @@ function tagMatches(tags, want) {
 }
 
 // Each free-text token must match somewhere (AND across tokens).
-function tokenMatcher(token, albumNamesOf) {
+function tokenMatcher(token, albumNamesOf, textOf) {
   const t = token.toLowerCase();
+  const inText = textOf ? (r) => (textOf(r.id) || '').toLowerCase().includes(t) : () => false;
   if (/^\d{4}$/.test(t)) {
     const y = Number(t);
     return (r, c) => new Date(r.time).getUTCFullYear() === y || r.name.toLowerCase().includes(t) || r.path.toLowerCase().includes(t);
   }
   if (MONTH_WORDS.has(t)) {
     const m = MONTH_WORDS.get(t);
-    return (r, c) => new Date(r.time).getUTCMonth() === m || hay(r, c, albumNamesOf).includes(t);
+    return (r, c) => new Date(r.time).getUTCMonth() === m || hay(r, c, albumNamesOf).includes(t) || inText(r);
   }
-  return (r, c) => hay(r, c, albumNamesOf).includes(t);
+  return (r, c) => hay(r, c, albumNamesOf).includes(t) || inText(r);
 }
 
 function hay(r, c, albumNamesOf) {
@@ -82,13 +85,14 @@ export function query(records, choices, albums, opts = {}) {
     }
     return albumIndex.get(id) || [];
   };
-  const tokens = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => tokenMatcher(t, albumNamesOf));
+  const tokens = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => tokenMatcher(t, albumNamesOf, opts.textOf));
   const cam = opts.camera ? opts.camera.toLowerCase() : null;
   const folder = opts.folder != null ? opts.folder.replace(/\/+$/, '') : null;
 
   const out = [];
   for (const r of records) {
     const c = choiceOf(choices, r.id);
+    if (opts.lockHidden && c.hidden) continue;
     if (hidden === 'exclude' && c.hidden) continue;
     if (hidden === 'only' && !c.hidden) continue;
     if (trashed === 'exclude' && c.trashed) continue;
