@@ -25,6 +25,8 @@ import { openFromHandle, openFromFile } from './core/fs.js';
 import { esc } from './core/html.js';
 import { flattenLayers } from './core/layers.js';
 import { initLibrary } from './library/boot.js';
+import { adjustPixels } from './ops/colour.js';
+import { parseCube, lutPixels } from './ops/lut.js';
 
 import { encodePng } from './encode/png.js';
 import { encodeJpeg } from './encode/jpeg.js';
@@ -133,6 +135,10 @@ async function boot() {
   }
 
   updateVersion();
+
+  // Test seam for live checks (scripts/live-check-*.mjs): the editor state, the event bus,
+  // and the pure colour functions the GPU path must match. Read-only use; nothing calls it in normal use.
+  window.__slate = { state, emit, on, openFromFile, ops: { adjustPixels, parseCube, lutPixels } };
 
   // Photo library (src/library/). A failure here leaves the editor working.
   try { await initLibrary(); }

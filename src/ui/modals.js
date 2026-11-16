@@ -1,3 +1,4 @@
+import { parseCube } from '../ops/lut.js';
 import { state, savePrefs } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { hasDirPicker } from '../core/fs.js';
@@ -122,12 +123,38 @@ function showAdjust() {
   dlg.innerHTML = `
     <div class="modal-header"><h2>Adjust</h2></div>
     <div class="modal-fields">
-      ${slider('adj-br', 'Brightness', -100, 100, 1, 0)}
+      ${slider('adj-br', 'Exposure', -100, 100, 1, 0)}
       ${slider('adj-co', 'Contrast',   -100, 100, 1, 0)}
       ${slider('adj-sa', 'Saturation', -100, 200, 1, 0)}
+      <p class="help-p" style="margin:4px 0 0">Exposure is in stops (±2 at the ends); all three work in linear light.</p>
+      <div class="modal-field-row">
+        <label for="adj-lut">Look (LUT)</label>
+        <div class="modal-slider-wrap">
+          <button class="btn" id="adj-lut-pick" type="button">Load .cube file…</button>
+          <span id="adj-lut-name" class="help-p" style="margin:0 0 0 8px">None</span>
+          <input type="file" id="adj-lut" accept=".cube" hidden>
+        </div>
+      </div>
+      ${slider('adj-lut-s', 'Look strength', 0, 100, 1, 100, '%')}
     </div>
     ${modalFooter()}
   `;
+  let lut = null;
+  const lutInput = dlg.querySelector('#adj-lut');
+  dlg.querySelector('#adj-lut-pick').addEventListener('click', () => lutInput.click());
+  lutInput.addEventListener('change', async () => {
+    const f = lutInput.files?.[0];
+    if (!f) return;
+    try {
+      lut = { ...parseCube(await f.text()), name: f.name };
+      dlg.querySelector('#adj-lut-name').textContent = `${lut.title || f.name} (${lut.size}³)`;
+    } catch (err) {
+      lut = null;
+      dlg.querySelector('#adj-lut-name').textContent = 'None';
+      emit('error', { message: `Could not read ${f.name}: ${err.message}` });
+    }
+  });
+  bindSlider(dlg, 'adj-lut-s', '%');
 
   bindSlider(dlg, 'adj-br');
   bindSlider(dlg, 'adj-co');
@@ -138,6 +165,7 @@ function showAdjust() {
     const co = +dlg.querySelector('#adj-co').value;
     const sa = +dlg.querySelector('#adj-sa').value;
     if (br !== 0 || co !== 0 || sa !== 0) emit('op:adjust', { brightness: br, contrast: co, saturation: sa });
+    if (lut) emit('op:lut', { name: lut.name, title: lut.title, size: lut.size, min: lut.min, max: lut.max, data: lut.data, strength: +dlg.querySelector('#adj-lut-s').value });
   });
 
   dlg.showModal();

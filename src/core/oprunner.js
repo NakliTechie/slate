@@ -13,12 +13,13 @@ import * as resizeOp     from '../ops/resize.js';
 import * as adjustOp     from '../ops/adjust.js';
 import * as sharpenOp    from '../ops/sharpen.js';
 import * as straightenOp from '../ops/straighten.js';
+import * as lutOp        from '../ops/lut.js';
 import { applyText, applyArrow } from '../ops/annotate.js';
 
 const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
   redact: redactOp, blur: blurOp, pixelate: pixelateOp, resize: resizeOp,
-  adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp,
+  adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp, lut: lutOp,
 };
 
 export function initOpRunner() {
@@ -67,6 +68,11 @@ export function initOpRunner() {
   on('op:adjust', async (params) => {
     if (!state.image.working) return;
     await runOp('adjust', params);
+  });
+
+  on('op:lut', async (params) => {
+    if (!state.image.working) return;
+    await runOp('lut', params);
   });
 
   on('op:sharpen', async (params) => {
@@ -152,7 +158,16 @@ let _toolBeforeEyedropper = null;
 
 // Live-path apply: flatten any visible layers, run the op, commit.
 // Replay/walker reproduces this exact sequence.
-async function runOp(name, params) {
+// Ops run one at a time: two emitted together (Adjust then a LUT, say) would otherwise
+// both read the same working image and one result would be lost.
+let opChain = Promise.resolve();
+function runOp(name, params) {
+  const next = opChain.then(() => runOpNow(name, params));
+  opChain = next.catch(() => {});
+  return next;
+}
+
+async function runOpNow(name, params) {
   const mod = OPS[name];
   if (!mod) { console.warn('Unknown op:', name); return; }
   const base = flattenLayers(state.image.working);

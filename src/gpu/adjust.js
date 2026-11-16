@@ -1,4 +1,6 @@
-// WebGPU fast path for brightness / contrast / saturation adjustment.
+import { adjustFactors } from '../ops/colour.js';
+
+// WebGPU fast path for the exposure / contrast / saturation adjustment.
 // Falls back silently — callers should catch and use the CPU path.
 
 let _device = null;
@@ -16,11 +18,13 @@ async function getDevice() {
   return _device;
 }
 
+// Mirrors src/ops/colour.js: decode sRGB to linear, exposure gain, contrast power curve
+// about middle grey, saturation as an Oklab chroma scale, encode back to sRGB.
 const WGSL = `
 struct Params {
-  brightness: f32,
-  contrast: f32,
-  saturation: f32,
+  gain: f32,
+  k: f32,
+  sat: f32,
   _pad: f32,
 };
 
@@ -28,28 +32,42 @@ struct Params {
 @group(0) @binding(1) var outputTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform> params: Params;
 
+fn toLinear(v: vec3<f32>) -> vec3<f32> {
+  return select(pow((v + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)), v / 12.92, v <= vec3<f32>(0.04045));
+}
+fn toSrgb(v0: vec3<f32>) -> vec3<f32> {
+  let v = clamp(v0, vec3<f32>(0.0), vec3<f32>(1.0));
+  return select(1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055), v * 12.92, v <= vec3<f32>(0.0031308));
+}
+fn cbrt3(v: vec3<f32>) -> vec3<f32> { return sign(v) * pow(abs(v), vec3<f32>(1.0 / 3.0)); }
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let dims = textureDimensions(inputTex);
   if (id.x >= dims.x || id.y >= dims.y) { return; }
-
   let src = textureLoad(inputTex, vec2<i32>(i32(id.x), i32(id.y)), 0);
-  var c = src.rgb;
-
-  // Brightness: add offset in 0..1 space (params.brightness is in -100..100 normalised by caller to ±100/255)
-  c = c + vec3<f32>(params.brightness);
-
-  // Contrast: standard formula normalised. cf = (259(C+255)) / (255(259-C)) where C ∈ [-255,255].
-  // params.contrast passes cf directly to avoid recomputing per-pixel on the GPU.
-  c = (c - vec3<f32>(0.5)) * params.contrast + vec3<f32>(0.5);
-
-  // Saturation: luminosity (Rec.709) + interpolation.
-  let lum = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-  let satF = 1.0 + params.saturation;
-  c = vec3<f32>(lum) + (c - vec3<f32>(lum)) * satF;
-
-  c = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
-  textureStore(outputTex, vec2<i32>(i32(id.x), i32(id.y)), vec4<f32>(c, src.a));
+  var c = toLinear(src.rgb) * params.gain;
+  if (params.k != 1.0) {
+    c = select(vec3<f32>(0.0), 0.18 * pow(max(c, vec3<f32>(1e-12)) / 0.18, vec3<f32>(params.k)), c > vec3<f32>(0.0));
+  }
+  if (params.sat != 1.0) {
+    let p = max(c, vec3<f32>(0.0));
+    let lms = cbrt3(vec3<f32>(
+      0.4122214708 * p.r + 0.5363325363 * p.g + 0.0514459929 * p.b,
+      0.2119034982 * p.r + 0.6806995451 * p.g + 0.1073969566 * p.b,
+      0.0883024619 * p.r + 0.2817188376 * p.g + 0.6299787005 * p.b));
+    let L = 0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z;
+    let A = (1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z) * params.sat;
+    let B = (0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z) * params.sat;
+    let l3 = pow(L + 0.3963377774 * A + 0.2158037573 * B, 3.0);
+    let m3 = pow(L - 0.1055613458 * A - 0.0638541728 * B, 3.0);
+    let s3 = pow(L - 0.0894841775 * A - 1.2914855480 * B, 3.0);
+    c = vec3<f32>(
+      4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
+      -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
+      -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3);
+  }
+  textureStore(outputTex, vec2<i32>(i32(id.x), i32(id.y)), vec4<f32>(toSrgb(c), src.a));
 }
 `;
 
@@ -79,21 +97,13 @@ export async function applyAdjust(canvas, { brightness = 0, contrast = 0, satura
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC,
   });
 
-  // Precompute contrast factor on CPU, ship as uniform (single value).
-  const cf = contrast !== 0
-    ? (259 * (contrast + 255)) / (255 * (259 - contrast))
-    : 1;
+  const f = adjustFactors({ brightness, contrast, saturation });
 
   const paramsBuf = device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
-    brightness / 255,
-    cf,
-    saturation / 100,
-    0,
-  ]));
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([f.gain, f.k, f.sat, 0]));
 
   const shader = device.createShaderModule({ code: WGSL });
   const pipeline = device.createComputePipeline({

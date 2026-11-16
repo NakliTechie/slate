@@ -13621,8 +13621,97 @@ async function apply(canvas, { w, h }) {
 return { apply };
 })();
 
+const __m_ops_colour = (() => {
+// Colour maths for the adjustments, in float linear light (plan/pending.md, 2026-10-12).
+// The old path added a fixed offset to 8-bit display values, pivoted contrast at 128 and
+// mixed saturation against sRGB luma, which clips highlights and shifts hue. Here:
+//   exposure    in stops: linear × 2^EV (the Brightness slider, ±100, maps to ±2 EV)
+//   contrast    a power curve about middle grey (0.18 linear), so black and middle grey stay put
+//   saturation  scales chroma in Oklab, so hue and lightness hold
+// Pure functions; the CPU path and the Node tests use them, and gpu/adjust.js mirrors them in WGSL.
+
+const MID_GREY = 0.18;
+const EV_PER_UNIT = 2 / 100;          // slider ±100 → ±2 stops
+
+function srgbToLinear(v) {             // v in 0..1
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+function linearToSrgb(v) {
+  if (v <= 0) return 0;
+  if (v >= 1) return 1;
+  return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+}
+
+// 8-bit sRGB to linear, as a 256-entry table.
+const SRGB_TO_LINEAR = new Float32Array(256);
+for (let i = 0; i < 256; i++) SRGB_TO_LINEAR[i] = srgbToLinear(i / 255);
+
+// Oklab (Björn Ottosson, 2020), from linear sRGB.
+function linearToOklab(r, g, b) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  ];
+}
+function oklabToLinear(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+  ];
+}
+
+// Slider values to the numbers the maths uses.
+//   brightness -100..100 → gain 2^EV;  contrast -100..100 → exponent 0.5..2 (1 = none);  saturation -100..200 → chroma ×0..3
+function adjustFactors({ brightness = 0, contrast = 0, saturation = 0 } = {}) {
+  return {
+    gain: 2 ** (brightness * EV_PER_UNIT),
+    k: 2 ** (contrast / 100),
+    sat: Math.max(0, 1 + saturation / 100),
+  };
+}
+
+// One pixel, linear in and linear out.
+function adjustLinear(r, g, b, { gain, k, sat }) {
+  r *= gain; g *= gain; b *= gain;
+  if (k !== 1) {
+    r = r > 0 ? MID_GREY * (r / MID_GREY) ** k : 0;
+    g = g > 0 ? MID_GREY * (g / MID_GREY) ** k : 0;
+    b = b > 0 ? MID_GREY * (b / MID_GREY) ** k : 0;
+  }
+  if (sat !== 1) {
+    const [L, A, B] = linearToOklab(Math.max(0, r), Math.max(0, g), Math.max(0, b));
+    [r, g, b] = oklabToLinear(L, A * sat, B * sat);
+  }
+  return [r, g, b];
+}
+
+// RGBA 8-bit buffer in place.
+function adjustPixels(data, params) {
+  const f = adjustFactors(params);
+  for (let i = 0; i < data.length; i += 4) {
+    const [r, g, b] = adjustLinear(SRGB_TO_LINEAR[data[i]], SRGB_TO_LINEAR[data[i + 1]], SRGB_TO_LINEAR[data[i + 2]], f);
+    data[i] = Math.round(linearToSrgb(r) * 255);
+    data[i + 1] = Math.round(linearToSrgb(g) * 255);
+    data[i + 2] = Math.round(linearToSrgb(b) * 255);
+  }
+  return data;
+}
+
+return { MID_GREY, EV_PER_UNIT, srgbToLinear, linearToSrgb, SRGB_TO_LINEAR, linearToOklab, oklabToLinear, adjustFactors, adjustLinear, adjustPixels };
+})();
+
 const __m_gpu_adjust = (() => {
-// WebGPU fast path for brightness / contrast / saturation adjustment.
+const adjustFactors = __m_ops_colour.adjustFactors;
+
+// WebGPU fast path for the exposure / contrast / saturation adjustment.
 // Falls back silently — callers should catch and use the CPU path.
 
 let _device = null;
@@ -13640,11 +13729,13 @@ async function getDevice() {
   return _device;
 }
 
+// Mirrors src/ops/colour.js: decode sRGB to linear, exposure gain, contrast power curve
+// about middle grey, saturation as an Oklab chroma scale, encode back to sRGB.
 const WGSL = `
 struct Params {
-  brightness: f32,
-  contrast: f32,
-  saturation: f32,
+  gain: f32,
+  k: f32,
+  sat: f32,
   _pad: f32,
 };
 
@@ -13652,28 +13743,42 @@ struct Params {
 @group(0) @binding(1) var outputTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform> params: Params;
 
+fn toLinear(v: vec3<f32>) -> vec3<f32> {
+  return select(pow((v + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)), v / 12.92, v <= vec3<f32>(0.04045));
+}
+fn toSrgb(v0: vec3<f32>) -> vec3<f32> {
+  let v = clamp(v0, vec3<f32>(0.0), vec3<f32>(1.0));
+  return select(1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055), v * 12.92, v <= vec3<f32>(0.0031308));
+}
+fn cbrt3(v: vec3<f32>) -> vec3<f32> { return sign(v) * pow(abs(v), vec3<f32>(1.0 / 3.0)); }
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let dims = textureDimensions(inputTex);
   if (id.x >= dims.x || id.y >= dims.y) { return; }
-
   let src = textureLoad(inputTex, vec2<i32>(i32(id.x), i32(id.y)), 0);
-  var c = src.rgb;
-
-  // Brightness: add offset in 0..1 space (params.brightness is in -100..100 normalised by caller to ±100/255)
-  c = c + vec3<f32>(params.brightness);
-
-  // Contrast: standard formula normalised. cf = (259(C+255)) / (255(259-C)) where C ∈ [-255,255].
-  // params.contrast passes cf directly to avoid recomputing per-pixel on the GPU.
-  c = (c - vec3<f32>(0.5)) * params.contrast + vec3<f32>(0.5);
-
-  // Saturation: luminosity (Rec.709) + interpolation.
-  let lum = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-  let satF = 1.0 + params.saturation;
-  c = vec3<f32>(lum) + (c - vec3<f32>(lum)) * satF;
-
-  c = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
-  textureStore(outputTex, vec2<i32>(i32(id.x), i32(id.y)), vec4<f32>(c, src.a));
+  var c = toLinear(src.rgb) * params.gain;
+  if (params.k != 1.0) {
+    c = select(vec3<f32>(0.0), 0.18 * pow(max(c, vec3<f32>(1e-12)) / 0.18, vec3<f32>(params.k)), c > vec3<f32>(0.0));
+  }
+  if (params.sat != 1.0) {
+    let p = max(c, vec3<f32>(0.0));
+    let lms = cbrt3(vec3<f32>(
+      0.4122214708 * p.r + 0.5363325363 * p.g + 0.0514459929 * p.b,
+      0.2119034982 * p.r + 0.6806995451 * p.g + 0.1073969566 * p.b,
+      0.0883024619 * p.r + 0.2817188376 * p.g + 0.6299787005 * p.b));
+    let L = 0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z;
+    let A = (1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z) * params.sat;
+    let B = (0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z) * params.sat;
+    let l3 = pow(L + 0.3963377774 * A + 0.2158037573 * B, 3.0);
+    let m3 = pow(L - 0.1055613458 * A - 0.0638541728 * B, 3.0);
+    let s3 = pow(L - 0.0894841775 * A - 1.2914855480 * B, 3.0);
+    c = vec3<f32>(
+      4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
+      -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
+      -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3);
+  }
+  textureStore(outputTex, vec2<i32>(i32(id.x), i32(id.y)), vec4<f32>(toSrgb(c), src.a));
 }
 `;
 
@@ -13703,21 +13808,13 @@ async function applyAdjust(canvas, { brightness = 0, contrast = 0, saturation = 
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC,
   });
 
-  // Precompute contrast factor on CPU, ship as uniform (single value).
-  const cf = contrast !== 0
-    ? (259 * (contrast + 255)) / (255 * (259 - contrast))
-    : 1;
+  const f = adjustFactors({ brightness, contrast, saturation });
 
   const paramsBuf = device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
-    brightness / 255,
-    cf,
-    saturation / 100,
-    0,
-  ]));
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([f.gain, f.k, f.sat, 0]));
 
   const shader = device.createShaderModule({ code: WGSL });
   const pipeline = device.createComputePipeline({
@@ -13782,13 +13879,15 @@ return { isWebGPUAvailable, applyAdjust };
 const __m_ops_adjust = (() => {
 const isWebGPUAvailable = __m_gpu_adjust.isWebGPUAvailable;
 const applyAdjustGPU = __m_gpu_adjust.applyAdjust;
+const adjustPixels = __m_ops_colour.adjustPixels;
 
 // Use GPU path above this many pixels — CPU is usually faster below.
 const GPU_MIN_PIXELS = 1_000_000;
 
-// brightness: -100..+100 (pixel offset)
-// contrast:   -100..+100 (standard formula)
-// saturation: -100..+200 (percent delta)
+// Linear-light adjustments (colour.js):
+// brightness: -100..+100, exposure of ±2 stops
+// contrast:   -100..+100, power curve about middle grey
+// saturation: -100..+200, Oklab chroma scale
 async function apply(canvas, params) {
   const { width: W, height: H } = canvas;
   const { brightness = 0, contrast = 0, saturation = 0 } = params;
@@ -13804,42 +13903,10 @@ async function apply(canvas, params) {
   return applyAdjustCPU(canvas, { brightness, contrast, saturation });
 }
 
-async function applyAdjustCPU(canvas, { brightness, contrast, saturation }) {
+async function applyAdjustCPU(canvas, params) {
   const { width: W, height: H } = canvas;
   const src = canvas.getContext('2d').getImageData(0, 0, W, H);
-  const d = src.data;
-
-  const cf = contrast !== 0
-    ? (259 * (contrast + 255)) / (255 * (259 - contrast))
-    : 1;
-
-  for (let i = 0; i < d.length; i += 4) {
-    let r = d[i], g = d[i+1], b = d[i+2];
-
-    // Brightness
-    r += brightness; g += brightness; b += brightness;
-
-    // Contrast
-    if (contrast !== 0) {
-      r = cf * (r - 128) + 128;
-      g = cf * (g - 128) + 128;
-      b = cf * (b - 128) + 128;
-    }
-
-    // Saturation via luminosity
-    if (saturation !== 0) {
-      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      const f = 1 + saturation / 100;
-      r = lum + (r - lum) * f;
-      g = lum + (g - lum) * f;
-      b = lum + (b - lum) * f;
-    }
-
-    d[i]   = Math.max(0, Math.min(255, r));
-    d[i+1] = Math.max(0, Math.min(255, g));
-    d[i+2] = Math.max(0, Math.min(255, b));
-  }
-
+  adjustPixels(src.data, params);
   const out = new OffscreenCanvas(W, H);
   out.getContext('2d').putImageData(src, 0, 0);
   return out;
@@ -13906,6 +13973,85 @@ async function apply(canvas, { deg }) {
 return { apply };
 })();
 
+const __m_ops_lut = (() => {
+// Apply a 3D colour lookup table from a .cube file (Adobe/Resolve format) as a "look".
+// The LUT maps sRGB-encoded input to sRGB-encoded output, as camera and grading LUTs do.
+// params: { name, size, min: [r,g,b], max: [r,g,b], data: Float32Array(size^3 * 3), strength: 0..100 }
+// The parsed table rides in the op's params, so undo, session restore and replay keep it.
+
+function parseCube(text) {
+  let size = 0, title = '';
+  let min = [0, 0, 0], max = [1, 1, 1];
+  const values = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const parts = line.split(/\s+/);
+    const key = parts[0].toUpperCase();
+    if (key === 'TITLE') { title = line.slice(5).trim().replace(/^"|"$/g, ''); continue; }
+    if (key === 'LUT_3D_SIZE') { size = parseInt(parts[1], 10); continue; }
+    if (key === 'LUT_1D_SIZE') throw new Error('1D LUTs are not supported; use a 3D .cube LUT');
+    if (key === 'DOMAIN_MIN') { min = parts.slice(1, 4).map(Number); continue; }
+    if (key === 'DOMAIN_MAX') { max = parts.slice(1, 4).map(Number); continue; }
+    if (/^[A-Z_]+$/.test(key)) continue; // other keywords (LUT_IN_VIDEO_RANGE, …)
+    if (parts.length !== 3) throw new Error(`bad LUT line: ${line.slice(0, 40)}`);
+    values.push(+parts[0], +parts[1], +parts[2]);
+  }
+  if (!size || size < 2 || size > 256) throw new Error('missing or invalid LUT_3D_SIZE');
+  if (values.length !== size ** 3 * 3) throw new Error(`expected ${size ** 3} entries, found ${values.length / 3}`);
+  if (values.some(v => !Number.isFinite(v))) throw new Error('the LUT has a value that is not a number');
+  return { title, size, min, max, data: new Float32Array(values) };
+}
+
+// Trilinear lookup. In .cube files red changes fastest: index = r + g*N + b*N*N.
+function lookup(lut, r, g, b) {
+  const { size: N, data, min, max } = lut;
+  const p = [r, g, b].map((v, i) => {
+    const t = (v - min[i]) / (max[i] - min[i]);
+    return Math.min(N - 1, Math.max(0, t * (N - 1)));
+  });
+  const i0 = p.map(Math.floor), i1 = i0.map(i => Math.min(N - 1, i + 1)), f = p.map((v, i) => v - i0[i]);
+  const at = (x, y, z, c) => data[(x + y * N + z * N * N) * 3 + c];
+  const out = [0, 0, 0];
+  for (let c = 0; c < 3; c++) {
+    const c00 = at(i0[0], i0[1], i0[2], c) * (1 - f[0]) + at(i1[0], i0[1], i0[2], c) * f[0];
+    const c10 = at(i0[0], i1[1], i0[2], c) * (1 - f[0]) + at(i1[0], i1[1], i0[2], c) * f[0];
+    const c01 = at(i0[0], i0[1], i1[2], c) * (1 - f[0]) + at(i1[0], i0[1], i1[2], c) * f[0];
+    const c11 = at(i0[0], i1[1], i1[2], c) * (1 - f[0]) + at(i1[0], i1[1], i1[2], c) * f[0];
+    out[c] = (c00 * (1 - f[1]) + c10 * f[1]) * (1 - f[2]) + (c01 * (1 - f[1]) + c11 * f[1]) * f[2];
+  }
+  return out;
+}
+
+// RGBA 8-bit buffer in place; strength 0..100 blends from the original.
+function lutPixels(data, lut, strength = 100) {
+  const s = Math.max(0, Math.min(100, strength)) / 100;
+  const cache = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    let o = cache.get(key);
+    if (!o) {
+      const [r, g, b] = lookup(lut, data[i] / 255, data[i + 1] / 255, data[i + 2] / 255);
+      o = [r * 255, g * 255, b * 255];
+      if (cache.size < 1 << 18) cache.set(key, o);
+    }
+    for (let c = 0; c < 3; c++) data[i + c] = Math.max(0, Math.min(255, Math.round(data[i + c] + (o[c] - data[i + c]) * s)));
+  }
+  return data;
+}
+
+async function apply(canvas, params) {
+  const { width: W, height: H } = canvas;
+  const img = canvas.getContext('2d').getImageData(0, 0, W, H);
+  lutPixels(img.data, { size: params.size, min: params.min, max: params.max, data: params.data }, params.strength ?? 100);
+  const out = new OffscreenCanvas(W, H);
+  out.getContext('2d').putImageData(img, 0, 0);
+  return out;
+}
+
+return { parseCube, lookup, lutPixels, apply };
+})();
+
 const __m_core_oprunner = (() => {
 const state = __m_core_state.state;
 const commitOp = __m_core_state.commitOp;
@@ -13930,13 +14076,14 @@ const resizeOp = __m_ops_resize;
 const adjustOp = __m_ops_adjust;
 const sharpenOp = __m_ops_sharpen;
 const straightenOp = __m_ops_straighten;
+const lutOp = __m_ops_lut;
 const applyText = __m_ops_annotate.applyText;
 const applyArrow = __m_ops_annotate.applyArrow;
 
 const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
   redact: redactOp, blur: blurOp, pixelate: pixelateOp, resize: resizeOp,
-  adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp,
+  adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp, lut: lutOp,
 };
 
 function initOpRunner() {
@@ -13985,6 +14132,11 @@ function initOpRunner() {
   on('op:adjust', async (params) => {
     if (!state.image.working) return;
     await runOp('adjust', params);
+  });
+
+  on('op:lut', async (params) => {
+    if (!state.image.working) return;
+    await runOp('lut', params);
   });
 
   on('op:sharpen', async (params) => {
@@ -14070,7 +14222,16 @@ let _toolBeforeEyedropper = null;
 
 // Live-path apply: flatten any visible layers, run the op, commit.
 // Replay/walker reproduces this exact sequence.
-async function runOp(name, params) {
+// Ops run one at a time: two emitted together (Adjust then a LUT, say) would otherwise
+// both read the same working image and one result would be lost.
+let opChain = Promise.resolve();
+function runOp(name, params) {
+  const next = opChain.then(() => runOpNow(name, params));
+  opChain = next.catch(() => {});
+  return next;
+}
+
+async function runOpNow(name, params) {
   const mod = OPS[name];
   if (!mod) { console.warn('Unknown op:', name); return; }
   const base = flattenLayers(state.image.working);
@@ -14178,6 +14339,7 @@ return { initOpRunner, replayOps };
 })();
 
 const __m_ui_modals = (() => {
+const parseCube = __m_ops_lut.parseCube;
 const state = __m_core_state.state;
 const savePrefs = __m_core_state.savePrefs;
 const on = __m_core_events.on;
@@ -14304,12 +14466,38 @@ function showAdjust() {
   dlg.innerHTML = `
     <div class="modal-header"><h2>Adjust</h2></div>
     <div class="modal-fields">
-      ${slider('adj-br', 'Brightness', -100, 100, 1, 0)}
+      ${slider('adj-br', 'Exposure', -100, 100, 1, 0)}
       ${slider('adj-co', 'Contrast',   -100, 100, 1, 0)}
       ${slider('adj-sa', 'Saturation', -100, 200, 1, 0)}
+      <p class="help-p" style="margin:4px 0 0">Exposure is in stops (±2 at the ends); all three work in linear light.</p>
+      <div class="modal-field-row">
+        <label for="adj-lut">Look (LUT)</label>
+        <div class="modal-slider-wrap">
+          <button class="btn" id="adj-lut-pick" type="button">Load .cube file…</button>
+          <span id="adj-lut-name" class="help-p" style="margin:0 0 0 8px">None</span>
+          <input type="file" id="adj-lut" accept=".cube" hidden>
+        </div>
+      </div>
+      ${slider('adj-lut-s', 'Look strength', 0, 100, 1, 100, '%')}
     </div>
     ${modalFooter()}
   `;
+  let lut = null;
+  const lutInput = dlg.querySelector('#adj-lut');
+  dlg.querySelector('#adj-lut-pick').addEventListener('click', () => lutInput.click());
+  lutInput.addEventListener('change', async () => {
+    const f = lutInput.files?.[0];
+    if (!f) return;
+    try {
+      lut = { ...parseCube(await f.text()), name: f.name };
+      dlg.querySelector('#adj-lut-name').textContent = `${lut.title || f.name} (${lut.size}³)`;
+    } catch (err) {
+      lut = null;
+      dlg.querySelector('#adj-lut-name').textContent = 'None';
+      emit('error', { message: `Could not read ${f.name}: ${err.message}` });
+    }
+  });
+  bindSlider(dlg, 'adj-lut-s', '%');
 
   bindSlider(dlg, 'adj-br');
   bindSlider(dlg, 'adj-co');
@@ -14320,6 +14508,7 @@ function showAdjust() {
     const co = +dlg.querySelector('#adj-co').value;
     const sa = +dlg.querySelector('#adj-sa').value;
     if (br !== 0 || co !== 0 || sa !== 0) emit('op:adjust', { brightness: br, contrast: co, saturation: sa });
+    if (lut) emit('op:lut', { name: lut.name, title: lut.title, size: lut.size, min: lut.min, max: lut.max, data: lut.data, strength: +dlg.querySelector('#adj-lut-s').value });
   });
 
   dlg.showModal();
@@ -15741,6 +15930,9 @@ const openFromFile = __m_core_fs.openFromFile;
 const esc = __m_core_html.esc;
 const flattenLayers = __m_core_layers.flattenLayers;
 const initLibrary = __m_library_boot.initLibrary;
+const adjustPixels = __m_ops_colour.adjustPixels;
+const parseCube = __m_ops_lut.parseCube;
+const lutPixels = __m_ops_lut.lutPixels;
 
 const encodePng = __m_encode_png.encodePng;
 const encodeJpeg = __m_encode_jpeg.encodeJpeg;
@@ -15851,6 +16043,10 @@ async function boot() {
   }
 
   updateVersion();
+
+  // Test seam for live checks (scripts/live-check-*.mjs): the editor state, the event bus,
+  // and the pure colour functions the GPU path must match. Read-only use; nothing calls it in normal use.
+  window.__slate = { state, emit, on, openFromFile, ops: { adjustPixels, parseCube, lutPixels } };
 
   // Photo library (src/library/). A failure here leaves the editor working.
   try { await initLibrary(); }
