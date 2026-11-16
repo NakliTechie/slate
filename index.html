@@ -6799,6 +6799,71 @@ function licences() {
 return { initHelp, showHelp };
 })();
 
+const __m_ops_describe = (() => {
+// Describe the open image with the NakliOS host model (plan/pending.md, 2026-11-01; spec row X1).
+// Shipping LFM3-VL-2B inside Slate would mean a 2B-parameter download and GPU time; the host's
+// selected model already reads images when `naklios.capabilities.experimental_aiVision` is true,
+// so Slate asks it. Standalone, or without vision, the action is not shown.
+//
+// The photo goes to whatever model the person selected in NakliOS. When that model is not local
+// (`capabilities.aiLocal` false) the dialog says so before anything is sent.
+
+const DESCRIBE_PROMPT = 'Describe this photo in two or three plain sentences for alt text: what is in it, where, and anything notable. Then on a new line give up to 8 comma-separated keywords, starting with "Keywords:".';
+const MAX_EDGE = 1536;
+
+function canDescribe(nak = globalThis.window?.naklios) {
+  const c = nak?.capabilities;
+  return !!(c?.hosted && c.ai && c.experimental_aiVision && nak.ai?.chat?.completions?.create);
+}
+
+// Where the photo would go, in words for the dialog.
+function destination(nak = globalThis.window?.naklios) {
+  const c = nak?.capabilities ?? {};
+  const name = c.aiModelLabel || c.aiModel || 'the selected model';
+  return c.aiLocal ? `${name}, on this computer` : `${name}${c.aiProvider ? ` (${c.aiProvider})` : ''}, outside this device`;
+}
+
+function buildRequest(dataUrl, prompt = DESCRIBE_PROMPT) {
+  if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(dataUrl)) throw new Error('the image must be a base64 data URL');
+  return {
+    agent: true,
+    max_tokens: 300,
+    messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+  };
+}
+
+// Split the reply into the description and its keywords.
+function parseReply(text) {
+  const t = String(text ?? '').trim();
+  const m = /\n?\s*Keywords:\s*(.+)$/i.exec(t);
+  const keywords = m ? m[1].split(',').map(s => s.trim().replace(/\.$/, '')).filter(Boolean).slice(0, 8) : [];
+  return { description: (m ? t.slice(0, m.index) : t).trim(), keywords };
+}
+
+// The image scaled to at most MAX_EDGE on the long side, as a JPEG data URL (well under the 8 MB cap).
+async function imageDataUrl(canvas) {
+  const s = Math.min(1, MAX_EDGE / Math.max(canvas.width, canvas.height));
+  const w = Math.max(1, Math.round(canvas.width * s)), h = Math.max(1, Math.round(canvas.height * s));
+  const c = new OffscreenCanvas(w, h);
+  c.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  const blob = await c.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return 'data:image/jpeg;base64,' + btoa(bin);
+}
+
+async function describeImage(canvas, { nak = globalThis.window?.naklios, signal } = {}) {
+  if (!canDescribe(nak)) throw new Error('describing needs NakliOS with an image-reading model selected');
+  const res = await nak.ai.chat.completions.create({ ...buildRequest(await imageDataUrl(canvas)), signal });
+  const text = res?.choices?.[0]?.message?.content ?? '';
+  if (!text.trim()) throw new Error('the model returned no description');
+  return parseReply(text);
+}
+
+return { DESCRIBE_PROMPT, MAX_EDGE, canDescribe, destination, buildRequest, parseReply, imageDataUrl, describeImage };
+})();
+
 const __m_ui_toolbar = (() => {
 const state = __m_core_state.state;
 const FLAGS = __m_core_state.FLAGS;
@@ -6820,6 +6885,7 @@ const toggleThumbstrip = __m_ui_thumbstrip.toggleThumbstrip;
 const setRulersVisible = __m_ui_rulers.setRulersVisible;
 const savePrefs = __m_core_state.savePrefs;
 const esc = __m_core_html.esc;
+const canDescribe = __m_ops_describe.canDescribe;
 
 function icon(id, cls = '') {
   return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#icon-${id}"/></svg>`;
@@ -7032,11 +7098,13 @@ function updateInfoPanel() {
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-warn"/></svg>
       This image contains GPS location data.
     </div>` : ''}
+    ${canDescribe() ? `<button class="btn" id="info-describe" type="button">Describe with AI…</button>` : ''}
     ${recipe ? `<div class="info-recipe">
       <div class="info-row"><span class="info-label">Edited in Slate</span><span class="info-value">${recipe.ops.length} edit${recipe.ops.length === 1 ? '' : 's'}: ${esc(recipeNames)}</span></div>
       <button class="btn" id="info-apply-recipe" type="button" title="Apply the same edits to the image that is open now">Apply these edits to an image…</button>
     </div>` : ''}
   `;
+  panel.querySelector('#info-describe')?.addEventListener('click', () => emit('modal:describe', null));
   panel.querySelector('#info-apply-recipe')?.addEventListener('click', () => {
     // Keep the list, then apply it to whatever image is open when the person clicks "Apply edits" in the toast.
     state._copiedRecipe = recipe;
@@ -14594,6 +14662,9 @@ return { TESSERACT_URL, extractText, cleanText };
 const __m_ui_modals = (() => {
 const parseCube = __m_ops_lut.parseCube;
 const extractText = __m_ops_ocr.extractText;
+const canDescribe = __m_ops_describe.canDescribe;
+const destination = __m_ops_describe.destination;
+const describeImage = __m_ops_describe.describeImage;
 const state = __m_core_state.state;
 const savePrefs = __m_core_state.savePrefs;
 const on = __m_core_events.on;
@@ -14605,6 +14676,7 @@ function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
   on('modal:ocr',       showOcr);
+  on('modal:describe',  showDescribe);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
   on('modal:export',    showExport);
@@ -14813,6 +14885,52 @@ async function showOcr() {
     a.download = `${name}.txt`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
+}
+
+// ── Describe (NakliOS host model) ─────────────────────────────────────────────
+
+function showDescribe() {
+  if (!state.image.working || !canDescribe()) return;
+  const dlg = getOrCreate('modal-describe');
+  dlg.setAttribute('aria-label', 'Describe image');
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Describe image</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="desc-where">This sends a copy of the image (at most ${1536} px) to <strong>${esc(destination())}</strong>.</p>
+      <p class="modal-info" id="desc-status" role="status"></p>
+      <textarea id="desc-text" rows="6" style="width:100%;min-width:420px;resize:vertical" aria-label="Description" hidden></textarea>
+      <p class="modal-info" id="desc-keys" hidden></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-cancel>Close</button>
+      <button class="btn btn-primary" id="desc-go">Describe</button>
+      <button class="btn btn-primary" id="desc-copy" hidden>${icon('clipboard')} Copy</button>
+    </div>`;
+  const status = dlg.querySelector('#desc-status'), area = dlg.querySelector('#desc-text');
+  let ctl = null;
+  dlg.querySelector('[data-cancel]').addEventListener('click', () => { ctl?.abort(); dlg.close(); });
+  dlg.querySelector('#desc-go').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    status.textContent = 'Asking the model…';
+    ctl = new AbortController();
+    try {
+      const r = await describeImage(state.image.working, { signal: ctl.signal });
+      area.value = r.description; area.hidden = false;
+      const keys = dlg.querySelector('#desc-keys');
+      if (r.keywords.length) { keys.textContent = `Keywords: ${r.keywords.join(', ')}`; keys.hidden = false; }
+      status.textContent = 'You can edit the text before copying it.';
+      dlg.querySelector('#desc-go').hidden = true;
+      dlg.querySelector('#desc-copy').hidden = false;
+    } catch (err) {
+      status.textContent = `The model could not describe it: ${err.message}`;
+      e.currentTarget.disabled = false;
+    }
+  });
+  dlg.querySelector('#desc-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(area.value); emit('toast', { message: 'Description copied.', level: 'ok' }); }
+    catch { area.select(); }
+  });
+  dlg.showModal();
 }
 
 // ── Sharpen ───────────────────────────────────────────────────────────────────

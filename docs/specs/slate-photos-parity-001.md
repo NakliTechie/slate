@@ -153,7 +153,7 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| X1 | Describe a photo on demand through the NakliOS host model (`naklios.ai`, vision gated by `experimental_aiVision`) | R | v1.x | Only a configured endpoint accepts images, so the photo leaves the device unless that endpoint is local; Slate says so before sending |
+| X1 | Describe a photo on demand through the NakliOS host model (`naklios.ai`, vision gated by `experimental_aiVision`) | R | v1.x | Built 2026-11-16 in the editor's Image Info (src/ops/describe.js): shown only when the host offers vision; the dialog names the destination before sending; a JPEG of at most 1,536 px. Checked: tests/test-describe.mjs; scripts/live-check-describe.mjs 5/5 against a stubbed host. A real host model is not checked |
 | X2 | Bulk captions for the whole library | R | Waived | About 28 hours for 50,000 photos at 2 s each (arithmetic); text search (Q2) covers the use |
 | X3 | Extract text (OCR) and describe-image models already logged for Slate (Indra OCR, LFM3-VL-2B) searchable in the library | S | v1.x | Separate backlog items; indexed when present |
 

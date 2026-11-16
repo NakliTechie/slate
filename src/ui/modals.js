@@ -1,5 +1,6 @@
 import { parseCube } from '../ops/lut.js';
 import { extractText } from '../ops/ocr.js';
+import { canDescribe, destination, describeImage } from '../ops/describe.js';
 import { state, savePrefs } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { hasDirPicker } from '../core/fs.js';
@@ -9,6 +10,7 @@ export function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
   on('modal:ocr',       showOcr);
+  on('modal:describe',  showDescribe);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
   on('modal:export',    showExport);
@@ -217,6 +219,52 @@ async function showOcr() {
     a.download = `${name}.txt`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
+}
+
+// ── Describe (NakliOS host model) ─────────────────────────────────────────────
+
+function showDescribe() {
+  if (!state.image.working || !canDescribe()) return;
+  const dlg = getOrCreate('modal-describe');
+  dlg.setAttribute('aria-label', 'Describe image');
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Describe image</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="desc-where">This sends a copy of the image (at most ${1536} px) to <strong>${esc(destination())}</strong>.</p>
+      <p class="modal-info" id="desc-status" role="status"></p>
+      <textarea id="desc-text" rows="6" style="width:100%;min-width:420px;resize:vertical" aria-label="Description" hidden></textarea>
+      <p class="modal-info" id="desc-keys" hidden></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-cancel>Close</button>
+      <button class="btn btn-primary" id="desc-go">Describe</button>
+      <button class="btn btn-primary" id="desc-copy" hidden>${icon('clipboard')} Copy</button>
+    </div>`;
+  const status = dlg.querySelector('#desc-status'), area = dlg.querySelector('#desc-text');
+  let ctl = null;
+  dlg.querySelector('[data-cancel]').addEventListener('click', () => { ctl?.abort(); dlg.close(); });
+  dlg.querySelector('#desc-go').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    status.textContent = 'Asking the model…';
+    ctl = new AbortController();
+    try {
+      const r = await describeImage(state.image.working, { signal: ctl.signal });
+      area.value = r.description; area.hidden = false;
+      const keys = dlg.querySelector('#desc-keys');
+      if (r.keywords.length) { keys.textContent = `Keywords: ${r.keywords.join(', ')}`; keys.hidden = false; }
+      status.textContent = 'You can edit the text before copying it.';
+      dlg.querySelector('#desc-go').hidden = true;
+      dlg.querySelector('#desc-copy').hidden = false;
+    } catch (err) {
+      status.textContent = `The model could not describe it: ${err.message}`;
+      e.currentTarget.disabled = false;
+    }
+  });
+  dlg.querySelector('#desc-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(area.value); emit('toast', { message: 'Description copied.', level: 'ok' }); }
+    catch { area.select(); }
+  });
+  dlg.showModal();
 }
 
 // ── Sharpen ───────────────────────────────────────────────────────────────────

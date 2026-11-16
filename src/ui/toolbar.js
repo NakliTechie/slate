@@ -7,6 +7,7 @@ import { toggleThumbstrip } from './thumbstrip.js';
 import { setRulersVisible } from './rulers.js';
 import { savePrefs } from '../core/state.js';
 import { esc } from '../core/html.js';
+import { canDescribe } from '../ops/describe.js';
 
 function icon(id, cls = '') {
   return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#icon-${id}"/></svg>`;
@@ -219,11 +220,13 @@ function updateInfoPanel() {
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-warn"/></svg>
       This image contains GPS location data.
     </div>` : ''}
+    ${canDescribe() ? `<button class="btn" id="info-describe" type="button">Describe with AI…</button>` : ''}
     ${recipe ? `<div class="info-recipe">
       <div class="info-row"><span class="info-label">Edited in Slate</span><span class="info-value">${recipe.ops.length} edit${recipe.ops.length === 1 ? '' : 's'}: ${esc(recipeNames)}</span></div>
       <button class="btn" id="info-apply-recipe" type="button" title="Apply the same edits to the image that is open now">Apply these edits to an image…</button>
     </div>` : ''}
   `;
+  panel.querySelector('#info-describe')?.addEventListener('click', () => emit('modal:describe', null));
   panel.querySelector('#info-apply-recipe')?.addEventListener('click', () => {
     // Keep the list, then apply it to whatever image is open when the person clicks "Apply edits" in the toast.
     state._copiedRecipe = recipe;
