@@ -9,6 +9,14 @@
 !scripts/
 !scripts/test-slate-v2.mjs
 
+# Source and build (tracked from 2026-11-16; index.html is built from these)
+!src/
+!src/**
+!build/
+!build/**
+!VERSION
+!favicon.svg
+
 # wrangler files
 .wrangler
 .dev.vars*
@@ -26,3 +34,7 @@
 !docs/
 !docs/specs/
 !docs/specs/slate-photos-parity-001.md
+
+# macOS
+.DS_Store
+**/.DS_Store

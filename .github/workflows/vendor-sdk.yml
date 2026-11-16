@@ -39,7 +39,11 @@ jobs:
         with:
           node-version: '20'
       - name: Re-splice canonical SDK into index.html
-        run: node scripts/vendor-naklios-sdk.mjs --file index.html
+        # src/index.html is the build source of index.html (build/inline.mjs), so it is
+        # spliced too; otherwise the next local build would revert the SDK.
+        run: |
+          node scripts/vendor-naklios-sdk.mjs --file src/index.html
+          node scripts/vendor-naklios-sdk.mjs --file index.html
       - name: Verify the splice before committing it
         # --check exits 1 on drift, so this passes only when the file on disk
         # already matches canonical — i.e. the splice above did what it claims.
@@ -49,14 +53,14 @@ jobs:
         id: commit
         run: |
           set -euo pipefail
-          if git diff --quiet -- index.html; then
+          if git diff --quiet -- index.html src/index.html; then
             echo "vendored SDK already matches canonical — nothing to commit"
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- index.html
+          git add -- index.html src/index.html
           git commit -m 'chore: refresh vendored naklios SDK from canonical'
           git push
           echo "pushed=true" >> "$GITHUB_OUTPUT"
