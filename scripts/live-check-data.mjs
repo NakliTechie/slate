@@ -8,7 +8,7 @@
 // They sit in year/month folders. A few extras test the edges: a PNG with no EXIF, a JPEG with an XMP
 // sidecar (tags and a rating), a dot-folder that must be skipped, and short WebM videos.
 
-export function makeFolderJs({ name, count = 200, videos = 2 }) {
+export function makeFolderJs({ name, count = 200, videos = 2, scenic = false }) {
   return `
   const t0 = performance.now();
   const root = await navigator.storage.getDirectory();
@@ -73,9 +73,24 @@ export function makeFolderJs({ name, count = 200, videos = 2 }) {
   for (let i = 0; i < 12; i++) {
     const c = new OffscreenCanvas(i % 3 === 0 ? 480 : 640, i % 3 === 0 ? 640 : 480);
     const g = c.getContext('2d');
-    g.fillStyle = 'hsl(' + (i * 30) + ' 60% 55%)'; g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = 'rgba(255,255,255,.8)'; g.font = 'bold 96px sans-serif'; g.fillText(String(i + 1), 40, 140);
-    g.beginPath(); g.arc(c.width * .65, c.height * .6, 90, 0, 7); g.fillStyle = 'hsl(' + (i * 30 + 180) + ' 70% 40%)'; g.fill();
+    if (${scenic}) {
+      // a procedural landscape: sky gradient, sun, three hill layers, water; no real photo
+      const W = c.width, H = c.height, hue = [200, 25, 330, 210, 40, 190, 15, 260, 180, 35, 220, 300][i];
+      const sky = g.createLinearGradient(0, 0, 0, H * .7);
+      sky.addColorStop(0, 'hsl(' + hue + ' 55% ' + (i % 2 ? 30 : 62) + '%)'); sky.addColorStop(1, 'hsl(' + (hue + 30) + ' 70% ' + (i % 2 ? 62 : 85) + '%)');
+      g.fillStyle = sky; g.fillRect(0, 0, W, H);
+      g.beginPath(); g.arc(W * (.25 + (i % 4) * .17), H * (.25 + (i % 3) * .1), 22 + (i % 3) * 10, 0, 7); g.fillStyle = 'hsl(' + (hue + 40) + ' 90% 88%)'; g.fill();
+      for (let k = 0; k < 3; k++) {
+        g.beginPath(); g.moveTo(0, H);
+        for (let x = 0; x <= W; x += 8) g.lineTo(x, H * (.5 + k * .12) + Math.sin(x / (60 + k * 30) + i + k) * (24 - k * 5) + Math.sin(x / 23 + k) * 4);
+        g.lineTo(W, H); g.closePath(); g.fillStyle = 'hsl(' + (hue + 140 + k * 10) + ' ' + (30 + k * 8) + '% ' + (40 - k * 11) + '%)'; g.fill();
+      }
+      if (i % 3 === 1) { const wat = g.createLinearGradient(0, H * .82, 0, H); wat.addColorStop(0, 'hsl(' + hue + ' 50% 45%)'); wat.addColorStop(1, 'hsl(' + hue + ' 60% 25%)'); g.fillStyle = wat; g.fillRect(0, H * .82, W, H * .18); }
+    } else {
+      g.fillStyle = 'hsl(' + (i * 30) + ' 60% 55%)'; g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = 'rgba(255,255,255,.8)'; g.font = 'bold 96px sans-serif'; g.fillText(String(i + 1), 40, 140);
+      g.beginPath(); g.arc(c.width * .65, c.height * .6, 90, 0, 7); g.fillStyle = 'hsl(' + (i * 30 + 180) + ' 70% 40%)'; g.fill();
+    }
     bases.push(new Uint8Array(await (await c.convertToBlob({ type: 'image/jpeg', quality: .8 })).arrayBuffer()));
   }
 

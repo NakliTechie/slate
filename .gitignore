@@ -37,6 +37,9 @@
 !docs/architecture.md
 
 # Photo library build: tests, command manifest, scripts
+!marketing/
+!marketing/hero.png
+!marketing/social.png
 !tests/
 !tests/**
 !commands.json

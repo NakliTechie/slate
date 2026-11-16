@@ -1,123 +1,80 @@
-# Slate
+<h1 align="center">Slate</h1>
 
-IrfanView for the browser. A complete image editor in a single HTML file.
+<p align="center"><b>An image editor and photo library in one HTML file: open a photo to crop, redact and adjust it, or point Slate at your photo folders and browse, find and cull them as one timeline.</b></p>
 
-**No install. No upload. Nothing leaves your device.**
+<p align="center">Slate runs in the browser. Your photos stay in your folders. There is no account, no server and no upload.</p>
 
-▶️ **Try it →** [slate.naklitechie.com](https://slate.naklitechie.com/)
-&nbsp;&nbsp; 📖 **Guide →** [slate.naklitechie.com/guide/](https://slate.naklitechie.com/guide/)
+<p align="center">
+  <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-4a4a8a?style=flat-square">
+  <img alt="one HTML file" src="https://img.shields.io/badge/app-one%20HTML%20file-4a4a8a?style=flat-square">
+  <img alt="account: none" src="https://img.shields.io/badge/account-none-4a4a8a?style=flat-square">
+  <img alt="upload: none" src="https://img.shields.io/badge/upload-none-4a4a8a?style=flat-square">
+</p>
 
----
+<p align="center"><img src="marketing/hero.png" alt="The Slate Library: a sidebar with Timeline, Favourites, albums and folders beside a grid of photos grouped by month, some marked with a heart, a four-star rating or a pick tick" width="900"></p>
 
-## Features
+## Install
 
-Current release: **Slate v2.0.0**.
+| Where | How |
+|---|---|
+| Any browser | Open [slate.naklitechie.com](https://slate.naklitechie.com/) |
+| NakliOS | Open Slate from the [naklios.dev](https://naklios.dev/) desktop |
+| Offline | Save `index.html` to disk and open it |
 
-### Editor
+Drop an image on the page to edit it. To build a library, press **Ctrl+L** (or the Library button), then **Add folder** and pick the folder that holds your photos. Slate reads the folder and its subfolders, shows the timeline within a second, and fills in thumbnails while you browse. Everything Slate decides about a photo (favourites, ratings, flags, tags, albums) goes into one file, `.slate-library.json`, in that folder. There is nothing to configure. To try it without your own photos, open any folder of sample images.
 
-- **Selection tools:** crop, redact (solid black box), blur, pixelate
-- **Annotation tools (live layers):** text, arrow, freehand pencil, shapes (rectangle / oval / line)
-- **Layers panel** — every annotation is editable: reorder, hide, delete. Survives undo across destructive transforms.
-- **Eyedropper** — pick any pixel's colour from the canvas; copies to clipboard and applies to all drawing tools. Recent-colour swatches shown next to every colour picker.
-- **Transforms:** rotate (90° CW / CCW / 180°), flip (H / V), straighten (fine angle, expanding canvas), resize
-- **Adjustments:** brightness, contrast, saturation (WebGPU fast path, ~5× on 12 MP images), sharpen
-- **Lossless JPEG rotate** via EXIF orientation flip — zero re-encode, zero quality loss
+## Why
 
-### Viewer
+You have photos in folders on your own disk, and every photo app wants to copy them into its own store or its own cloud first. Slate leaves them where they are and builds its index beside them, so you can delete the index at any time and rebuild it from the folder.
 
-- Zoom (wheel + pinch), pan, fit modes (window / width / height / 1:1 / fill)
-- Fullscreen, ruler overlay, pixel grid at high zoom
-- Album mode: open a folder, navigate with arrow keys, thumbnail strip
-- Slideshow with timer / transitions / shuffle
+Slate is two tools in one page. The editor handles a single image: crop, redact, blur, pixelate, annotate, rotate and straighten, adjust in linear light, apply a `.cube` look, resize and sharpen. It reads JPG, PNG, WebP, GIF, AVIF, SVG, BMP, HEIC, TIFF, JPEG XL, PSD, TGA, DDS and RAW (through the embedded preview), and writes PNG, JPEG, WebP and TIFF. The Library handles tens of thousands of photos: a timeline by date, albums, favourites, star ratings, pick and reject, tags, hidden, trash, search, folders and a full-size viewer that also plays videos. Editing in the browser cannot write HEIC or RAW back, so Slate saves those as new files instead.
 
-### File handling
+Chrome and Edge get the full Library. Firefox and Safari cannot write to a picked folder, so there the Library is browse-only and keeps its choices in the browser, with a button to download the library file.
 
-- **Open:** file picker (FSA), folder picker (FSA), drag-drop, clipboard paste
-- **Save:** smart Ctrl+S (workspace-folder sidecar / overwrite / download), timestamped filenames
-- **Workspace folder** — pick once, every save lands there
+## Culling a shoot
 
-### Formats
+Open the Library, click the first photo, then use the keys: **0** to **5** rate, **P** picks, **X** rejects, **F** favourites, **H** hides, **Delete** moves to the trash. Hold **Shift** with any of them to apply it and move to the next photo. Every change shows an Undo button. The trash is a `.slate-trash` folder inside your photo folder, so nothing is lost until you choose Empty trash.
 
-- **Read:** JPG, PNG, WebP, GIF (first frame), AVIF, SVG, BMP, **HEIC, HEIF**, **TIFF**, **JPEG-XL**, **PSD**, **TGA**, **DDS**, **RAW** (CR2, NEF, ARW, DNG, RAF, ORF — via embedded JPEG preview)
-- **Write:** PNG, JPEG, WebP, **TIFF**
-- **EXIF:** displayed on open with GPS warning, stripped on save by default (toggle)
+## Where your data lives
 
-**Anything Slate reads, it converts.** Open a HEIC off your phone, edit it, export it as PNG, JPEG, WebP or TIFF — the same applies to RAW, PSD, TIFF, JPEG-XL, TGA and DDS. Batch handles those formats too.
+| What | Where |
+|---|---|
+| Your photos | Your folders, never moved or changed by the Library |
+| Favourites, ratings, flags, tags, albums | `.slate-library.json` in each folder you add |
+| XMP sidecars (`photo.jpg.xmp`) | Read when present; tags and ratings from Lightroom and digiKam show up |
+| The index and thumbnails | Browser storage (IndexedDB and OPFS); Rebuild index recreates them |
+| Edits | Saved as new files; Export can embed the edit list so Slate can reuse it |
 
-Writing *back* to them isn't possible: no browser ships an encoder for HEIC or RAW, and Slate does all its work on-device. Two consequences worth knowing:
+## Commands
 
-- **Overwrite is refused for read-only formats.** Overwriting reuses the original filename, so writing PNG bytes into a `.heic` would leave a file that contradicts its own extension. Use *Download* or *Workspace folder* and you get a correctly named new file.
-- **In batch with Convert off**, read-only formats fall back to lossless PNG rather than being silently re-compressed. The dry run reports how many before anything is written.
+```text
+Ctrl+L            open or close the Library
+/                 search: names, folders, tags, albums, cameras, years, months
+Arrows, Enter     move through the grid, open the viewer
+E                 open the photo in the editor; Escape returns to the Library
+0-5  P X U  F H T rate, pick, reject, unflag, favourite, hide, tag
+Shift + any key   apply, then move to the next photo
+Delete            move to the trash (restore from the Trash view)
+Ctrl+S            save; Ctrl+Shift+V applies edits copied from Image Info
+?                 help, with every shortcut and the licences
+```
 
-### Batch tools
+Agents use the same actions. `commands.json` lists 26 commands (`library.search`, `photo.rate`, `album.add` and the rest). Inside NakliOS, Slate registers them, and the host asks you before any destructive one runs.
 
-- **Batch operations** — convert / resize / rotate / flip / rename across a folder, with worker pool, dry-run, progress bar, cancel
-- **Contact sheet / gallery export** — one-click HTML gallery or grid PNG of a folder
+## Verify it yourself
 
-### Misc
+```bash
+npm test                                              # builds index.html, runs 9 test files
+python3 -m http.server 8493 --bind 127.0.0.1          # then, with the CDP daemon on 127.0.0.1:9334:
+node scripts/live-check.mjs --count 10000             # Library: 44 checks on 10,000 synthetic photos
+node scripts/live-check-colour.mjs                    # Adjust and LUT on the WebGPU path
+node scripts/live-check-recipe.mjs                    # edit list embedded in exports
+```
 
-- Session restore — reload the page, click Resume, your image and edits come back
-- Undo / redo 50 steps with periodic snapshots
-- 5-tab Help modal (`?` key)
-- Accessible six-step first-run tour, replayable from Help
-
-## Privacy & supply chain
-
-Nothing leaves your browser. Slate makes no network requests for editing — pixels never go anywhere.
-
-A handful of niche format decoders (HEIC, JPEG-XL, PSD, TIFF) lazy-load the first time you open such a file, from `esm.sh` with **exact version pins**. The smaller libraries (TGA, DDS) are vendored directly into the bundle with **SHA-256 content hashes** in [`SECURITY.md`](./SECURITY.md). No accounts, no telemetry, no analytics beacon.
-
-## Browser support
-
-| Browser | Version | Notes |
-|---|---|---|
-| Chrome / Edge | 111+ | Full support including folder access |
-| Firefox | 113+ | File picker + download (no folder write-back) |
-| Safari | 16.4+ | File picker + download (no folder write-back); native HEIC decode |
-
-## How to run locally
-
-It's one HTML file. Save `index.html` to disk, open it in a browser. That's it. No build step, no dev server needed.
-
-For development of the source modules (under `src/`, gitignored), use any static server like `python3 -m http.server` and run `node build/inline.mjs` to rebuild the single-file output.
-
-## What it isn't
-
-- A cloud editor — there's no server, nothing syncs anywhere, nothing uploads
-- A Photoshop replacement — no curves, masks, layer groups, blend modes (yet)
-- A multi-file project tool — Slate edits one image at a time; folder operations (slideshow, batch, gallery) work across many but each transform is per-file
-- An animation timeline — animated GIF/WebP/APNG frame editing is intentionally out of scope; GIF opens as its first frame
-- A backup service — your edits live in IndexedDB until you save; nothing protects you from clearing browser data
-
-## Credits
-
-Slate uses these libraries, lazy-loaded only when you open the matching format:
-
-| Library | Purpose | Status |
-|---|---|---|
-| [`utif`](https://www.npmjs.com/package/utif) | TIFF read + write | exact-pinned on esm.sh |
-| [`libheif-js`](https://www.npmjs.com/package/libheif-js) | HEIC / HEIF fallback (Safari has native) | exact-pinned on esm.sh |
-| [`@jsquash/jxl`](https://www.npmjs.com/package/@jsquash/jxl) | JPEG-XL decode | exact-pinned on esm.sh |
-| [`ag-psd`](https://www.npmjs.com/package/ag-psd) | Photoshop decode | exact-pinned on esm.sh |
-| [`tga-js`](https://www.npmjs.com/package/tga-js) | Targa decode | vendored, hashed in SECURITY.md |
-| [`dds-parser`](https://www.npmjs.com/package/dds-parser) | DirectDraw Surface decode | vendored, hashed in SECURITY.md |
-
-Everything else is vanilla browser APIs — Canvas 2D, OffscreenCanvas, FileSystemAccess, IndexedDB, Web Workers, WebGPU.
-
-## Palette
-
-Coloured with **`iran-10 · شب یلدا SHAB-E YALDA`** — Persian winter solstice, 7000 years pre-Zoroastrian; the night of staying awake till dawn with Hafez and pomegranate. Aubergine body, saffron ink, royal-blue active accent, pomegranate alerts. Both dark (default) and light (warm parchment companion) themes retuned.
-
-Palette pulled from [**Rangrez**](https://github.com/NakliTechie/rangrez), the global colour-palette library that backs all NakliTechie projects.
-
-## Other projects
-
-[More browser-native, local-first apps at naklitechie.github.io →](https://naklitechie.github.io/)
-
-## Issues
-
-[github.com/NakliTechie/slate/issues](https://github.com/NakliTechie/slate/issues)
+The tests check the index, the library file round trip, the scanner, the grid maths, the commands against the NakliOS rules, the licence notices and the colour maths. The live checks drive the built page in Chrome with real mouse and key events on synthetic photo folders and delete those folders afterwards. They do not cover HEIC or RAW files, MP4 or MOV videos, or Firefox and Safari.
 
 ## License
 
-MIT
+MIT. Bundled and lazily loaded libraries, with their licences, are listed in Help → Licences and in [SECURITY.md](./SECURITY.md).
+
+[Photo library spec](docs/specs/slate-photos-parity-001.md) · [Architecture](docs/architecture.md) · [Guide](https://slate.naklitechie.com/guide/) · [Issues](https://github.com/NakliTechie/slate/issues)

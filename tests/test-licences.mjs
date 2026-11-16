@@ -1,6 +1,6 @@
 // Licences: every vendored file carries a header naming the package, version, source and
 // full licence text; every bundled package's licence text is in the built index.html; and
-// every package in README.md's Credits table is in src/library/licences.js.
+// every package in SECURITY.md's supply-chain table is in src/library/licences.js.
 // Run after `node build/inline.mjs`.
 
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import { LICENCES } from '../src/library/licences.js';
 
 const root = new URL('../', import.meta.url);
 const html = readFileSync(new URL('index.html', root), 'utf8');
-const readme = readFileSync(new URL('README.md', root), 'utf8');
+const security = readFileSync(new URL('SECURITY.md', root), 'utf8');
 const vendorDir = new URL('src/vendor/', root);
 const norm = s => s.replace(/\s+/g, ' ').trim();
 
@@ -60,12 +60,13 @@ check(() => {
 }, 'every licences.js entry has name, version, licence, loading and source');
 
 check(() => {
-  const credits = readme.slice(readme.indexOf('## Credits'));
-  const names = [...credits.slice(0, credits.indexOf('\n## ', 3) >>> 0).matchAll(/^\| \[`([^`]+)`\]/gm)].map(m => m[1]);
-  assert.ok(names.length > 0, 'README.md has no Credits table');
+  // The supply-chain table in SECURITY.md names every package Slate loads, as `name@version`.
+  const table = security.slice(security.indexOf('|'), security.indexOf('## Vendored modules'));
+  const names = [...new Set([...table.matchAll(/`((?:@[a-z0-9-]+\/)?[a-z0-9._-]+)@\d[^`]*`/g)].map(m => m[1]))];
+  assert.ok(names.length > 0, 'SECURITY.md has no supply-chain table');
   const missing = names.filter(name => !LICENCES.some(l => l.name === name));
-  assert.deepEqual(missing, [], 'README Credits packages missing from licences.js');
-}, 'every README.md Credits package is in licences.js');
+  assert.deepEqual(missing, [], 'SECURITY.md packages missing from licences.js');
+}, 'every package in the SECURITY.md supply-chain table is in licences.js');
 
 check(() => assert.match(html, /'Licences'/), 'Help has a Licences section');
 
