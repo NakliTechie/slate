@@ -210,6 +210,31 @@ export class Library {
     for (const r of roots) await this.rescan(r.id, { full: true });
   }
 
+  // ── files on disk ───────────────────────────────────────────────────────
+  // The FileSystemFileHandle for a record (fsa roots), walking from the root.
+  // `parent: true` returns the containing FileSystemDirectoryHandle instead.
+  async getHandle(id, { parent = false } = {}) {
+    const { rootId, path } = splitId(id);
+    const root = this.roots.get(rootId);
+    if (!root?.handle) return null;
+    const parts = path.split('/');
+    const name = parts.pop();
+    let dir = root.handle;
+    for (const p of parts) dir = await dir.getDirectoryHandle(p);
+    return parent ? dir : dir.getFileHandle(name);
+  }
+
+  // The File for a record, from either kind of root. Throws when it is gone.
+  async getFile(id) {
+    const { rootId, path } = splitId(id);
+    const root = this.roots.get(rootId);
+    if (!root) throw new Error(`no root for ${id}`);
+    if (root.handle) return (await this.getHandle(id)).getFile();
+    const f = (root.files || []).find(x => relPathOf(x) === path);
+    if (!f) throw new Error(`${path} is not in this browse-only folder; add the folder again`);
+    return f;
+  }
+
   // ── reads ───────────────────────────────────────────────────────────────
   get(id) { return this.records.get(id) ?? null; }
   choice(id) { return choiceOf(this.choices, id); }
@@ -511,6 +536,14 @@ export class Library {
     const roots = new Set([al.homeRoot, ...[...(ids ?? al.items)].map(id => splitId(id).rootId)]);
     for (const r of roots) this.markDirty(r);
   }
+}
+
+// A browse-only File's path inside its root: webkitRelativePath without the
+// picked folder's own name; a plain File (or test fake) uses `path` or its name.
+export function relPathOf(f) {
+  const rel = f.webkitRelativePath || f.path || f.name;
+  const i = rel.indexOf('/');
+  return f.webkitRelativePath && i >= 0 ? rel.slice(i + 1) : rel;
 }
 
 function stripRoot(root) {

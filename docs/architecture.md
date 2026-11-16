@@ -61,6 +61,7 @@ Every change goes through a `Library` method, so buttons, keys and agents share 
 | `setFavourite`, `setRating`, `setFlag`, `setHidden`, `tag` | choices |
 | `trash`, `restore`, `emptyTrash` | call `services.trash`; emptying is the only permanent delete |
 | `albumCreate`, `albumRename`, `albumDelete`, `albumAdd`, `albumRemove`, `albumSetCover`, `albumCover(al)` | albums |
+| `getFile(id)`, `getHandle(id, { parent })` | the `File` or handle on disk for a record; `relPathOf(file)` gives a browse-only file's path |
 | `counts()`, `tags()`, `folders()`, `rating(id)`, `tagsOf(id)`, `albumsOf(id)`, `choice(id)`, `get(id)` | reads |
 
 Events: `lib.on('records' | 'choices' | 'albums' | 'roots' | 'saved' | 'error', fn)`. Background work runs on `lib.jobs` (`jobs.js`); its `onProgress` drives the status line.
