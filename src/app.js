@@ -33,6 +33,7 @@ import { encodeJpeg } from './encode/jpeg.js';
 import { encodeWebp } from './encode/webp.js';
 import { encodeTiff } from './encode/tiff.js';
 import { formatOf } from './decode/registry.js';
+import { buildRecipe, embedRecipe } from './encode/recipe.js';
 import { saveDownload, saveOverwrite, saveSidecar } from './core/fs.js';
 
 function tstamp() {
@@ -231,7 +232,13 @@ function setupKeyboard() {
 
     if (inInput) return;
 
-    // Paste
+    // Paste edits copied from a file's embedded edit list (Image Info), then paste an image
+    if (meta && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+      e.preventDefault();
+      if (state._copiedRecipe) emit('op:apply-recipe', state._copiedRecipe);
+      else emit('toast', { message: 'No edits copied. Open an image edited in Slate, then use Image Info.', level: 'warn' });
+      return;
+    }
     if (meta && e.key === 'v') { e.preventDefault(); openFromClipboard(); return; }
 
     // Zoom
@@ -384,6 +391,7 @@ async function doSave(showDialog = false) {
     else if (exp.format === 'jpeg') blob = await encodeJpeg(flat, exp.quality, exifRaw);
     else if (exp.format === 'tiff') blob = await encodeTiff(flat);
     else blob = await encodeWebp(flat, exp.quality);
+    if (exp.embedEdits) blob = await embedRecipe(blob, exp.format, buildRecipe(state.history.opsToPointer(), { w: image.width, h: image.height }));
   } catch (err) {
     emit('error', { message: `Save failed: ${err.message}` });
     return;

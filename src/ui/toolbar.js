@@ -200,6 +200,8 @@ function updateInfoPanel() {
   }
 
   const hasGPS = image.exif?.hasGPS;
+  const recipe = image.recipe;
+  const recipeNames = recipe ? [...new Set(recipe.ops.map(o => o.op))].join(', ') : '';
 
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -215,7 +217,16 @@ function updateInfoPanel() {
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-warn"/></svg>
       This image contains GPS location data.
     </div>` : ''}
+    ${recipe ? `<div class="info-recipe">
+      <div class="info-row"><span class="info-label">Edited in Slate</span><span class="info-value">${recipe.ops.length} edit${recipe.ops.length === 1 ? '' : 's'}: ${esc(recipeNames)}</span></div>
+      <button class="btn" id="info-apply-recipe" type="button" title="Apply the same edits to the image that is open now">Apply these edits to an image…</button>
+    </div>` : ''}
   `;
+  panel.querySelector('#info-apply-recipe')?.addEventListener('click', () => {
+    // Keep the list, then apply it to whatever image is open when the person clicks "Apply edits" in the toast.
+    state._copiedRecipe = recipe;
+    emit('toast', { message: `Copied ${recipe.ops.length} edits. Open another image, then press Ctrl+Shift+V to apply them.`, level: 'ok', duration: 6000 });
+  });
 }
 
 function updateDirtyDot(dirty) {

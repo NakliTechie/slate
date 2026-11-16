@@ -2,6 +2,7 @@ import { state, setImage } from './state.js';
 import { emit } from './events.js';
 import { decode, isSupportedFile, formatOf } from '../decode/registry.js';
 import { parseExif } from '../exif.js';
+import { readRecipe } from '../encode/recipe.js';
 
 // Native File System Access pickers cannot be invoked by a cross-origin
 // iframe. Slate is embeddable in shells such as NakliOS, so only advertise
@@ -139,8 +140,9 @@ function decodeFailureMessage(name, err) {
 async function loadSingleFile(file, handle, source) {
   emit('loading:start', { name: file.name });
   try {
-    const [bitmap, exif] = await Promise.all([decode(file), parseExif(file)]);
+    const [bitmap, exif, recipe] = await Promise.all([decode(file), parseExif(file), readRecipe(file)]);
     const format = formatOf(file);
+    state.image.recipe = recipe;
 
     state.session.source = source;
     state.session.folderHandle = null;
@@ -272,8 +274,9 @@ export async function navigateTo(index) {
     if (!file) throw new Error('Cannot read file');
     entry.file = file; // cache
 
-    const [bitmap, exif] = await Promise.all([decode(file), parseExif(file)]);
+    const [bitmap, exif, recipe] = await Promise.all([decode(file), parseExif(file), readRecipe(file)]);
     const format = formatOf(file);
+    state.image.recipe = recipe;
     setImage(bitmap, format, exif);
     emit('navigate', { index: i, total: files.length, name: entry.name });
   } catch (err) {

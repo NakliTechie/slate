@@ -277,6 +277,13 @@ function showExport() {
         </label>
         <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">JPEG only — PNG/WebP always stripped</span>
       </div>
+      <div class="modal-field-row">
+        <label>
+          <input type="checkbox" id="exp-embed"${exp.embedEdits ? ' checked' : ''}>
+          Embed the edit list
+        </label>
+        <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">PNG and JPEG: Slate can show and reuse these edits when the file is opened again</span>
+      </div>
       <p class="modal-info" id="exp-filename-preview">
         ${image.width} × ${image.height} px — <em>${esc(baseName)}-<span id="exp-ts">yymmddhhmmss</span>.${exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format}</em>
       </p>
@@ -317,6 +324,7 @@ function showExport() {
     exp.format    = dlg.querySelector('input[name="exp-fmt"]:checked')?.value ?? 'png';
     exp.quality   = +qualityInp.value;
     exp.stripExif = dlg.querySelector('#exp-strip').checked;
+    exp.embedEdits = dlg.querySelector('#exp-embed').checked;
     const chosenMode = dlg.querySelector('input[name="exp-mode"]:checked')?.value ?? 'download';
     savePrefs();
     dlg.close();

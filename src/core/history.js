@@ -62,6 +62,8 @@ export class History {
   }
 
   get pointer() { return this._pointer; }
+  // The ops that made the current image (for the embedded edit list).
+  opsToPointer() { return this._ops.slice(0, this._pointer + 1).map(({ op, params }) => ({ op, params })); }
   get size() { return this._ops.length; }
 
   clear() {

@@ -70,6 +70,21 @@ export function initOpRunner() {
     await runOp('adjust', params);
   });
 
+  // Apply an embedded edit list (encode/recipe.js) to the open image, op by op, through the
+  // normal op path so each step is undoable. Layer ops (text, arrows) and LUTs whose table was
+  // not embedded are skipped and counted.
+  on('op:apply-recipe', async (recipe) => {
+    if (!state.image.working || !recipe?.ops?.length) return;
+    let done = 0, skipped = 0;
+    for (const { op, params } of recipe.ops) {
+      if (!OPS[op] || (op === 'lut' && !params?.data)) { skipped++; continue; }
+      await runOp(op, params);
+      done++;
+    }
+    emit('fit:window', null);
+    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows or a LUT not stored in the file)` : ''}.`, level: 'ok' });
+  });
+
   on('op:lut', async (params) => {
     if (!state.image.working) return;
     await runOp('lut', params);

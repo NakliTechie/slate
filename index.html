@@ -3480,6 +3480,8 @@ class History {
   }
 
   get pointer() { return this._pointer; }
+  // The ops that made the current image (for the embedded edit list).
+  opsToPointer() { return this._ops.slice(0, this._pointer + 1).map(({ op, params }) => ({ op, params })); }
   get size() { return this._ops.length; }
 
   clear() {
@@ -3534,7 +3536,8 @@ const state = {
     width: 0,
     height: 0,
     format: null,            // 'jpeg' | 'png' | 'webp' | 'gif' | 'avif' | 'svg' | 'bmp'
-    exif: null
+    exif: null,
+    recipe: null             // edit list embedded in the opened file (encode/recipe.js), or null
   },
   view: {
     zoom: 1.0,
@@ -3565,6 +3568,7 @@ const state = {
     format: 'png',
     quality: 90,
     stripExif: true,
+    embedEdits: false,
     saveMode: 'download'
   }
 };
@@ -3587,6 +3591,7 @@ function loadPrefs() {
     if (p.quality != null) state.export.quality = p.quality;
     if (p.exportFormat) state.export.format = p.exportFormat;
     if (p.stripExif != null) state.export.stripExif = p.stripExif;
+    if (p.embedEdits != null) state.export.embedEdits = p.embedEdits;
     if (p.numericPanelPos) state._numericPanelPos = p.numericPanelPos;
     if (p.blurStrength != null) state.toolSettings.blurStrength = p.blurStrength;
     if (typeof p.activeTool === 'string') {
@@ -3606,6 +3611,7 @@ function savePrefs() {
       quality: state.export.quality,
       exportFormat: state.export.format,
       stripExif: state.export.stripExif,
+      embedEdits: state.export.embedEdits,
       numericPanelPos: state._numericPanelPos,
       blurStrength: state.toolSettings.blurStrength,
       activeTool: state.activeTool && state.activeTool !== 'eyedropper' ? state.activeTool : null
@@ -4524,6 +4530,163 @@ function stripJpegExif(buffer) {
 return { parseExif, formatExposureTime, formatRational, formatGPS, stripJpegExif };
 })();
 
+const __m_encode_recipe = (() => {
+// Edit list embedded in an exported file (plan/pending.md, 2026-10-12): Slate writes the
+// operations that made an export into the file, so reopening it shows what was done and the
+// same edits can be applied to another image. Off by default (Export dialog), because the
+// list is metadata and Slate strips metadata unless asked.
+//
+// Transport, adapted from Muse (NakliTechie/Muse, same author): the payload "slate\0<json>"
+//   PNG   a tEXt chunk with keyword "slate", spliced before IEND
+//   JPEG  a COM (0xFFFE) segment after SOI and APP0
+// WebP and TIFF exports carry no list. The JSON is ASCII (non-ASCII is \u-escaped), so
+// Latin-1 bytes round-trip exactly.
+//
+// Recipe JSON: { app: 'slate', v: 1, w, h, ops: [{ op, params }] }. A LUT's table is too large
+// for a COM segment, so a LUT op keeps its name, title and strength and drops `data`.
+
+const RECIPE_KEYWORD = 'slate';
+const MAX_JSON = 60000; // a JPEG COM segment holds at most 65,533 bytes
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+const latin1Bytes = (s) => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 0xff; return u; };
+const latin1Str = (b) => { let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return s; };
+const asciiJson = (v) => JSON.stringify(v).replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+
+// The recipe for the ops up to the history pointer, or null when there is nothing to record.
+function buildRecipe(ops, { w, h } = {}) {
+  if (!ops?.length) return null;
+  const list = ops.map(({ op, params }) => {
+    if (op === 'lut') { const { data, ...rest } = params || {}; return { op, params: { ...rest, dataOmitted: true } }; }
+    return { op, params };
+  });
+  const json = asciiJson({ app: 'slate', v: 1, w, h, ops: list });
+  return json.length <= MAX_JSON ? json : null;
+}
+
+function parseRecipe(json) {
+  try {
+    const r = JSON.parse(json);
+    if (r?.app !== 'slate' || r.v !== 1 || !Array.isArray(r.ops)) return null;
+    return { w: r.w, h: r.h, ops: r.ops.filter(o => o && typeof o.op === 'string') };
+  } catch { return null; }
+}
+
+function embedRecipePNG(png, json) {
+  if (png.length < 20 || png[0] !== 0x89 || png[1] !== 0x50) return png;
+  const type = latin1Bytes('tEXt');
+  const data = latin1Bytes(RECIPE_KEYWORD + '\0' + json);
+  const chunk = new Uint8Array(12 + data.length);
+  const dv = new DataView(chunk.buffer);
+  dv.setUint32(0, data.length);
+  chunk.set(type, 4);
+  chunk.set(data, 8);
+  const crcIn = new Uint8Array(4 + data.length); crcIn.set(type, 0); crcIn.set(data, 4);
+  dv.setUint32(8 + data.length, crc32(crcIn));
+  const iend = png.length - 12;
+  const out = new Uint8Array(png.length + chunk.length);
+  out.set(png.subarray(0, iend), 0);
+  out.set(chunk, iend);
+  out.set(png.subarray(iend), iend + chunk.length);
+  return out;
+}
+
+function readRecipePNG(png) {
+  if (png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50 || png[2] !== 0x4e || png[3] !== 0x47) return null;
+  const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  let p = 8;
+  while (p + 8 <= png.length) {
+    const len = dv.getUint32(p);
+    const type = latin1Str(png.subarray(p + 4, p + 8));
+    if (type === 'tEXt') {
+      const data = png.subarray(p + 8, p + 8 + len);
+      const z = data.indexOf(0);
+      if (z >= 0 && latin1Str(data.subarray(0, z)) === RECIPE_KEYWORD) return latin1Str(data.subarray(z + 1));
+    }
+    if (type === 'IEND') break;
+    p += 12 + len;
+  }
+  return null;
+}
+
+function embedRecipeJPEG(jpeg, json) {
+  if (jpeg.length < 4 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return jpeg;
+  const payload = latin1Bytes(RECIPE_KEYWORD + '\0' + json);
+  const segLen = payload.length + 2;
+  if (segLen > 0xffff) return jpeg;
+  const seg = new Uint8Array(4 + payload.length);
+  seg[0] = 0xff; seg[1] = 0xfe; seg[2] = (segLen >> 8) & 0xff; seg[3] = segLen & 0xff;
+  seg.set(payload, 4);
+  // After the leading APPn segments (JFIF APP0 and EXIF APP1 come first), else after SOI.
+  let at = 2;
+  while (jpeg[at] === 0xff && jpeg[at + 1] >= 0xe0 && jpeg[at + 1] <= 0xef) {
+    const alen = (jpeg[at + 2] << 8) | jpeg[at + 3];
+    if (alen < 2 || at + 2 + alen > jpeg.length) break;
+    at += 2 + alen;
+  }
+  const out = new Uint8Array(jpeg.length + seg.length);
+  out.set(jpeg.subarray(0, at), 0);
+  out.set(seg, at);
+  out.set(jpeg.subarray(at), at + seg.length);
+  return out;
+}
+
+function readRecipeJPEG(jpeg) {
+  if (jpeg.length < 2 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null;
+  let p = 2;
+  while (p + 4 <= jpeg.length) {
+    if (jpeg[p] !== 0xff) { p++; continue; }
+    const marker = jpeg[p + 1];
+    if (marker === 0xff) { p++; continue; }
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x00 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { p += 2; continue; }
+    const len = (jpeg[p + 2] << 8) | jpeg[p + 3];
+    if (len < 2) break;
+    if (marker === 0xfe) {
+      const data = jpeg.subarray(p + 4, p + 2 + len);
+      const z = data.indexOf(0);
+      if (z >= 0 && latin1Str(data.subarray(0, z)) === RECIPE_KEYWORD) return latin1Str(data.subarray(z + 1));
+    }
+    p += 2 + len;
+  }
+  return null;
+}
+
+// Embed into an encoded Blob (PNG or JPEG); other formats come back unchanged.
+async function embedRecipe(blob, format, json) {
+  if (!json || (format !== 'png' && format !== 'jpeg')) return blob;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const out = format === 'png' ? embedRecipePNG(bytes, json) : embedRecipeJPEG(bytes, json);
+  return new Blob([out], { type: blob.type });
+}
+
+// Read a recipe from a File. JPEG segments sit at the start; a PNG chunk sits before IEND,
+// so a PNG is read whole (only when under 64 MB).
+async function readRecipe(file) {
+  try {
+    const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    if (head[0] === 0xff && head[1] === 0xd8) return parseRecipe(readRecipeJPEG(new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer())) ?? '');
+    if (head[0] === 0x89 && head[1] === 0x50 && file.size < 64 * 1024 * 1024) return parseRecipe(readRecipePNG(new Uint8Array(await file.arrayBuffer())) ?? '');
+  } catch { /* unreadable: no recipe */ }
+  return null;
+}
+
+return { RECIPE_KEYWORD, crc32, buildRecipe, parseRecipe, embedRecipePNG, readRecipePNG, embedRecipeJPEG, readRecipeJPEG, embedRecipe, readRecipe };
+})();
+
 const __m_core_fs = (() => {
 const state = __m_core_state.state;
 const setImage = __m_core_state.setImage;
@@ -4532,6 +4695,7 @@ const decode = __m_decode_registry.decode;
 const isSupportedFile = __m_decode_registry.isSupportedFile;
 const formatOf = __m_decode_registry.formatOf;
 const parseExif = __m_exif.parseExif;
+const readRecipe = __m_encode_recipe.readRecipe;
 
 // Native File System Access pickers cannot be invoked by a cross-origin
 // iframe. Slate is embeddable in shells such as NakliOS, so only advertise
@@ -4669,8 +4833,9 @@ function decodeFailureMessage(name, err) {
 async function loadSingleFile(file, handle, source) {
   emit('loading:start', { name: file.name });
   try {
-    const [bitmap, exif] = await Promise.all([decode(file), parseExif(file)]);
+    const [bitmap, exif, recipe] = await Promise.all([decode(file), parseExif(file), readRecipe(file)]);
     const format = formatOf(file);
+    state.image.recipe = recipe;
 
     state.session.source = source;
     state.session.folderHandle = null;
@@ -4802,8 +4967,9 @@ async function navigateTo(index) {
     if (!file) throw new Error('Cannot read file');
     entry.file = file; // cache
 
-    const [bitmap, exif] = await Promise.all([decode(file), parseExif(file)]);
+    const [bitmap, exif, recipe] = await Promise.all([decode(file), parseExif(file), readRecipe(file)]);
     const format = formatOf(file);
+    state.image.recipe = recipe;
     setImage(bitmap, format, exif);
     emit('navigate', { index: i, total: files.length, name: entry.name });
   } catch (err) {
@@ -6509,6 +6675,7 @@ function shortcuts() {
       ['Ctrl+O', 'Open file'],
       ['Ctrl+Shift+O', 'Open folder'],
       ['Ctrl+V', 'Paste from clipboard'],
+      ['Ctrl+Shift+V', 'Apply edits copied from Image Info'],
       ['Ctrl+S', 'Smart save'],
       ['Ctrl+Shift+S', 'Export dialog'],
     ]],
@@ -6830,6 +6997,8 @@ function updateInfoPanel() {
   }
 
   const hasGPS = image.exif?.hasGPS;
+  const recipe = image.recipe;
+  const recipeNames = recipe ? [...new Set(recipe.ops.map(o => o.op))].join(', ') : '';
 
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -6845,7 +7014,16 @@ function updateInfoPanel() {
       <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-warn"/></svg>
       This image contains GPS location data.
     </div>` : ''}
+    ${recipe ? `<div class="info-recipe">
+      <div class="info-row"><span class="info-label">Edited in Slate</span><span class="info-value">${recipe.ops.length} edit${recipe.ops.length === 1 ? '' : 's'}: ${esc(recipeNames)}</span></div>
+      <button class="btn" id="info-apply-recipe" type="button" title="Apply the same edits to the image that is open now">Apply these edits to an image…</button>
+    </div>` : ''}
   `;
+  panel.querySelector('#info-apply-recipe')?.addEventListener('click', () => {
+    // Keep the list, then apply it to whatever image is open when the person clicks "Apply edits" in the toast.
+    state._copiedRecipe = recipe;
+    emit('toast', { message: `Copied ${recipe.ops.length} edits. Open another image, then press Ctrl+Shift+V to apply them.`, level: 'ok', duration: 6000 });
+  });
 }
 
 function updateDirtyDot(dirty) {
@@ -14134,6 +14312,21 @@ function initOpRunner() {
     await runOp('adjust', params);
   });
 
+  // Apply an embedded edit list (encode/recipe.js) to the open image, op by op, through the
+  // normal op path so each step is undoable. Layer ops (text, arrows) and LUTs whose table was
+  // not embedded are skipped and counted.
+  on('op:apply-recipe', async (recipe) => {
+    if (!state.image.working || !recipe?.ops?.length) return;
+    let done = 0, skipped = 0;
+    for (const { op, params } of recipe.ops) {
+      if (!OPS[op] || (op === 'lut' && !params?.data)) { skipped++; continue; }
+      await runOp(op, params);
+      done++;
+    }
+    emit('fit:window', null);
+    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows or a LUT not stored in the file)` : ''}.`, level: 'ok' });
+  });
+
   on('op:lut', async (params) => {
     if (!state.image.working) return;
     await runOp('lut', params);
@@ -14620,6 +14813,13 @@ function showExport() {
         </label>
         <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">JPEG only — PNG/WebP always stripped</span>
       </div>
+      <div class="modal-field-row">
+        <label>
+          <input type="checkbox" id="exp-embed"${exp.embedEdits ? ' checked' : ''}>
+          Embed the edit list
+        </label>
+        <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">PNG and JPEG: Slate can show and reuse these edits when the file is opened again</span>
+      </div>
       <p class="modal-info" id="exp-filename-preview">
         ${image.width} × ${image.height} px — <em>${esc(baseName)}-<span id="exp-ts">yymmddhhmmss</span>.${exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format}</em>
       </p>
@@ -14660,6 +14860,7 @@ function showExport() {
     exp.format    = dlg.querySelector('input[name="exp-fmt"]:checked')?.value ?? 'png';
     exp.quality   = +qualityInp.value;
     exp.stripExif = dlg.querySelector('#exp-strip').checked;
+    exp.embedEdits = dlg.querySelector('#exp-embed').checked;
     const chosenMode = dlg.querySelector('input[name="exp-mode"]:checked')?.value ?? 'download';
     savePrefs();
     dlg.close();
@@ -15939,6 +16140,8 @@ const encodeJpeg = __m_encode_jpeg.encodeJpeg;
 const encodeWebp = __m_encode_webp.encodeWebp;
 const encodeTiff = __m_encode_tiff.encodeTiff;
 const formatOf = __m_decode_registry.formatOf;
+const buildRecipe = __m_encode_recipe.buildRecipe;
+const embedRecipe = __m_encode_recipe.embedRecipe;
 const saveDownload = __m_core_fs.saveDownload;
 const saveOverwrite = __m_core_fs.saveOverwrite;
 const saveSidecar = __m_core_fs.saveSidecar;
@@ -16139,7 +16342,13 @@ function setupKeyboard() {
 
     if (inInput) return;
 
-    // Paste
+    // Paste edits copied from a file's embedded edit list (Image Info), then paste an image
+    if (meta && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+      e.preventDefault();
+      if (state._copiedRecipe) emit('op:apply-recipe', state._copiedRecipe);
+      else emit('toast', { message: 'No edits copied. Open an image edited in Slate, then use Image Info.', level: 'warn' });
+      return;
+    }
     if (meta && e.key === 'v') { e.preventDefault(); openFromClipboard(); return; }
 
     // Zoom
@@ -16292,6 +16501,7 @@ async function doSave(showDialog = false) {
     else if (exp.format === 'jpeg') blob = await encodeJpeg(flat, exp.quality, exifRaw);
     else if (exp.format === 'tiff') blob = await encodeTiff(flat);
     else blob = await encodeWebp(flat, exp.quality);
+    if (exp.embedEdits) blob = await embedRecipe(blob, exp.format, buildRecipe(state.history.opsToPointer(), { w: image.width, h: image.height }));
   } catch (err) {
     emit('error', { message: `Save failed: ${err.message}` });
     return;

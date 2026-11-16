@@ -242,6 +242,7 @@ function shortcuts() {
       ['Ctrl+O', 'Open file'],
       ['Ctrl+Shift+O', 'Open folder'],
       ['Ctrl+V', 'Paste from clipboard'],
+      ['Ctrl+Shift+V', 'Apply edits copied from Image Info'],
       ['Ctrl+S', 'Smart save'],
       ['Ctrl+Shift+S', 'Export dialog'],
     ]],

@@ -14,7 +14,8 @@ export const state = {
     width: 0,
     height: 0,
     format: null,            // 'jpeg' | 'png' | 'webp' | 'gif' | 'avif' | 'svg' | 'bmp'
-    exif: null
+    exif: null,
+    recipe: null             // edit list embedded in the opened file (encode/recipe.js), or null
   },
   view: {
     zoom: 1.0,
@@ -45,6 +46,7 @@ export const state = {
     format: 'png',
     quality: 90,
     stripExif: true,
+    embedEdits: false,
     saveMode: 'download'
   }
 };
@@ -67,6 +69,7 @@ export function loadPrefs() {
     if (p.quality != null) state.export.quality = p.quality;
     if (p.exportFormat) state.export.format = p.exportFormat;
     if (p.stripExif != null) state.export.stripExif = p.stripExif;
+    if (p.embedEdits != null) state.export.embedEdits = p.embedEdits;
     if (p.numericPanelPos) state._numericPanelPos = p.numericPanelPos;
     if (p.blurStrength != null) state.toolSettings.blurStrength = p.blurStrength;
     if (typeof p.activeTool === 'string') {
@@ -86,6 +89,7 @@ export function savePrefs() {
       quality: state.export.quality,
       exportFormat: state.export.format,
       stripExif: state.export.stripExif,
+      embedEdits: state.export.embedEdits,
       numericPanelPos: state._numericPanelPos,
       blurStrength: state.toolSettings.blurStrength,
       activeTool: state.activeTool && state.activeTool !== 'eyedropper' ? state.activeTool : null
