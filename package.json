@@ -1,0 +1,10 @@
+{
+  "name": "slate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/inline.mjs",
+    "commands": "node scripts/gen-commands.mjs",
+    "test": "node build/inline.mjs && node scripts/test-all.mjs"
+  }
+}

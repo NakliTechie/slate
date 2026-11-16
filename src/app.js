@@ -24,6 +24,7 @@ import { saveSession, loadSession, clearSession } from './core/session.js';
 import { openFromHandle, openFromFile } from './core/fs.js';
 import { esc } from './core/html.js';
 import { flattenLayers } from './core/layers.js';
+import { initLibrary } from './library/boot.js';
 
 import { encodePng } from './encode/png.js';
 import { encodeJpeg } from './encode/jpeg.js';
@@ -132,6 +133,10 @@ async function boot() {
   }
 
   updateVersion();
+
+  // Photo library (src/library/). A failure here leaves the editor working.
+  try { await initLibrary(); }
+  catch (err) { console.error('[slate library] failed to start', err); emit('toast', { message: `Photo library could not start: ${err.message}`, level: 'warn' }); }
 }
 
 function updateVersion() {
