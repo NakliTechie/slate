@@ -8,17 +8,23 @@
 //
 //   parseCsv(text) -> string[][]                     RFC 4180: quotes, "" escapes, CRLF, BOM
 //   parseICloudCsv(fileName, text) -> { kind: 'details', rows } | { kind: 'album', album, names } | { kind: 'unknown' }
-//   parseICloudDate(text) -> ms | null
+//   parseICloudDate(text) -> the instant in ms | null
 //   applyICloudCsv(lib, rootId, csvTexts, { dryRun }) -> summary with `undo`
 //     csvTexts: [{ name, text }]; photos in the root are matched by file name, ignoring case.
+//     A name that matches more than one photo (iPhone names repeat after IMG_9999 and across
+//     devices) is skipped and listed in `ambiguousNames`. The CSV's fileChecksum cannot pick
+//     one: Apple does not document how it is computed, so Slate cannot compute it to compare.
 //
 // Dates: the CSV gives an instant in GMT and Slate stores a wall clock as if it were UTC
-// (schema.wallClockToTime), so the GMT wall clock is stored, as takeout.js does. A CSV date
+// (schema.wallClockToTime), so the row time is the instant's wall clock in this computer's
+// zone (takeout.instantToWallClock): 03:30 GMT shows as 09:00 in India. parseICloudDate
+// itself returns the instant. A CSV date
 // fills a record's time only when the file had no date of its own (timeSource 'file').
 // Each date applied is also saved in the library file (libfile.js `meta`, source 'icloud'), so
 // a rebuild or full rescan restores it without the CSV (scan.applyMeta).
 
 import { metaTaken } from './libfile.js';
+import { instantToWallClock } from './takeout.js';
 
 export function parseCsv(text) {
   const s = String(text ?? '').replace(/^﻿/, '');
@@ -73,6 +79,7 @@ export function parseICloudDate(text) {
   return null;
 }
 
+const wall = ms => (ms == null ? null : instantToWallClock(ms));
 const baseName = n => String(n ?? '').replace(/\\/g, '/').split('/').pop();
 
 export function parseICloudCsv(fileName, text) {
@@ -92,7 +99,7 @@ export function parseICloudCsv(fileName, text) {
         favourite: iFav >= 0 && yes(r[iFav]),
         hidden: iHid >= 0 && yes(r[iHid]),
         deleted: iDel >= 0 && yes(r[iDel]),
-        time: iDate >= 0 ? parseICloudDate(r[iDate]) : null,
+        time: iDate >= 0 ? wall(parseICloudDate(r[iDate])) : null,
       });
     }
     return { kind: 'details', rows: out };
@@ -115,10 +122,11 @@ export async function applyICloudCsv(lib, rootId, csvTexts, { dryRun = false } =
     if (!byName.has(k)) byName.set(k, []);
     byName.get(k).push(r.id);
   }
-  const unmatched = new Set(), matched = new Set();
+  const unmatched = new Set(), matched = new Set(), ambiguous = new Set();
   const lookup = (name) => {
     const ids = byName.get(baseName(name).toLowerCase()) ?? [];
-    if (ids.length) ids.forEach(id => matched.add(id)); else unmatched.add(name);
+    if (ids.length > 1) { ambiguous.add(name); return []; }
+    if (ids.length) matched.add(ids[0]); else unmatched.add(name);
     return ids;
   };
 
@@ -154,6 +162,8 @@ export async function applyICloudCsv(lib, rootId, csvTexts, { dryRun = false } =
     matched: matched.size,
     unmatched: unmatched.size,
     unmatchedNames: [...unmatched].slice(0, 20),
+    ambiguous: ambiguous.size,
+    ambiguousNames: [...ambiguous].slice(0, 20),
     favourites: favIds.length,
     hidden: hidIds.length,
     dates: times.size,

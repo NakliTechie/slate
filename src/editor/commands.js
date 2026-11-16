@@ -6,12 +6,46 @@
 //
 // `run(lib, args, ctx)`: `ctx.editor` may replace the editor ({ state, emit, on, off, flatten })
 // for tests; in the app it is the real state and event bus.
+//
+// Downloads (S26): image.extract_text and image.lens_blur download code or a model the first
+// time. Until the person has agreed once (DOWNLOADS, kept in localStorage), an agent call must
+// pass `allowDownload: true`, and the agent is told to ask the person first. The editor's own
+// buttons ask with askDownload(kind) before they start.
 
 import { state } from '../core/state.js';
 import { emit, on, off } from '../core/events.js';
 import { flattenLayers } from '../core/layers.js';
 import { extractText } from '../ops/ocr.js';
-import { estimateDepth } from '../ops/depth.js';
+import { estimateDepth, depthDownloadMB } from '../ops/depth.js';
+
+// What each download is, for the agent's error and the person's question.
+export const DOWNLOADS = {
+  ocr: { key: 'slate.download.ocr', what: () => 'Tesseract.js, the text recogniser (about 5 MB, from esm.sh and jsDelivr)' },
+  depth: { key: 'slate.download.depth', what: () => `the Depth Anything V2 depth model (about ${depthDownloadMB()} MB, from Hugging Face and jsDelivr)` },
+};
+const agreed = new Set();   // when localStorage is blocked, agreement lasts for this page
+export function downloadAllowed(kind) {
+  if (agreed.has(kind)) return true;
+  try { return globalThis.localStorage?.getItem(DOWNLOADS[kind].key) === '1'; } catch { return false; }
+}
+export function allowDownload(kind) {
+  agreed.add(kind);
+  try { globalThis.localStorage?.setItem(DOWNLOADS[kind].key, '1'); } catch { /* storage blocked */ }
+}
+// For a button: true when the download was agreed before, or the person agrees now.
+export function askDownload(kind, ask = globalThis.confirm) {
+  if (downloadAllowed(kind)) return true;
+  if (!ask?.(`This downloads ${DOWNLOADS[kind].what()} once, then keeps it in this browser. Your image stays on this device. Download it?`)) return false;
+  allowDownload(kind);
+  return true;
+}
+// For an agent: refuse the first download unless the call says allowDownload: true.
+function needDownload(kind, a) {
+  if (downloadAllowed(kind)) return;
+  if (a?.allowDownload !== true) throw new Error(`this downloads ${DOWNLOADS[kind].what()} the first time. Ask the person, then call again with allowDownload: true`);
+  allowDownload(kind);
+}
+const allowDownloadProp = { type: 'boolean', description: 'set true, after the person agreed, to allow the first-time download' };
 
 export const OP_TIMEOUT_MS = 20000;
 export const SAVE_TIMEOUT_MS = 60000;
@@ -158,15 +192,18 @@ export const EDITOR_COMMANDS = [
       try { return { saved: true, name: await saved(e), to, format }; }
       finally { Object.assign(exp, prev); }
     } },
-  { name: 'image.extract_text', label: 'Extract text', description: 'Read printed English text from the open image on this device (Tesseract.js; downloads about 5 MB the first time). Returns the text and a confidence from 0 to 100.', scope: 'read', input: obj(),
+  { name: 'image.extract_text', label: 'Extract text', description: 'Read printed English text from the open image on this device. Downloads Tesseract.js (about 5 MB, from esm.sh and jsDelivr) the first time: ask the person, then pass allowDownload: true. Returns the text and a confidence from 0 to 100.', scope: 'read', input: obj({ allowDownload: allowDownloadProp }),
     run: async (lib, a, ctx) => {
       const e = ed(ctx); needImage(e);
+      needDownload('ocr', a);
       return extractText(e.flatten(e.state.image.working));
     } },
-  { name: 'image.lens_blur', label: 'Background blur', description: 'Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. The depth model (about 27 to 50 MB) downloads the first time. Undo with image.undo.', scope: 'write',
-    input: obj({ x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, strength: { type: 'integer', minimum: 1, maximum: 100, description: 'default 50' } }, ['x', 'y']),
+  { name: 'image.lens_blur', label: 'Background blur', description: 'Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. Downloads the depth model (about 27 to 50 MB, from Hugging Face) the first time: ask the person, then pass allowDownload: true. Undo with image.undo.', scope: 'write',
+    input: obj({ x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, strength: { type: 'integer', minimum: 1, maximum: 100, description: 'default 50' }, allowDownload: allowDownloadProp }, ['x', 'y']),
     run: async (lib, a, ctx) => {
       const e = ed(ctx); needImage(e);
+      inRange('x', a.x, 0, 1); inRange('y', a.y, 0, 1);
+      needDownload('depth', a);
       const depth = await estimateDepth(e.state.image.working);
       return applied(e, 'op:lensblur', { focus: { x: inRange('x', a.x, 0, 1), y: inRange('y', a.y, 0, 1) }, strength: Math.round(inRange('strength', a.strength ?? 50, 1, 100)), depth }, 'the background blur');
     } },

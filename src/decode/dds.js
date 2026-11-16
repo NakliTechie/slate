@@ -1,11 +1,14 @@
 // dds-parser is vendored locally — see src/vendor/dds-parser.mjs and SECURITY.md.
 import { parseHeaders, decodeDds } from '../vendor/dds-parser.mjs';
+import { checkDdsHeader, checkDdsData } from './limits.js';
 
 export async function decodeDdsBlob(blob) {
   const buf = await blob.arrayBuffer();
+  checkDdsHeader(buf); // size limit before dds-parser reads it
   const headers = parseHeaders(buf);
   if (!headers?.images?.length) throw new Error('DDS file has no images');
   const top = headers.images[0];
+  checkDdsData(buf, top); // the top image's data must be in the file
   const bytes = new Uint8Array(buf, top.offset, top.length);
   const rgba = decodeDds(bytes, headers.format, top.shape.width, top.shape.height);
   const out = new OffscreenCanvas(top.shape.width, top.shape.height);

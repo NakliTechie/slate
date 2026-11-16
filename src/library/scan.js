@@ -22,8 +22,19 @@
 // Apple Live Photos (row M7): a HEIC or JPEG and a MOV with the same stem in the same folder
 // (IMG_1234.HEIC + IMG_1234.MOV) are one photo. The MOV gets no record of its own; the photo
 // record carries `liveVideo: '<relative path of the MOV>'`. A MOV with no such photo stays a video.
+// A MOV pairs only when it is a Live Photo clip by size and length (review S12): at most
+// LIVE_MAX_BYTES, and at most LIVE_MAX_SECONDS long when its `mvhd` header gives a length.
+// A longer clip with the same name (birthday.jpg + birthday.mov) stays a video of its own.
+//
+// Library file (review S1): after the permission step, the root's library file is read again
+// when the person was just asked for permission, or when it has not been read this session,
+// so the scan and every save that follows work on the person's choices, never an empty set.
+//
+// Trash (reviews S2, S3): every scan of a folder handle also lists `.slate-trash/` and hands
+// its photos and videos to lib.recoverTrash, which re-creates a trashed record for any file
+// there that has none.
 
-import { isSkippedDir, kindOf, extOf, makeId, newRecord, unchanged, folderOf, SIDECAR_EXT } from './schema.js';
+import { isSkippedDir, kindOf, extOf, makeId, newRecord, unchanged, folderOf, SIDECAR_EXT, TRASH_DIR } from './schema.js';
 import { relPathOf } from './library.js';
 import { readMetadata } from './metadata.js';
 import { sidecarNames, parseXmp } from './xmp.js';
@@ -31,9 +42,16 @@ import { matchSidecars, readTakeoutJson } from './takeout.js';
 import { metaTaken, metaTime } from './libfile.js';
 
 export const BATCH = 500;
+export const LIVE_MAX_BYTES = 10 * 1024 * 1024;
+// Live Photo clips run about 3 s; the 0.25 s margin covers clips a few frames over.
+export const LIVE_MAX_SECONDS = 3;
+const LIVE_SLACK_SECONDS = 0.25;
 
 export async function scanRoot(lib, root, { full = false } = {}) {
-  if (root.handle) await ensurePermission(root.handle);
+  if (root.handle) {
+    const asked = await ensurePermission(root.handle);
+    if ((asked || !lib.libLoaded?.has(root.id)) && lib.loadLibFile) await lib.loadLibFile(root);
+  }
 
   // 1. Walk: every photo and video, and every sidecar by folder.
   const found = [];               // [{ path, open: () => Promise<File> }]
@@ -56,7 +74,7 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     add(path, async () => f);
   }
 
-  const { live, movs } = pairLivePhotos(found.map(e => e.path));
+  const { live, movs } = await checkLivePairs(lib, root, pairLivePhotos(found.map(e => e.path)), new Map(found.map(e => [e.path, e.open])));
   if (movs.size) found.splice(0, found.length, ...found.filter(e => !movs.has(e.path)));
 
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
@@ -137,6 +155,7 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   // 3. Final call with `seen`, unless part of the folder could not be read.
   await flush(walk.failed ? {} : { seen });
   await applyTakeoutChoices(lib, fromTakeout, takeout);
+  if (root.handle && lib.recoverTrash) await recoverTrash(lib, root, walk.failed ? null : seen);
   for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
   return res;
 }
@@ -159,6 +178,75 @@ export function pairLivePhotos(paths) {
     if (still && !live.has(still)) { live.set(still, p); movs.add(p); }
   }
   return { live, movs };
+}
+
+// Keep only the candidate pairs whose MOV is a Live Photo clip (see the header). A pair the
+// index already holds for an unchanged still is kept without reading the MOV again.
+async function checkLivePairs(lib, root, cand, openOf) {
+  const live = new Map(), movs = new Set();
+  for (const [still, mov] of cand.live) {
+    const old = lib.get(makeId(root.id, still));
+    let ok = old?.liveVideo === mov;
+    if (!ok) {
+      try {
+        const f = await openOf.get(mov)();
+        const dur = f.size <= LIVE_MAX_BYTES ? await movDuration(f) : null;
+        ok = f.size <= LIVE_MAX_BYTES && (dur == null || dur <= LIVE_MAX_SECONDS + LIVE_SLACK_SECONDS);
+      } catch { ok = false; }
+    }
+    if (ok) { live.set(still, mov); movs.add(mov); }
+  }
+  return { live, movs };
+}
+
+// Length in seconds of a QuickTime or MP4 file from its moov/mvhd header, or null.
+// Reads only box headers and the mvhd body.
+export async function movDuration(file) {
+  if (typeof file?.slice !== 'function') return null;
+  const read = async (at, len) => new Uint8Array(await file.slice(at, Math.min(file.size, at + len)).arrayBuffer());
+  const u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+  const boxes = async (start, end) => {
+    const out = [];
+    for (let at = start, n = 0; at + 8 <= end && n < 512; n++) {
+      const h = await read(at, 16);
+      if (h.length < 8) break;
+      let size = u32(h, 0), head = 8;
+      if (size === 1) { if (h.length < 16) break; size = u32(h, 8) * 4294967296 + u32(h, 12); head = 16; }
+      else if (size === 0) size = end - at;
+      if (size < head || at + size > end) break;
+      out.push({ type: String.fromCharCode(h[4], h[5], h[6], h[7]), start: at + head, end: at + size });
+      at += size;
+    }
+    return out;
+  };
+  try {
+    const moov = (await boxes(0, file.size)).find(b => b.type === 'moov');
+    const mvhd = moov && (await boxes(moov.start, moov.end)).find(b => b.type === 'mvhd');
+    if (!mvhd) return null;
+    const b = await read(mvhd.start, 32);
+    const v1 = b[0] === 1;
+    const scale = u32(b, v1 ? 20 : 12);
+    const dur = v1 ? u32(b, 24) * 4294967296 + u32(b, 28) : u32(b, 16);
+    return scale ? dur / scale : null;
+  } catch { return null; }
+}
+
+// List .slate-trash and hand its files to lib.recoverTrash (see the header).
+async function recoverTrash(lib, root, seen) {
+  let dir;
+  try { dir = await root.handle.getDirectoryHandle(TRASH_DIR); }
+  catch (e) { if (e?.name !== 'NotFoundError') return; dir = null; }
+  const files = [], walk = { failed: 0 };
+  if (dir) await walkDir(dir, TRASH_DIR, (path, open) => { if (kindOf(path.slice(path.lastIndexOf('/') + 1))) files.push({ path, open }); }, walk);
+  if (walk.failed) return;
+  const { live, movs } = pairLivePhotos(files.map(f => f.path));
+  const entries = [];
+  for (const f of files) {
+    if (movs.has(f.path)) continue;
+    try { entries.push({ path: f.path, file: await f.open(), liveVideo: live.get(f.path) ?? null }); }
+    catch { return; }
+  }
+  await lib.recoverTrash(root.id, entries, { seen });
 }
 
 // The sidecar wins over embedded metadata for tags, rating, time and GPS.
@@ -231,9 +319,10 @@ async function applyTakeoutChoices(lib, ids, counts) {
   } catch (e) { console.warn('[slate library] could not apply Takeout choices', e); }
 }
 
+// Returns true when it had to ask (so the library file must be read again).
 async function ensurePermission(handle) {
   const opts = { mode: 'readwrite' };
-  if (!handle.queryPermission || await handle.queryPermission(opts) === 'granted') return;
+  if (!handle.queryPermission || await handle.queryPermission(opts) === 'granted') return false;
   let state = 'denied';
   try { state = await handle.requestPermission(opts); } catch { /* needs a user gesture */ }
   if (state !== 'granted') {
@@ -241,6 +330,7 @@ async function ensurePermission(handle) {
     err.code = 'permission';
     throw err;
   }
+  return true;
 }
 
 async function walkDir(dir, prefix, add, walk) {
@@ -264,15 +354,21 @@ function runJobs(jobs, kind, items, fn) {
     let left = items.length, inFlight = 0;
     const tagged = items.map(item => ({ ...item, id: item.path }));
     const mine = new Set(tagged);
-    const finish = () => { off(); resolve(); };
-    // A cancel drops pending items without running them; stop waiting for those.
+    let finished = false, cancelled = false;
+    const finish = () => { if (finished) return; finished = true; off(); resolve(); };
+    // A cancel drops pending items without running them; stop waiting for those. Only after a
+    // cancel: a job the queue has started but whose function has not run yet is neither pending
+    // nor in flight, so without the cancel test the scan ended before its last files were read.
     const off = jobs.onProgress(() => {
-      if (left > 0 && !inFlight && !jobs.pending.some(j => mine.has(j.item))) finish();
+      if (cancelled && left > 0 && !inFlight && !jobs.pending.some(j => mine.has(j.item))) finish();
     });
     jobs.add(kind, tagged, async (item, signal) => {
+      if (signal?.aborted) cancelled = true;
       inFlight++;
       try { await fn(item, signal); }
       finally { inFlight--; if (--left === 0) finish(); }
     });
+    const ctl = jobs.controllers?.get(kind);
+    ctl?.signal?.addEventListener?.('abort', () => { cancelled = true; jobs._emit?.(kind); });
   });
 }

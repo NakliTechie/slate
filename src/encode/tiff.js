@@ -1,14 +1,14 @@
 import { emit } from '../core/events.js';
 
-// Reuses the same utif build that decode/tiff.js uses.
-const URL = 'https://esm.sh/utif@3.1.0';
+// Reuses the same hash-checked utif build that decode/tiff.js uses (decode/pinned.js, review S8).
+import { importPinned, ENTRIES } from '../decode/pinned.js';
 
 let _utifPromise = null;
 
 async function getUtif() {
   if (_utifPromise) return _utifPromise;
   emit('toast', { message: 'Loading TIFF encoder…', level: 'info', duration: 6000 });
-  _utifPromise = import(URL)
+  _utifPromise = importPinned(ENTRIES.utif)
     .then(mod => mod.default ?? mod)
     .catch(err => { _utifPromise = null; throw new Error('Could not load TIFF encoder: ' + err.message); });
   return _utifPromise;

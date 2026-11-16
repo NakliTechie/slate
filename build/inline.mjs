@@ -216,10 +216,15 @@ writeFileSync(join(ROOT, 'index.html'), html, 'utf8');
 // Also write to dist/ for Cloudflare Pages + _headers
 mkdirSync(DIST, { recursive: true });
 writeFileSync(join(DIST, 'index.html'), html, 'utf8');
+// The content security policy lives in src/index.html as a <meta> tag, so the direct site and the
+// NakliOS mirror both get it (review finding S8). The header copy repeats that policy and adds
+// frame-ancestors, which a meta tag cannot set. NakliOS embeds Slate, so framing is allowed from
+// this origin and naklios.dev only.
+const cspMeta = template.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
+if (!cspMeta) throw new Error('src/index.html has no Content-Security-Policy meta tag');
 const headers = `/*
-  Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'none'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
+  Content-Security-Policy: ${cspMeta[1]}; frame-ancestors 'self' https://naklios.dev
   X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
 `;

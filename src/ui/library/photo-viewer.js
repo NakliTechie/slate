@@ -34,6 +34,31 @@ export function formatTaken(time) {
   return `${dayLabel(dayKey(time))}, ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+// Modal behaviour (review S24). While the viewer is open, every sibling of the viewer
+// inside the Library gets the `inert` attribute, so a pointer, Tab or a screen reader
+// cannot reach the grid behind it. A sibling that was inert already stays inert on close.
+// Returns a function that undoes it.
+export function makeSiblingsInert(el) {
+  const changed = [];
+  for (const sib of el.parentElement?.children ?? []) {
+    if (sib === el || sib.hasAttribute('inert')) continue;
+    sib.setAttribute('inert', '');
+    changed.push(sib);
+  }
+  return () => { for (const sib of changed) sib.removeAttribute('inert'); };
+}
+
+// The element Tab (or Shift+Tab) moves to, kept inside `stops`, the viewer's focusable
+// elements in document order: past the last comes the first, and before the first the last.
+export function nextTabStop(stops, current, back = false) {
+  if (!stops.length) return null;
+  const i = stops.indexOf(current);
+  if (back) return i <= 0 ? stops[stops.length - 1] : stops[i - 1];
+  return i < 0 || i === stops.length - 1 ? stops[0] : stops[i + 1];
+}
+
+const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])';
+
 /**
  * @param {object} lib
  * @param {HTMLElement} el  the viewer container (starts hidden)
@@ -133,8 +158,14 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
     stage.replaceChildren(p);
   }
 
+  let restoreInert = null;
+  function tabStops() {
+    return [...el.querySelectorAll(FOCUSABLE)].filter(n => !n.closest('[hidden]') && !n.closest('[inert]') && n.getClientRects().length > 0);
+  }
+
   function open(i) {
     el.hidden = false;
+    if (!restoreInert) restoreInert = makeSiblingsInert(el);
     show(i);
     el.querySelector('[data-v="close"]').focus();
   }
@@ -144,6 +175,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
     token++;
     clearStage();
     el.hidden = true;
+    restoreInert?.(); restoreInert = null;
     index = -1; id = null; members = null;
     onClose();
   }
@@ -305,6 +337,7 @@ export function createPhotoViewer(lib, el, { getList, getStack = () => null, onS
   function handleKey(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
     switch (e.key) {
+      case 'Tab': nextTabStop(tabStops(), document.activeElement, e.shiftKey)?.focus(); return true;
       case 'ArrowLeft': move(-1); return true;
       case 'ArrowRight': move(1); return true;
       case 'Home': show(0); return true;

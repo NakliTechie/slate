@@ -116,7 +116,8 @@ const XMP = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.
   const root = await lib.addRoot({ handle: fakeDir('Photos', tree, perm), name: 'Photos' });
   const ids = [...lib.records.keys()].sort();
   const id = p => makeId(root.id, p);
-  assert.deepEqual(ids, [id('2024/b.png'), id('2024/goa/a.jpg'), id('2024/goa/clip.mp4'), id('top.jpg')].sort(), 'recursive walk; dot-folders, .slate-trash and non-media skipped');
+  assert.deepEqual(ids, [id('.slate-trash/old.jpg'), id('2024/b.png'), id('2024/goa/a.jpg'), id('2024/goa/clip.mp4'), id('top.jpg')].sort(), 'recursive walk; dot-folders and non-media skipped; a file found in .slate-trash becomes a trashed record (review S2)');
+  assert.ok(lib.choice(id('.slate-trash/old.jpg')).trashed, 'the file in .slate-trash is in the Trash view');
   assert.equal(lib.get(id('2024/goa/clip.mp4')).kind, 'video');
   assert.equal(lib.get(id('top.jpg')).camera, 'Canon EOS R6');
   const a = lib.get(id('2024/goa/a.jpg'));
@@ -124,7 +125,7 @@ const XMP = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.
   assert.deepEqual(a.xmpTags, ['beach', 'family'], 'sidecar tags apply');
   assert.equal(a.xmpRating, 4, 'sidecar rating applies');
   assert.deepEqual(lib.search({ tag: 'beach' }).map(r => r.id), [a.id]);
-  assert.equal(thumbs.got.length, 4, 'new records go to thumbnails');
+  assert.equal(thumbs.got.length, 5, 'new records, and the file recovered from .slate-trash, go to thumbnails');
   assert.equal(lib.jobs.status().kinds.scan.done, 4, 'metadata reads counted on lib.jobs as scan');
 
   // Rescan: nothing changed, nothing re-read.

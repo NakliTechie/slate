@@ -15,7 +15,7 @@ import { esc } from '../../core/html.js';
 import { dayLabel, monthLabel } from '../../library/schema.js';
 import { runCommand } from '../../library/commands.js';
 import { buildStacks } from '../../library/stacks.js';
-import { collapseStacks, buildLayout, visibleRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, toggleGroup, rangeIds } from './grid-model.js';
+import { collapseStacks, buildLayout, ariaRowCount, ariaRowIndex, visibleRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, toggleGroup, rangeIds } from './grid-model.js';
 import { createPhotoViewer, formatDuration, formatTaken } from './photo-viewer.js';
 import { openStoragePanel, needsDownload } from './storage.js';
 import { downloadLibFile } from '../../library/persist.js';
@@ -341,6 +341,7 @@ export function initLibraryView(lib) {
     layout = buildLayout(list, { width, zoom, grouped: sortable() });
     months = monthTable(layout, list);
     sizer.style.height = `${layout.height}px`;
+    grid.setAttribute('aria-rowcount', String(ariaRowCount(layout)));
     sizer.style.width = `${width}px`;
     const carry = clearRows();
     renderScrubber();
@@ -400,6 +401,7 @@ export function initLibraryView(lib) {
     const div = document.createElement('div');
     div.className = row.type === 'header' ? `lib-row lib-head-row lib-head-${row.unit}` : 'lib-row';
     div.setAttribute('role', 'row');
+    div.setAttribute('aria-rowindex', String(ariaRowIndex(r)));
     div.style.transform = `translateY(${row.top}px)`;
     div.style.height = `${row.height}px`;
     if (row.type === 'header') {
@@ -579,7 +581,7 @@ export function initLibraryView(lib) {
     if (hasDirPicker) html += `<button class="btn lib-add" data-act="import-takeout">Import Google Takeout…</button>`;
     if (!hasDirPicker) html += `<p class="lib-side-note">${BROWSE_ONLY_NOTE}</p>`;
     html += `</div><div class="lib-side-sec lib-side-end">
-      ${viewBtn('hidden', 'Hidden', c.hidden)}
+      ${viewBtn('hidden', 'Hidden', lib.hiddenLocked?.() ? null : c.hidden)}
       ${viewBtn('trash', 'Trash', c.trashed)}
     </div>`;
     side.innerHTML = html;
@@ -738,7 +740,11 @@ export function initLibraryView(lib) {
       const files = await pickFiles();
       if (!files.length) return;
       root.files = files; // browse-only roots hold their files in memory (see library.js addRoot)
+    } else if (root.handle.requestPermission) {
+      // Ask here, from the click, then read the library file before anything is saved (review S1).
+      try { await root.handle.requestPermission({ mode: 'readwrite' }); } catch { /* the scan reports it */ }
     }
+    await lib.loadLibFile(root);
     rescanRoot(rootId);
   }
 

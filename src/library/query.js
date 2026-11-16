@@ -2,7 +2,7 @@
 // in-memory records, choices and albums, so the grid, the search box and the
 // agent commands all see the same answer. 100,000 records filter in one pass.
 
-import { dayKey, monthKey, folderOf, monthName, emptyChoice } from './schema.js';
+import { dayKey, monthKey, folderOf, monthName, emptyChoice, TRASH_DIR } from './schema.js';
 
 /**
  * @typedef {object} QueryOpts
@@ -118,12 +118,19 @@ export function query(records, choices, albums, opts = {}) {
   return sortRecords(out, opts.sort ?? 'time-desc');
 }
 
-// The user's rating wins; an XMP rating read from disk shows until they set one.
-export function effectiveRating(r, c) { return c.rating || r.xmpRating || 0; }
+// The user's rating wins; an XMP rating read from disk shows until they set one. A rating the
+// person cleared (`ratingSet` with rating 0) hides the XMP rating (review S10).
+export function effectiveRating(r, c) { return c.rating || (c.ratingSet ? 0 : r.xmpRating) || 0; }
+// Tags from the file and from Slate, without the file tags the person removed (`removedTags`).
 export function allTags(r, c) {
-  if (!r.xmpTags?.length) return c.tags || [];
-  if (!c.tags?.length) return r.xmpTags;
-  return [...new Set([...r.xmpTags, ...c.tags])];
+  let file = r.xmpTags || [];
+  if (file.length && c.removedTags?.length) {
+    const gone = new Set(c.removedTags.map(t => t.toLowerCase()));
+    file = file.filter(t => !gone.has(t.toLowerCase()));
+  }
+  if (!file.length) return c.tags || [];
+  if (!c.tags?.length) return file;
+  return [...new Set([...file, ...c.tags])];
 }
 
 export function sortRecords(list, sort) {
@@ -155,6 +162,7 @@ export function groupBy(list, unit = 'day') {
 export function folderCounts(records) {
   const out = new Map();
   for (const r of records) {
+    if (r.path.startsWith(TRASH_DIR + '/')) continue; // trashed files live under .slate-trash (review S21)
     if (!out.has(r.rootId)) out.set(r.rootId, new Map());
     const m = out.get(r.rootId);
     const f = folderOf(r.path);

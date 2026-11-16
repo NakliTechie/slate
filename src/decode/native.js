@@ -1,4 +1,5 @@
 // Browser-native decoder using createImageBitmap + Image element fallback for SVG
+import { checkPixels } from './limits.js';
 
 export async function decodeNative(blob) {
   const mime = blob.type;
@@ -28,6 +29,7 @@ async function decodeSvg(blob) {
     // Rasterize at natural size (or viewport size for SVG with no intrinsic dimensions)
     const w = img.naturalWidth || 1024;
     const h = img.naturalHeight || 1024;
+    checkPixels(w, h, 'This SVG file'); // Slate rasterises it at this size
     const canvas = new OffscreenCanvas(w, h);
     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
     return await createImageBitmap(canvas);

@@ -292,13 +292,13 @@ async function open(dir) {
   assert.equal(c('a/one.jpg').fav, true);
   assert.equal(c('a/two.jpg').rating, 5);
   assert.deepEqual(c('a/two.jpg').tags, ['trips/goa']);
-  assert.ok(c('b/three.heic').trashed, 'trash state comes back from the file');
+  assert.ok(c('.slate-trash/b/three.heic').trashed, 'trash state comes back from the file (keyed by its place in the trash, review S21)');
   const al2 = again.lib.albums.get(al.albumId);
   assert.equal(al2.name, 'Best');
   assert.deepEqual([...al2.items].sort(), [again.byPath('a/one.jpg'), again.byPath('a/two.jpg')]);
 
   // Restore through the Library puts the file back; emptying deletes it for good.
-  await lib.restore([byPath('b/three.heic')]);
+  await lib.restore([byPath('b/three.heic')]); // the original id still finds the trashed photo
   assert.ok(dir.has('b/three.heic') && dir.has('b/three.heic.xmp'));
   await lib.trash([byPath('b/three.heic')]);
   await lib.emptyTrash();

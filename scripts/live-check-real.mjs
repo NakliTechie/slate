@@ -20,7 +20,7 @@ const MODELS = args.includes('--models');
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const FOLDER = `slate-livecheck-real-${Date.now().toString(36)}`;
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => { const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` }); const v = JSON.parse(t); if (v && v.exc) throw new Error(v.exc); return v == null ? v : JSON.parse(v); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -31,13 +31,15 @@ const note = (s) => console.log(`  ${s}`);
 const L = 'const S=window.__slateLibrary, L=S.lib;';
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await raw('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
   if (!(await until('return !!window.__slateLibrary', 15000))) throw new Error('the library did not start');
   await ev(`window.__errs=[]; const ce=console.error; console.error=(...a)=>{ __errs.push(a.map(x=>x&&x.stack?String(x.stack).split('\\n').slice(0,2).join(' / '):String(x)).join(' ')); ce(...a); }; addEventListener('error',e=>__errs.push('X '+e.message)); addEventListener('unhandledrejection',e=>__errs.push('R '+(e.reason&&e.reason.message||e.reason))); return 1`);
-  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
+  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.download.ocr','1'); localStorage.setItem('slate.download.depth','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
 
   // ── copy the set into OPFS ──
   const copied = await ev(`
@@ -136,6 +138,7 @@ try {
   } catch (e) { note(`cleanup failed ${e.message}`); }
   await raw('Emulation.clearDeviceMetricsOverride').catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

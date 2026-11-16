@@ -72,8 +72,17 @@ const TOPUP_TERMS = ['old town', 'harbour', 'park', 'temple', 'church', 'museum'
 const TRAVEL_TERMS = ['landscape', 'city', 'street', 'view', 'beach', 'mountain', 'market', ''];
 // A few core photos taken on the same month and day across different years ("On this day").
 const SAME_DAY = { monthDay: '11-17', years: [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025], want: 12 };
-const PORTRAIT_PEOPLE = ['Pete Buttigieg', 'Kamala Harris', 'Lloyd Austin'];
-const PORTRAITS_PER_PERSON = 4;
+const PORTRAIT_PEOPLE = ['Joe Biden', 'Kamala Harris', 'Barack Obama'];
+const PORTRAITS_VERSION = 2;   // 2: single-person official portraits only (v1 had signatures and crowd shots)
+const PORTRAIT_TITLE_RX = /official|portrait|headshot/i;
+const PORTRAIT_REJECT_RX = /signature|painting|crop|family|views|looks at|in front of|\band\b|\bwith\b|&|signing|meets|statue|bust|mural/i;
+const PORTRAITS_PER_PERSON = 5;
+// Files removed after a visual check: not a single-person portrait (back view, crowd, handshake).
+const DENY_TITLES = new Set([
+  'File:Barack Obama looking JFK portrait.jpg',
+  'File:Flickr - Official U.S. Navy Imagery - President Barack Obama watches the 112th Army-Navy college football game..jpg',
+  'File:Flickr - Official U.S. Navy Imagery - President Barack Obama is greeted by the deputy commander of U.S. Fleet Forces Command..jpg',
+]);
 const TEXT_QUERIES = ['shop sign', 'storefront', 'street sign', 'signboard', 'notice board', 'menu board', 'road sign', 'shop front', 'poster wall', 'information sign'];
 const TEXT_WANT = 30;
 const TEXT_QUERIES_TOPUP = ['shop sign', 'storefront', 'street sign', 'signboard', 'notice board', 'menu board', 'road sign', 'shop front', 'information sign', 'plaque', 'restaurant menu', 'bus stop sign', 'neon sign', 'banner', 'billboard', 'warning sign', 'station name sign', 'inscription', 'shop window', 'street name'];
@@ -329,6 +338,36 @@ async function topUp(man) {
   man.topUpVersion = TOPUP_VERSION;
 }
 
+// Portraits: replace the v1 portraits with single-person official portraits of public figures.
+async function portraitPass(man) {
+  for (const f of man.files.filter((x) => x.group === 'portraits')) {
+    const abs = f.path && path.join(OUT, f.path);
+    if (abs && fs.existsSync(abs)) { fs.unlinkSync(abs); log('removed v1 portrait', f.path); }
+  }
+  man.files = man.files.filter((x) => x.group !== 'portraits');
+  for (const person of PORTRAIT_PEOPLE) {
+    const keys = new Set(); let n = 0;
+    for (const word of ['portrait', 'official']) {
+      if (n >= PORTRAITS_PER_PERSON) break;
+      const q = `intitle:"${person}" ${word} filetype:bitmap`;
+      let results = [];
+      try { results = await search(q); } catch (e) { log('search failed:', e.message); continue; }
+      for (const c of results) {
+        if (n >= PORTRAITS_PER_PERSON) break;
+        const key = c.title.replace(/\s*\(.*?\)/g, '').replace(/\.\w+$/, '').toLowerCase();
+        if (keys.has(key) || !isFree(c) || hasChildren(c)) continue;
+        if (!PORTRAIT_TITLE_RX.test(c.title) || PORTRAIT_REJECT_RX.test(c.title)) continue;
+        if (!new RegExp(person.split(' ').pop(), 'i').test(c.title)) continue;
+        if (c.width <= THUMB_WIDTH && !/image\/(jpeg|png)/.test(c.mime)) continue;
+        if (c.width < 600) continue;
+        man.files.push({ ...c, group: 'portraits', person, query: q }); keys.add(key); n++;
+      }
+    }
+    log(`portraits ${person}: ${n}`);
+  }
+  man.portraitsVersion = PORTRAITS_VERSION;
+}
+
 // Stable local paths (deterministic from the manifest order), then the derived bursts.
 function layout(man) {
   const used = new Set();
@@ -562,7 +601,7 @@ Built ${man.createdAt.slice(0, 10)}; ${v.files} files, ${mb(v.totalBytes)} in to
 |---|---|---|
 | core/ | ${v.groups.core ?? 0} | One travel library: camera EXIF (Make, Model, DateTimeOriginal), GPS where the original kept it, ${v.labelledCountries.length} countries on every continent, years ${v.years[0]} to ${v.years.at(-1)}. Some share a month and day across years for "On this day". |
 | bursts/ | ${v.groups.bursts ?? 0} | Near-duplicates made locally from ${BURST_SOURCES} CC0 core photos: a copy, a quality-60 re-save, a 98% crop, a 99% crop at quality 40. Marked derived in CREDITS.csv. |
-| portraits/ | ${v.groups.portraits ?? 0} | Public-domain US government photos of adult public figures (${PORTRAIT_PEOPLE.join(', ')}), several different photos each, for face grouping. |
+| portraits/ | ${v.groups.portraits ?? 0} | Public-domain official portraits of adult public figures (${PORTRAIT_PEOPLE.join(', ')}), several different photos each, for face grouping. |
 | text/ | ${v.groups.text ?? 0} | Signs, shop fronts and notices, for OCR. |
 | video/ | ${v.groups.video ?? 0} | Short CC0 clips under ${MAX_VIDEO_SECONDS} s and 30 MB. |
 
@@ -603,12 +642,18 @@ async function main() {
     const abs = path.join(OUT, f.path);
     if (fs.existsSync(abs)) f.fetched = fs.statSync(abs).size === f.size ? 'original' : 'thumb';
   }
+  // core thumbnails carry EXIF only because this script wrote it (earlier runs did not record the flag)
+  for (const f of man.files) if (f.group === 'core' && f.fetched === 'thumb') f.exifRewritten = true;
   // core is a camera travel library: drop photos of paintings and other artworks (and their files)
   const art = man.files.filter((f) => f.group === 'core' && ART_RX.test(`${f.title} ${f.categories} ${f.description ?? ''}`));
   for (const f of art) { const abs = f.path && path.join(OUT, f.path); if (abs && fs.existsSync(abs)) { fs.unlinkSync(abs); log('removed artwork file', f.path); } }
   if (art.length) { man.files = man.files.filter((f) => !art.includes(f)); log(`pruned ${art.length} artwork entries from core`); }
   if (man.sameDayVersion !== TOPUP_VERSION) await sameDayPass(man);
   if (man.topUpVersion !== TOPUP_VERSION) await topUp(man);
+  if (man.portraitsVersion !== PORTRAITS_VERSION) await portraitPass(man);
+  const denied = man.files.filter((f) => DENY_TITLES.has(f.title));
+  for (const f of denied) { const abs = f.path && path.join(OUT, f.path); if (abs && fs.existsSync(abs)) { fs.unlinkSync(abs); log('removed denied file', f.path); } }
+  man.files = man.files.filter((f) => !DENY_TITLES.has(f.title));
   await refreshMeta(man);
   layout(man);
   fs.writeFileSync(MANIFEST, JSON.stringify(man, null, 2));

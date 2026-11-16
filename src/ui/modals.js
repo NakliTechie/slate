@@ -1,5 +1,6 @@
 import { parseCube } from '../ops/lut.js';
 import { extractText } from '../ops/ocr.js';
+import { askDownload } from '../editor/commands.js';
 import { estimateDepth, depthDownloadMB } from '../ops/depth.js';
 import { renderLensBlur } from '../ops/lensblur.js';
 import { canDescribe, destination, describeImage } from '../ops/describe.js';
@@ -182,6 +183,7 @@ function showAdjust() {
 
 async function showOcr() {
   if (!state.image.working) return;
+  if (!askDownload('ocr')) return; // first use downloads the recogniser; ask first (review S26)
   const dlg = getOrCreate('modal-ocr');
   dlg.setAttribute('aria-label', 'Extract text');
   dlg.innerHTML = `
@@ -230,6 +232,7 @@ const LB_PREVIEW_W = 560, LB_PREVIEW_H = 400;
 
 async function showLensBlur() {
   if (!state.image.working) return;
+  if (!askDownload('depth')) return; // first use downloads the depth model; ask first (review S26)
   const src = state.image.working;
   const dlg = getOrCreate('modal-lensblur');
   dlg.setAttribute('aria-label', 'Background blur');
@@ -447,6 +450,10 @@ function showExport() {
           <input type="checkbox" id="exp-strip"${exp.stripExif ? ' checked' : ''}>
           Strip EXIF metadata
         </label>
+        <label style="margin-left:12px">
+          <input type="checkbox" id="exp-noloc"${exp.removeLocation !== false ? ' checked' : ''}>
+          Remove location
+        </label>
         <span class="modal-info" style="margin:0;padding-left:4px;font-size:10px;color:var(--fg-2)">JPEG only — PNG/WebP always stripped</span>
       </div>
       <div class="modal-field-row">
@@ -496,6 +503,7 @@ function showExport() {
     exp.format    = dlg.querySelector('input[name="exp-fmt"]:checked')?.value ?? 'png';
     exp.quality   = +qualityInp.value;
     exp.stripExif = dlg.querySelector('#exp-strip').checked;
+    exp.removeLocation = dlg.querySelector('#exp-noloc').checked;
     exp.embedEdits = dlg.querySelector('#exp-embed').checked;
     const chosenMode = dlg.querySelector('input[name="exp-mode"]:checked')?.value ?? 'download';
     savePrefs();

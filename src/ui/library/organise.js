@@ -8,7 +8,7 @@
 // initOrganise(lib, ui) uses from the view: ui.actionsEl, ui.hooks, ui.selection(),
 // ui.focused(), ui.current(), ui.toast(); and ui.focusNext() when the view has it.
 
-import { runCommand, MAX_WRITE_IDS } from '../../library/commands.js';
+import { runCommand, MAX_WRITE_IDS, visible } from '../../library/commands.js';
 import { emit, on } from '../../core/events.js';
 import { esc } from '../../core/html.js';
 import { exportFiles, pickExportFolder, albumExportIds, exportZip, pickZipSave, zipFileName, BLOB_WARN_BYTES } from '../../library/export.js';
@@ -576,7 +576,7 @@ export function initOrganise(lib, ui) {
   }
 
   async function emptyTrash() {
-    const n = lib.counts().trashed;
+    const n = (await run('trash.empty', { dryRun: true })).changed;
     if (!n) { say('The trash is empty'); return; }
     const files = plural(n, 'file');
     const ok = await confirmDialog('Empty trash', `Permanently delete ${files} in the trash? This cannot be undone.`, `Delete ${files}`);
@@ -624,7 +624,7 @@ export function initOrganise(lib, ui) {
 
   function setLock() {
     const lk = lib.services.lock;
-    passDialog('Lock hidden photos', ['From now on the Hidden view shows nothing until you enter this passphrase, once each session.', NOT_ENCRYPTED, 'Slate cannot recover a forgotten passphrase. Reset lock then removes the lock and leaves the photos hidden but viewable.'],
+    passDialog('Lock hidden photos', ['From now on hidden photos stay out of every view, search and agent command until you enter this passphrase, once each session.', NOT_ENCRYPTED, 'Slate cannot recover a forgotten passphrase. "Forgot the passphrase" lets you choose a new one, but the photos hidden at that moment stay locked behind the old passphrase.'],
       [{ label: 'Passphrase', auto: 'new-password' }, { label: 'Passphrase again', auto: 'new-password' }], 'Lock',
       async ([a, b]) => {
         if (a !== b) return 'The two passphrases differ.';
@@ -641,10 +641,34 @@ export function initOrganise(lib, ui) {
       async ([a]) => (await lk.unlock(a)) ? null : 'That passphrase is not right.');
   }
 
-  async function resetLock() {
-    const ok = await confirmDialog('Reset lock', 'Remove the passphrase? Hidden photos become viewable in the Hidden view to anyone who uses this browser. They stay hidden from the other views, and nothing is deleted.', 'Remove lock');
-    if (!ok) return;
-    try { await lib.services.lock.reset(); say('The lock is removed. Hidden photos are viewable in the Hidden view.', 'ok'); } catch (e) { fail(e); }
+  // Removing the lock needs the current passphrase, so a casual viewer cannot remove it.
+  function removeLock() {
+    const lk = lib.services.lock;
+    passDialog('Remove the lock', ['Enter the current passphrase to remove the lock. Hidden photos then show in the Hidden view to anyone who uses this browser. They stay hidden from the other views, and nothing is deleted.'],
+      [{ label: 'Current passphrase', auto: 'current-password' }], 'Remove lock',
+      async ([a]) => {
+        if (!(await lk.remove(a))) return 'That passphrase is not right.';
+        say('The lock is removed. Hidden photos show in the Hidden view.', 'ok');
+        return null;
+      });
+  }
+
+  // A forgotten passphrase: a new one locks photos hidden from now on; the photos hidden
+  // now stay locked behind the old one, so choosing a new passphrase shows nobody anything.
+  function forgotLock() {
+    const lk = lib.services.lock;
+    const hidden = [...lib.records.keys()].filter(id => lib.choice(id).hidden).length;
+    passDialog('Forgot the passphrase', [
+      `Slate cannot recover the passphrase and cannot show the ${plural(hidden, 'photo')} hidden now without it.`,
+      'Choose a new passphrase to lock photos you hide from now on. The photos hidden now stay hidden and locked: they show again only when you enter the old passphrase, or when someone with the folder removes their "hidden" entries from the .slate-library.json file in it.',
+      NOT_ENCRYPTED],
+      [{ label: 'New passphrase', auto: 'new-password' }, { label: 'New passphrase again', auto: 'new-password' }], 'Set new passphrase',
+      async ([a, b]) => {
+        if (a !== b) return 'The two passphrases differ.';
+        await lk.forgotPassphrase(a);
+        say('The new passphrase is set. The photos hidden before stay locked behind the old one.', 'ok');
+        return null;
+      });
   }
 
   // ── action bar ─────────────────────────────────────────────────────────
@@ -660,10 +684,11 @@ export function initOrganise(lib, ui) {
     const v = view(), ids = targets(), n = ids.length;
     const allFav = n > 0 && ids.every(id => lib.choice(id).fav);
     const allHidden = n > 0 && ids.every(id => lib.choice(id).hidden);
-    const trashed = v.view === 'trash' ? lib.counts().trashed : 0;
+    const trashed = v.view === 'trash' ? [...lib.records.keys()].filter(id => lib.choice(id).trashed && visible(lib, id)).length : 0;
     const lk = lib.services.lock;
     const lockState = !lk ? '' : lk.isLocked() ? (lk.isSet() ? 'locked' : '') : lk.isSet() ? 'open' : 'none';
-    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed, lockState, !!lib.services.textIndex].join('|');
+    const sealed = lk?.sealedCount?.() ?? 0;
+    const next = [v.view, v.albumId ?? '', n, allFav, allHidden, trashed, lockState, sealed, !!lib.services.textIndex].join('|');
     if (next === sig) return;
     sig = next;
     const off = n ? '' : ' disabled';
@@ -678,12 +703,14 @@ export function initOrganise(lib, ui) {
     if (hiddenView && lockState === 'locked') {
       bar.innerHTML = `<span class="org-count">Hidden photos are locked</span>
         <button type="button" class="btn btn-primary" data-act="unlock" aria-haspopup="dialog">Unlock…</button>
-        <button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`;
+        <button type="button" class="btn" data-act="remove-lock" aria-haspopup="dialog">Remove lock…</button>
+        <button type="button" class="btn" data-act="forgot-lock" aria-haspopup="dialog">Forgot the passphrase…</button>`;
       return;
     }
+    const sealedBtn = hiddenView && sealed ? `<span class="separator" aria-hidden="true"></span><span class="org-count">${plural(sealed, 'photo')} locked behind an older passphrase</span><button type="button" class="btn" data-act="unlock" aria-haspopup="dialog">Unlock them…</button>` : '';
     const lockBtns = !hiddenView ? ''
-      : lockState === 'open' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="relock">Lock now</button><button type="button" class="btn" data-act="reset-lock" aria-haspopup="dialog">Reset lock…</button>`
-      : lockState === 'none' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="set-lock" aria-haspopup="dialog" title="Ask for a passphrase before the Hidden view shows anything">Lock hidden photos…</button>` : '';
+      : (lockState === 'open' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="relock">Lock now</button><button type="button" class="btn" data-act="remove-lock" aria-haspopup="dialog">Remove lock…</button>`
+      : lockState === 'none' ? `<span class="separator" aria-hidden="true"></span><button type="button" class="btn" data-act="set-lock" aria-haspopup="dialog" title="Ask for a passphrase before hidden photos show anywhere">Lock hidden photos…</button>` : '') + sealedBtn;
     bar.innerHTML = `${count}
       <button type="button" class="btn" data-act="favourite" aria-pressed="${allFav}" title="Favourite (F)"${off}>${allFav ? 'Unfavourite' : 'Favourite'}</button>
       <button type="button" class="btn" data-act="rate" aria-haspopup="menu" title="Rate (0 to 5)"${off}>Rate</button>
@@ -733,7 +760,8 @@ export function initOrganise(lib, ui) {
       case 'set-lock': setLock(); break;
       case 'unlock': unlock(); break;
       case 'relock': lib.services.lock?.lock(); say('Hidden photos are locked', 'ok'); break;
-      case 'reset-lock': resetLock(); break;
+      case 'remove-lock': removeLock(); break;
+      case 'forgot-lock': forgotLock(); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }

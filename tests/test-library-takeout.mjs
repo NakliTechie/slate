@@ -1,7 +1,8 @@
 // Google Takeout: matching JSON to photos, reading the JSON, scan.js applying it, and
 // the zip import loop. Node only: fake directory handles, a fake zip module, memoryStore().
 import assert from 'node:assert/strict';
-import { matchSidecars, readTakeoutJson } from '../src/library/takeout.js';
+import { matchSidecars, readTakeoutJson, instantToWallClock } from '../src/library/takeout.js';
+const W = instantToWallClock; // Takeout instants are stored as the local wall clock (review S9)
 import { Library } from '../src/library/library.js';
 import { memoryStore } from '../src/library/store.js';
 import { makeId, newRecord } from '../src/library/schema.js';
@@ -84,7 +85,7 @@ await check('read: full shape', () => {
     people: [{ name: 'Asha' }, { name: 'Ravi' }, { name: 'Asha' }, {}],
     favorited: true, archived: true,
   }));
-  assert.equal(t.time, 1562167590 * 1000, 'photoTakenTime, seconds to ms');
+  assert.equal(t.time, W(1562167590 * 1000), 'photoTakenTime, seconds to ms');
   assert.deepEqual([t.lat, t.lon], [15.5527, 73.7517], 'geoData 0,0 ignored, geoDataExif used');
   assert.equal(t.description, 'Beach at Goa');
   assert.deepEqual(t.people, ['Asha', 'Ravi']);
@@ -92,7 +93,7 @@ await check('read: full shape', () => {
 });
 await check('read: creationTime when photoTakenTime is missing; geoData preferred', () => {
   const t = readTakeoutJson('{"creationTime":{"timestamp":"1600000000"},"geoData":{"latitude":51.5,"longitude":-0.12},"geoDataExif":{"latitude":1,"longitude":2},"trashed":true}');
-  assert.equal(t.time, 1600000000000);
+  assert.equal(t.time, W(1600000000000));
   assert.deepEqual([t.lat, t.lon], [51.5, -0.12]);
   assert.equal(t.trashed, true);
   assert.equal(t.description, '');
@@ -154,13 +155,13 @@ await check('scan: Takeout JSON fills time, GPS, description and people; JSON is
   assert.equal(recs.length, 3, `3 photos indexed, got ${recs.map(r => r.path).join(', ')}`);
   assert.ok(recs.every(r => r.ext !== 'json'));
   const r1 = lib.get(makeId(root.id, 'Trip/IMG_1.jpg'));
-  assert.equal(r1.time, 1562167590000);
+  assert.equal(r1.time, W(1562167590000));
   assert.equal(r1.timeSource, 'takeout');
   assert.deepEqual([r1.lat, r1.lon], [15.5, 73.8]);
   assert.equal(r1.description, 'Sunset');
   assert.deepEqual(r1.xmpTags, ['people/Asha']);
   const ed = lib.get(makeId(root.id, 'Trip/IMG_1-edited.jpg'));
-  assert.equal(ed.time, 1562167590000, 'the edited copy reads the original JSON');
+  assert.equal(ed.time, W(1562167590000), 'the edited copy reads the original JSON');
 });
 
 await check('scan: favourite, archived and trashed become choices once', async () => {
@@ -195,7 +196,7 @@ await check('scan: Takeout details are saved once as meta and survive a rebuild 
   const root = await lib.addRoot({ handle: fakeDir('Takeout', tree), name: 'Takeout' });
   await lib.flush();
   const meta = saved.items['Trip/IMG_1.jpg'].meta;
-  assert.deepEqual(meta, { taken: '2019-07-03T15:26:30', lat: 15.5, lon: 73.8, caption: 'Sunset', people: ['Asha'], source: 'takeout' });
+  assert.deepEqual(meta, { taken: new Date(W(1562167590000)).toISOString().slice(0, 19), lat: 15.5, lon: 73.8, caption: 'Sunset', people: ['Asha'], source: 'takeout' });
   // A changed JSON is not read again once meta exists.
   tree.Trip['IMG_1.jpg.supplemental-metadata.json'] = tj({ photoTakenTime: { timestamp: '1000' }, description: 'Changed' });
   await scanRoot(lib, root, { full: true });
@@ -207,10 +208,10 @@ await check('scan: Takeout details are saved once as meta and survive a rebuild 
   await fresh.addRoot({ handle: fakeDir('Takeout', tree), name: 'Takeout' });
   await fresh.rebuild();
   const r1 = [...fresh.records.values()].find(r => r.path === 'Trip/IMG_1.jpg');
-  assert.deepEqual([r1.time, r1.timeSource, r1.lat, r1.lon, r1.description], [1562167590000, 'takeout', 15.5, 73.8, 'Sunset']);
+  assert.deepEqual([r1.time, r1.timeSource, r1.lat, r1.lon, r1.description], [W(1562167590000), 'takeout', 15.5, 73.8, 'Sunset']);
   assert.deepEqual(r1.xmpTags, ['people/Asha']);
   const r2 = [...fresh.records.values()].find(r => r.path === 'Trip/IMG_2.jpg');
-  assert.equal(r2.time, 1600000000000, 'a creationTime date survives too');
+  assert.equal(r2.time, W(1600000000000), 'a creationTime date survives too');
 });
 
 // ── zip import loop ─────────────────────────────────────────────────────────
@@ -264,7 +265,7 @@ await check('import: parts one at a time, album folders kept, same-size files sk
   const part2 = [['Takeout/Google Photos/Photos from 2019/IMG_2.jpg', 'defg'], ['Takeout/Google Photos/Trip/bad.jpg', null]];
   const seen = [];
   let res = await importTakeoutZips({ zips: [part1, part2], dest, zipLib: fakeZip, onProgress: p => seen.push(p.part) });
-  assert.deepEqual(res, { written: 3, skipped: 0, failed: 1, bytes: 9 });
+  assert.deepEqual(res, { written: 3, skipped: 0, conflicts: 0, failed: 1, bytes: 9 });
   assert.equal(dest.dirs.get('Trip').files.get('IMG_1.jpg'), 'abc');
   assert.equal(dest.dirs.get('Photos from 2019').files.get('IMG_2.jpg'), 'defg');
   assert.ok(!dest.files.has('archive_browser.html'));

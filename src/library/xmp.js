@@ -9,7 +9,9 @@
 // parseXmp(text) -> { tags: string[], rating: number, label: string|null,
 //                     time: number|null, lat: number|null, lon: number|null }
 // sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
-// buildXmp({ rating, flag, label, tags, regions, existing }) -> XMP packet text (see below)
+// buildXmp({ rating, flag, label, tags, regions, existing }) -> XMP packet text, or null when
+//   `existing` is a sidecar this code cannot edit safely (see canEditXmp)
+// canEditXmp(existing) -> true when there is no sidecar text, or it has an rdf:Description to merge into
 // parseRegions(text) -> MWG face regions (spec row F3), see "face regions" below
 
 import { normTag, wallClockToTime } from './schema.js';
@@ -193,7 +195,19 @@ function bag(qname, items, pad) {
   return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
 }
 
+// A sidecar Slate can merge into: empty, or text with an `<rdf:Description` element written with
+// the lower-case `rdf:` prefix. A UTF-16 file read as UTF-8 (NUL bytes, a U+FFFD from its BOM), an
+// `RDF:` prefix or any other shape is not understood, and replacing it would lose every property
+// Slate does not own (review S11), so the caller must leave it alone.
+export function canEditXmp(existing) {
+  const text = existing == null ? '' : String(existing);
+  if (!text.trim()) return true;
+  if (/[\u0000\uFFFD]/.test(text) || /^\uFFFE/.test(text)) return false;
+  return /<rdf:Description\b[^>]*?\/?>/.test(text);
+}
+
 export function buildXmp({ rating = 0, flag = null, label, tags = [], regions, existing = null } = {}) {
+  if (!canEditXmp(existing)) return null;
   const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
   const clean = [...new Set(tags.map(normTag).filter(Boolean))];
   const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
@@ -209,7 +223,7 @@ export function buildXmp({ rating = 0, flag = null, label, tags = [], regions, e
   if (regions?.regions?.length) props += regionsXml(regions, pad);
   const ns = regions?.regions?.length ? { ...NS, ...REGION_NS } : NS;
 
-  let text = existing ? String(existing) : '';
+  let text = existing && String(existing).trim() ? String(existing) : '';
   const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
   if (!open) {
     return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>

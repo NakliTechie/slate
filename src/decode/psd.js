@@ -1,15 +1,16 @@
 import { emit } from '../core/events.js';
+import { importPinned, ENTRIES } from './pinned.js';
+import { checkPsd } from './limits.js';
 
 // ag-psd returns a flattened canvas via its initialized canvas factory.
-// Exact version pin per SECURITY.md.
-const URL = 'https://esm.sh/ag-psd@30.1.1';
+// Loaded from esm.sh, each file checked against its pinned SHA-256 (pinned.js, SECURITY.md).
 
 let _libPromise = null;
 
 async function getLib() {
   if (_libPromise) return _libPromise;
   emit('toast', { message: 'Loading PSD decoder…', level: 'info', duration: 8000 });
-  _libPromise = import(URL)
+  _libPromise = importPinned(ENTRIES.agPsd)
     .then(mod => {
       const lib = mod.default ?? mod;
       // ag-psd needs to be told how to make a canvas in non-DOM contexts;
@@ -27,8 +28,9 @@ async function getLib() {
 }
 
 export async function decodePsd(blob) {
-  const lib = await getLib();
   const buf = await blob.arrayBuffer();
+  checkPsd(new Uint8Array(buf));
+  const lib = await getLib();
   const psd = lib.readPsd(buf, { skipLayerImageData: true, skipThumbnail: true });
   if (!psd?.canvas) throw new Error('PSD has no rendered composite — file may be empty or unsupported');
   const W = psd.width ?? psd.canvas.width;

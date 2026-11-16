@@ -1,6 +1,8 @@
 // Export (spec row I4): copy the original files of a selection or an album into
 // a folder the person picks. Originals only, byte for byte; nothing is re-encoded.
 // A name that is already taken in the destination gets " (2)", " (3)" and so on.
+// A Live Photo's paired MOV (record field `liveVideo`) is exported with its still and
+// named after the still's export name (IMG_1 (2).HEIC goes with IMG_1 (2).MOV).
 // Progress runs on lib.jobs as kind 'export', so the status line counts it.
 //
 // exportFiles(lib, ids, destDir) -> Promise<{ copied, failed, total }>
@@ -20,6 +22,8 @@
 // pickZipSave(suggestedName) -> WritableStream, or null when cancelled; undefined when the
 //   browser has no showSaveFilePicker. Call it straight from a click.
 
+import { makeId } from './schema.js';
+
 export function uniqueName(name, taken) {
   const lower = (s) => s.toLowerCase();
   if (!taken.has(lower(name))) { taken.add(lower(name)); return name; }
@@ -29,6 +33,25 @@ export function uniqueName(name, taken) {
     const next = `${stem} (${n})${ext}`;
     if (!taken.has(lower(next))) { taken.add(lower(next)); return next; }
   }
+}
+
+// [{ id, name, fileId }] for the ids, in order: each still, then its paired MOV.
+// fileId is the id lib.getFile reads (the MOV has no record of its own).
+function exportItems(lib, ids, taken) {
+  const out = [];
+  for (const id of new Set(ids)) {
+    const rec = lib.get(id);
+    if (!rec) continue;
+    const name = uniqueName(rec.name, taken);
+    out.push({ id, name, fileId: id });
+    if (rec.liveVideo) {
+      const mov = rec.liveVideo.slice(rec.liveVideo.lastIndexOf('/') + 1);
+      const i = name.lastIndexOf('.'), j = mov.lastIndexOf('.');
+      const want = (i > 0 ? name.slice(0, i) : name) + (j > 0 ? mov.slice(j) : '');
+      out.push({ id, name: uniqueName(want, taken), fileId: makeId(rec.rootId, rec.liveVideo) });
+    }
+  }
+  return out;
 }
 
 export async function pickExportFolder() {
@@ -59,12 +82,11 @@ async function copyInto(file, dir, name) {
 }
 
 export async function exportFiles(lib, ids, destDir) {
-  const list = [...new Set(ids)].filter(id => lib.get(id));
-  if (!list.length) return { copied: 0, failed: 0, total: 0 };
+  if (!ids.some(id => lib.get(id))) return { copied: 0, failed: 0, total: 0 };
   // Names are reserved up front, so parallel copies never race for one name.
   const taken = new Set();
   for await (const [n] of destDir.entries()) taken.add(n.toLowerCase());
-  const items = list.map(id => ({ id, name: uniqueName(lib.get(id).name, taken) }));
+  const items = exportItems(lib, ids, taken);
 
   let copied = 0, failed = 0;
   return new Promise((resolve) => {
@@ -74,7 +96,7 @@ export async function exportFiles(lib, ids, destDir) {
     lib.jobs.add('export', items, async (item, signal) => {
       try {
         if (signal?.aborted) throw new Error('cancelled');
-        await copyInto(await lib.getFile(item.id), destDir, item.name);
+        await copyInto(await lib.getFile(item.fileId), destDir, item.name);
         copied++;
       } catch (e) { failed++; throw e; }
       finally { tick(); }
@@ -100,10 +122,10 @@ export function zipFileName(label, date = new Date()) {
   return `${clean} ${d}.zip`;
 }
 
-// Unique entry names for the zip, in the order of ids, as the folder export names them.
+// Unique entry names for the zip, in the order of ids, as the folder export names them,
+// each paired Live Photo MOV straight after its still.
 export function zipEntries(lib, ids) {
-  const taken = new Set();
-  return [...new Set(ids)].filter(id => lib.get(id)).map(id => ({ id, name: uniqueName(lib.get(id).name, taken) }));
+  return exportItems(lib, ids, new Set());
 }
 
 export async function pickZipSave(suggestedName) {
@@ -116,7 +138,7 @@ export async function pickZipSave(suggestedName) {
 
 export async function exportZip(lib, ids, { zipLib, writer } = {}) {
   const items = zipEntries(lib, ids);
-  const bytes = items.reduce((n, it) => n + (lib.get(it.id).size || 0), 0);
+  const bytes = items.reduce((n, it) => n + (it.fileId === it.id ? lib.get(it.id).size || 0 : 0), 0);
   const zip = new zipLib.ZipWriter(writer, { zip64: bytes > ZIP64_BYTES || items.length > 0xFFFF });
   let copied = 0, failed = 0, fatal = null, cancelled = false;
   // zip.js writes one entry at a time to a stream; the chain keeps the adds in order,
@@ -130,7 +152,7 @@ export async function exportZip(lib, ids, { zipLib, writer } = {}) {
         const step = chain.then(async () => {
           if (signal?.aborted || fatal) throw new Error('cancelled');
           let file;
-          try { file = await lib.getFile(item.id); } catch (e) { failed++; throw e; }
+          try { file = await lib.getFile(item.fileId); } catch (e) { failed++; throw e; }
           try {
             const level = zipLevelFor(item.name);
             const opts = {};

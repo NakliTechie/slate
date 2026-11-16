@@ -24,7 +24,7 @@ const FOLDER = `slate-livecheck-${Date.now().toString(36)}`;
 const FAKE = 100000;
 
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = async (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => {
   const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` });
@@ -63,7 +63,9 @@ let finishing = null;
 const finish = () => finishing ??= cleanup();
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   // Chrome slows timers and media in a tab that is not in front, and this is the person's everyday Chrome.
   // Keep the test tab active and focused for the whole run.
@@ -294,6 +296,7 @@ async function cleanup() {
   } catch (e) { console.log(`  cleanup failed: ${e.message}`); }
   await raw('Emulation.clearDeviceMetricsOverride').catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(r => r.ok).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(results.every(r => r.ok) ? 0 : 1);

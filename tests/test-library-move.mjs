@@ -186,7 +186,8 @@ for (const withMove of [true, false]) {
 
   // Trashed files cannot move.
   await lib.trash([id('in/three.jpg')]);
-  const tr = await lib.moveFiles([{ id: id('in/three.jpg'), toPath: 'z/three.jpg' }], { dryRun: true });
+  // A trashed file is keyed by its place in the trash (review S21).
+  const tr = await lib.moveFiles([{ id: id('.slate-trash/in/three.jpg'), toPath: 'z/three.jpg' }], { dryRun: true });
   assert.equal(tr.conflicts[0].reason, 'the file is in the trash');
 
   // Rename from a template, numbered in capture order.

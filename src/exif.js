@@ -248,3 +248,90 @@ export function stripJpegExif(buffer) {
   for (const chunk of out) { result.set(chunk, pos); pos += chunk.byteLength; }
   return result.buffer;
 }
+
+// ── Export: a cleaned copy of the original EXIF APP1 segment (review finding S19) ──
+//
+// With "Strip EXIF" off, the editor writes the original EXIF into the new JPEG. Copied as it
+// is, that block keeps three things that no longer describe the file:
+//   - the embedded thumbnail (IFD1), which still shows the picture before any crop or blur;
+//   - the orientation tag, while the exported pixels are already upright;
+//   - the GPS position, which the person may not want to share.
+// sanitiseExifApp1 returns a copy with the thumbnail and its directory overwritten with zeros and
+// unlinked, orientation set to 1, and, when removeLocation is true, the GPS directory and its
+// values overwritten with zeros and its entry removed from IFD0. Every other byte keeps its
+// offset, so maker notes and other offset-based data stay valid. A block it cannot read in full
+// returns null, and the caller then writes no EXIF at all.
+
+const TYPE_BYTES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
+
+export function sanitiseExifApp1(app1, { removeLocation = true } = {}) {
+  try {
+    const out = new Uint8Array(app1 instanceof ArrayBuffer ? app1.slice(0) : app1.slice());
+    const seg = new DataView(out.buffer);
+    if (seg.getUint16(0) !== 0xFFE1 || seg.getUint32(4) !== 0x45786966 || seg.getUint16(8) !== 0) return null;
+    const T = 10; // TIFF header offset in the segment
+    const len = out.byteLength - T;
+    const v = new DataView(out.buffer, T, len);
+    const bo = v.getUint16(0);
+    if (bo !== 0x4949 && bo !== 0x4D4D) return null;
+    const le = bo === 0x4949;
+    if (v.getUint16(2, le) !== 42) return null;
+
+    const need = (off, n) => { if (!(off >= 8 && off + n <= len)) throw new Error('EXIF offset out of range'); };
+    const zero = (off, n) => { need(off, n); out.fill(0, T + off, T + off + n); };
+    const count = (ifd) => { need(ifd, 2); const n = v.getUint16(ifd, le); need(ifd, 2 + n * 12 + 4); return n; };
+    const find = (ifd, tag) => {
+      const n = count(ifd);
+      for (let i = 0; i < n; i++) if (v.getUint16(ifd + 2 + i * 12, le) === tag) return ifd + 2 + i * 12;
+      return -1;
+    };
+    const valueOf = (e) => {
+      const type = v.getUint16(e + 2, le);
+      return type === 3 ? v.getUint16(e + 8, le) : v.getUint32(e + 8, le);
+    };
+    // Zero a directory's entries, its next pointer and every value stored outside it.
+    const zeroIfd = (ifd) => {
+      const n = count(ifd);
+      for (let i = 0; i < n; i++) {
+        const e = ifd + 2 + i * 12;
+        const size = (TYPE_BYTES[v.getUint16(e + 2, le)] ?? 1) * v.getUint32(e + 4, le);
+        if (size > 4) zero(v.getUint32(e + 8, le), size);
+      }
+      zero(ifd, 2 + n * 12 + 4);
+    };
+
+    const ifd0 = v.getUint32(4, le);
+    count(ifd0);
+
+    const o = find(ifd0, 0x0112);
+    if (o >= 0) v.setUint16(o + 8, 1, le);
+
+    const nextAt = () => ifd0 + 2 + v.getUint16(ifd0, le) * 12;
+    const ifd1 = v.getUint32(nextAt(), le);
+    if (ifd1) {
+      const jo = find(ifd1, 0x0201), jl = find(ifd1, 0x0202);
+      if (jo >= 0 && jl >= 0) zero(valueOf(jo), valueOf(jl));
+      const so = find(ifd1, 0x0111), sl = find(ifd1, 0x0117); // a TIFF-style thumbnail, one strip
+      if (so >= 0 && sl >= 0 && v.getUint32(so + 4, le) === 1 && v.getUint32(sl + 4, le) === 1) zero(valueOf(so), valueOf(sl));
+      zeroIfd(ifd1);
+      v.setUint32(nextAt(), 0, le);
+    }
+
+    if (removeLocation) {
+      const g = find(ifd0, 0x8825);
+      if (g >= 0) {
+        const gps = valueOf(g);
+        if (gps) zeroIfd(gps);
+        // Remove the entry: move the later entries and the next pointer up by 12 bytes.
+        const n = v.getUint16(ifd0, le);
+        const end = ifd0 + 2 + n * 12 + 4;
+        out.copyWithin(T + g, T + g + 12, T + end);
+        out.fill(0, T + end - 12, T + end);
+        v.setUint16(ifd0, n - 1, le);
+      }
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}

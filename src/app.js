@@ -388,7 +388,8 @@ async function doSave(showDialog = false) {
   let blob;
   try {
     if (exp.format === 'png') blob = await encodePng(flat);
-    else if (exp.format === 'jpeg') blob = await encodeJpeg(flat, exp.quality, exifRaw);
+    // Kept EXIF loses its thumbnail and orientation; "Remove location" (on unless set false) drops GPS.
+    else if (exp.format === 'jpeg') blob = await encodeJpeg(flat, exp.quality, exifRaw, { removeLocation: exp.removeLocation !== false });
     else if (exp.format === 'tiff') blob = await encodeTiff(flat);
     else blob = await encodeWebp(flat, exp.quality);
     if (exp.embedEdits) blob = await embedRecipe(blob, exp.format, buildRecipe(state.history.opsToPointer(), { w: image.width, h: image.height }));

@@ -238,7 +238,9 @@ export function createClip(lib, { embedder = null, readThumb = null } = {}) {
     return b;
   }
 
-  const wanted = (r) => r && !r.missing && r.thumb === 'ok';
+  // Photos the lock hides (lib.visible, locked.js) get no vector and match no search until it opens.
+  const vis = (id) => (lib.visible ? lib.visible(id) : true);
+  const wanted = (r) => r && !r.missing && r.thumb === 'ok' && vis(r.id);
   function indexable() {
     const out = [];
     for (const r of lib.records.values()) if (wanted(r) && !sets.get(r.rootId)?.has(r.id)) out.push(r);
@@ -363,6 +365,7 @@ export function createClip(lib, { embedder = null, readThumb = null } = {}) {
     clearTimeout(enqueueTimer);
     enqueueTimer = setTimeout(() => { const p = pendingIds; pendingIds = null; index(p ? [...p] : null); }, ENQUEUE_DELAY_MS);
   });
+  lib.on('choices', (ev) => { if (ev?.reason === 'lock' && setting?.on && loaded) index(); });
   lib.on('roots', () => {
     for (const rid of [...sets.keys()]) {
       if (lib.roots.has(rid)) continue;
@@ -427,7 +430,7 @@ export function createClip(lib, { embedder = null, readThumb = null } = {}) {
       if (!setting?.on) throw new Error('Search by meaning is off');
       const e = await ensureModel();
       const v = await e.text(String(text));
-      return topK(allSets(), v, { k, min });
+      return topK(allSets(), v, { k, min }).filter(h => vis(h.id));
     },
 
     // The nearest photos to one photo by image vector, the photo itself left out.
@@ -435,7 +438,8 @@ export function createClip(lib, { embedder = null, readThumb = null } = {}) {
       const r = lib.get(id);
       const v = r && sets.get(r.rootId)?.vector(id);
       if (!v) return [];
-      return topK(allSets(), v, { k, min, skip: new Set([id]) });
+      if (!vis(id)) return [];
+      return topK(allSets(), v, { k, min, skip: new Set([id]) }).filter(h => vis(h.id));
     },
 
     // Write pending vectors now.

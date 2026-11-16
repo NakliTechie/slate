@@ -1,9 +1,10 @@
 import { emit } from '../core/events.js';
+import { importPinned, ENTRIES } from './pinned.js';
+import { checkPixels } from './limits.js';
 
-// libheif-js loaded lazily from esm.sh. Exact version pin per SECURITY.md.
-// To upgrade: fetch the new bundle, audit the JS bytes, update the version +
-// content hash in SECURITY.md, then update this constant.
-const LIBHEIF_URL = 'https://esm.sh/libheif-js@1.19.8/wasm-bundle.js';
+// libheif-js loaded lazily from esm.sh, each file checked against its pinned SHA-256
+// (pinned.js, SECURITY.md). To upgrade: change the path in pinned.js, fetch and read the
+// new files, and record their hashes there and in SECURITY.md.
 
 let _libheifPromise = null;
 let _triedNative = false;
@@ -26,7 +27,7 @@ async function tryNative(blob) {
 async function getLibheif() {
   if (_libheifPromise) return _libheifPromise;
   emit('toast', { message: 'Loading HEIC decoder…', level: 'info', duration: 8000 });
-  _libheifPromise = import(LIBHEIF_URL)
+  _libheifPromise = importPinned(ENTRIES.libheif)
     .then(mod => {
       const libheif = mod.default ?? mod;
       // Some builds export a factory; others export the class directly.
@@ -55,6 +56,7 @@ export async function decodeHeic(blob) {
   const image = images[0];
   const width = image.get_width();
   const height = image.get_height();
+  checkPixels(width, height, 'This HEIC file');
 
   const imageData = new ImageData(width, height);
   await new Promise((resolve, reject) => {

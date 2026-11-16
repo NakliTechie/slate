@@ -48,11 +48,18 @@ async function sizeIfExists(dir, name) {
   try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch { return -1; }
 }
 
+const numbered = (name, n) => { const i = name.lastIndexOf('.'); return i > 0 ? `${name.slice(0, i)} (${n})${name.slice(i)}` : `${name} (${n})`; };
+
 // zips: File[]; dest: FileSystemDirectoryHandle (readwrite); zipLib: the zip.js module.
-// onProgress({ part, parts, entry, entries, name, written, skipped, failed }).
-// Returns { written, skipped, failed, bytes }.
+// onProgress({ part, parts, entry, entries, name, written, skipped, conflicts, failed }).
+// Returns { written, skipped, conflicts, failed, bytes }.
+// Nothing is overwritten. A file of the same size already at the path is skipped (an earlier
+// import). Another file at the path, or a second entry this import already wrote to that name
+// (names that differ only by case, or that become the same safe name), makes the entry go to
+// "name (2).ext", or the next free number, and counts as a conflict.
 export async function importTakeoutZips({ zips, dest, zipLib, onProgress = () => {}, signal } = {}) {
-  const res = { written: 0, skipped: 0, failed: 0, bytes: 0 };
+  const res = { written: 0, skipped: 0, conflicts: 0, failed: 0, bytes: 0 };
+  const claimed = new Set(); // "folder/name" in lower case, for every name this import wrote or kept
   const dirs = new Map([['', dest]]);
   const dirFor = async (segs) => {
     let path = '', dir = dest;
@@ -75,11 +82,25 @@ export async function importTakeoutZips({ zips, dest, zipLib, onProgress = () =>
         const segs = e.directory ? null : destPath(e.filename);
         onProgress({ part: p + 1, parts: zips.length, entry: i + 1, entries: entries.length, name: e.filename, ...res });
         if (!segs) continue;
-        const name = segs[segs.length - 1];
+        const folder = segs.slice(0, -1).join('/').toLowerCase();
+        const key = (n) => `${folder}/${n.toLowerCase()}`;
+        let name = segs[segs.length - 1];
         let w = null;
         try {
           const dir = await dirFor(segs.slice(0, -1));
-          if (await sizeIfExists(dir, name) === e.uncompressedSize) { res.skipped++; continue; }
+          let size = claimed.has(key(name)) ? -2 : await sizeIfExists(dir, name);
+          if (size !== -1 && size !== e.uncompressedSize) {
+            const base = name;
+            for (let k = 2; ; k++) {
+              name = numbered(base, k);
+              if (claimed.has(key(name))) continue;
+              size = await sizeIfExists(dir, name);
+              if (size === -1 || size === e.uncompressedSize) break;
+            }
+            if (size === -1) res.conflicts++;
+          }
+          claimed.add(key(name));
+          if (size === e.uncompressedSize) { res.skipped++; continue; }
           w = await (await dir.getFileHandle(name, { create: true })).createWritable();
           await e.getData(w, { signal, preventClose: true });
           await w.close();
@@ -111,6 +132,7 @@ export function openImportDialog() {
   dlg.innerHTML = `<div class="modal-header"><h2 id="imp-title">${esc('Import Google Takeout')}</h2></div>
     <div class="imp-body">
       <p class="imp-text">Choose the takeout zip parts and an empty folder. Slate copies the photos, videos and their Google JSON into the folder, keeping the album folders, then adds it to the library. The zips stay as they are.</p>
+      <p class="imp-text">Use an empty folder. Slate never overwrites a file: one of the same size is skipped as already imported, and a different file with the same name is saved as "name (2)".</p>
       ${canWrite ? '' : '<p class="imp-warn">Importing needs a browser that can write to folders, such as Chrome or Edge.</p>'}
       <label class="imp-label">Takeout zip parts
         <input type="file" class="imp-zips" accept=".zip,application/zip" multiple${canWrite ? '' : ' disabled'}></label>
@@ -157,7 +179,7 @@ export function openImportDialog() {
         zips, dest, zipLib, signal: ctl.signal,
         onProgress: (p) => {
           barEl.value = ((p.part - 1) + p.entry / Math.max(1, p.entries)) / p.parts;
-          statusEl.textContent = `Part ${p.part} of ${p.parts}: ${p.written.toLocaleString('en-GB')} copied, ${p.skipped.toLocaleString('en-GB')} already there`;
+          statusEl.textContent = `Part ${p.part} of ${p.parts}: ${p.written.toLocaleString('en-GB')} copied, ${p.skipped.toLocaleString('en-GB')} already there${p.conflicts ? `, ${p.conflicts.toLocaleString('en-GB')} saved under a new name` : ''}`;
         },
       });
     } catch (e) {
@@ -168,13 +190,13 @@ export function openImportDialog() {
     cancelEl.textContent = 'Close';
     if (!res) return;
     const stopped = ctl.signal.aborted ? 'Stopped. ' : '';
-    const msg = `${stopped}Copied ${res.written.toLocaleString('en-GB')} files, skipped ${res.skipped.toLocaleString('en-GB')} already there${res.failed ? `, ${res.failed.toLocaleString('en-GB')} could not be copied` : ''}.`;
+    const msg = `${stopped}Copied ${res.written.toLocaleString('en-GB')} files, skipped ${res.skipped.toLocaleString('en-GB')} already there${res.conflicts ? `, saved ${res.conflicts.toLocaleString('en-GB')} under a new name such as "IMG_1 (2).jpg" because another file had that name` : ''}${res.failed ? `, ${res.failed.toLocaleString('en-GB')} could not be copied` : ''}.`;
     barEl.value = 1;
     statusEl.textContent = `${msg} Adding the folder to the library…`;
     try {
       if (_lib) await addOrRescan(_lib, dest);
       statusEl.textContent = msg;
-      say(msg, res.failed ? 'warn' : 'ok');
+      say(msg, res.failed || res.conflicts ? 'warn' : 'ok');
     } catch (e) {
       statusEl.textContent = `${msg} Could not add the folder: ${e.message}`;
     }
@@ -205,7 +227,7 @@ export function openICloudDialog() {
   dlg.setAttribute('aria-labelledby', 'imp-icloud-title');
   dlg.innerHTML = `<div class="modal-header"><h2 id="imp-icloud-title">${esc('Apply iCloud export details')}</h2></div>
     <div class="imp-body">
-      <p class="imp-text">Add the folder of iCloud photos to the library first. Then choose its CSV files: Photo Details.csv for favourites, hidden photos and dates, and the files in Albums for albums. Photos are matched by file name. A date from the CSV is used only for a photo with no date of its own.</p>
+      <p class="imp-text">Add the folder of iCloud photos to the library first. Then choose its CSV files: Photo Details.csv for favourites, hidden photos and dates, and the files in Albums for albums. Photos are matched by file name; a name that matches more than one photo is skipped and listed. A date from the CSV is used only for a photo with no date of its own.</p>
       ${roots.length ? '' : '<p class="imp-warn">Add the folder of iCloud photos to the library first.</p>'}
       <label class="imp-label">Library folder
         <select class="imp-root"${roots.length ? '' : ' disabled'}>${roots.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>
@@ -226,6 +248,7 @@ export function openICloudDialog() {
   const read = async () => Promise.all([...csvEl.files].map(async f => ({ name: f.webkitRelativePath || f.name, text: await f.text() })));
   const describe = (r) => {
     const lines = [`Matched ${n(r.matched)} photos by name${r.unmatched ? `; ${n(r.unmatched)} names in the CSV are not in this folder` : ''}.`];
+    if (r.ambiguous) lines.push(`Skipped ${n(r.ambiguous)} names that match more than one photo in this folder: ${r.ambiguousNames.join(', ')}${r.ambiguous > r.ambiguousNames.length ? ' and more' : ''}.`);
     lines.push(`Favourites: ${n(r.favourites)}. Hidden: ${n(r.hidden)}. Dates filled: ${n(r.dates)}.`);
     for (const a of r.albums) lines.push(`Album ${a.name}: ${a.created ? 'new, ' : ''}${n(a.added)} photos added.`);
     if (r.skippedFiles) lines.push(`${n(r.skippedFiles)} CSV files were not recognised and are skipped.`);

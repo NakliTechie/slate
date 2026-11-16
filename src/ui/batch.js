@@ -2,7 +2,7 @@ import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { hasDirPicker } from '../core/fs.js';
 import { formatOf, isSupportedFile, decode } from '../decode/registry.js';
-import { parseExif } from '../exif.js';
+import { parseExif, sanitiseExifApp1 } from '../exif.js';
 import { esc } from '../core/html.js';
 import { getLibrary } from '../library/boot.js';
 
@@ -408,7 +408,8 @@ async function doRun(dlg) {
           throw new Error(`cannot overwrite a .${formatOf(job.src.file)} file with ${outFmt.toUpperCase()} data — write to a folder instead`);
         }
 
-        const exifRaw = (!snapshot.convert.enabled || !snapshot.convert.stripExif) && outFmt === 'jpeg' ? exif?.raw : null;
+        // Kept EXIF is cleaned first (exif.js): no stale thumbnail, orientation 1, no GPS (review S19).
+        const exifRaw = (!snapshot.convert.enabled || !snapshot.convert.stripExif) && outFmt === 'jpeg' && exif?.raw ? sanitiseExifApp1(exif.raw, { removeLocation: true }) : null;
         const outName = await computeOutputName(job.src, job.index, exif, outFmt);
 
         // Formats the worker cannot open are decoded here and transferred in.

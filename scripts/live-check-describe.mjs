@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 const URL0 = (() => { const i = args.indexOf('--url'); return i >= 0 ? args[i + 1] : 'http://127.0.0.1:8493/index.html'; })();
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => { const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` }); const v = JSON.parse(t); if (v && v.exc) throw new Error(v.exc); return v == null ? v : JSON.parse(v); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -17,10 +17,12 @@ const results = [];
 const check = (rows, what, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${rows} ${what}${detail !== '' ? ` — ${detail}` : ''}`); };
 const click = async (sel) => { const p = await ev(`const e=document.querySelector(${JSON.stringify(sel)}); if(!e) return null; const r=e.getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]`); if (!p) return false; for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await raw('Input.dispatchMouseEvent', { type, x: p[0], y: p[1], button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 }); await sleep(150); return true; };
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront'); await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await until('return !!window.__slate', 15000);
-  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); document.querySelector('.tour-skip')?.click();
+  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.download.ocr','1'); localStorage.setItem('slate.download.depth','1'); document.querySelector('.tour-skip')?.click();
     const c=new OffscreenCanvas(3000,2000); const g=c.getContext('2d'); g.fillStyle='#4a90d9'; g.fillRect(0,0,3000,2000); g.fillStyle='#f5d76e'; g.beginPath(); g.arc(2200,500,250,0,7); g.fill();
     await __slate.openFromFile(new File([await c.convertToBlob({type:'image/png'})],'sky.png',{type:'image/png'})); return 1`);
   await until('return __slate.state.image.working?.width === 3000');
@@ -42,6 +44,7 @@ try {
 finally {
   await ev(`for (const n of ['slate.library','slate.v1']) await new Promise(r=>{const q=indexedDB.deleteDatabase(n); q.onsuccess=q.onerror=q.onblocked=()=>r();}); return 1`).catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

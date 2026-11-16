@@ -1,11 +1,14 @@
 // Move or rename files inside one root folder (spec row O10). The photo's XMP
 // sidecar travels with it and is renamed to match, as trash.js does for the trash.
 //
-// createMove() -> { exists(root, path), move(root, fromPath, toPath) }
+// createMove() -> { exists(root, path, fromPath?), move(root, fromPath, toPath, { liveVideo }) }
 //
 // `move` refuses to overwrite: it throws when a file (or folder) already sits at
-// the target path, or at the target path of a sidecar. Folders on the way to the
-// target are created. It uses FileSystemHandle.move() where the browser has it;
+// the target path, or at the target path of a sidecar or of the paired Live Photo MOV.
+// It checks each target again straight before moving, because move() replaces a target.
+// A case-only rename (IMG.JPG to img.jpg) passes only when the target is the source
+// itself (isSameEntry, a case-insensitive disk), and goes through a `.slate-tmp-*` name.
+// Folders on the way to the target are created. It uses FileSystemHandle.move() where the browser has it;
 // otherwise it copies the file, then removes the original.
 //
 // Sidecars: the full-name form (`IMG_1.jpg.xmp`) always travels and becomes
@@ -71,34 +74,89 @@ function needHandle(root) {
   return root.handle;
 }
 
-// Only a change of letter case: on a case-insensitive disk the target "exists"
-// because it is the same file.
-const sameIgnoringCase = (a, b) => a !== b && a.toLowerCase() === b.toLowerCase();
+// The handle at `name` in `dir`, or null. A folder with that name counts as taken.
+async function entryIn(dir, name) {
+  try { return await dir.getFileHandle(name); }
+  catch (e) {
+    if (e?.name === 'NotFoundError') return null;
+    if (e?.name === 'TypeMismatchError') return { kind: 'directory' };
+    throw e;
+  }
+}
+
+// True when `newName` in `toDir` is taken by another entry. A target that differs from
+// the source only by letter case is free when it is the source itself (a case-insensitive
+// disk); on a case-sensitive disk it is another file, so it is taken.
+async function taken(fromDir, name, toDir, newName, caseOnly) {
+  const dst = await entryIn(toDir, newName);
+  if (!dst) return false;
+  if (!caseOnly || dst.kind !== 'file') return true;
+  const src = await fromDir.getFileHandle(name);
+  return !(await src.isSameEntry(dst));
+}
+
+const tmpName = () => `.slate-tmp-${Math.random().toString(36).slice(2, 10)}`;
+
+// Move one file, checking the target again straight before the move, because move()
+// replaces an existing target. A case-only rename goes through a temporary name in the
+// source folder, so it works on a case-insensitive disk and touches no other file.
+async function moveChecked(fromDir, name, toDir, newName, caseOnly, what) {
+  if (await taken(fromDir, name, toDir, newName, caseOnly)) throw new Error(what);
+  if (!caseOnly) { await moveOne(fromDir, name, toDir, newName); return; }
+  if (name === newName) return; // only the folder case differs and the disk ignores case
+  const tmp = tmpName();
+  await moveOne(fromDir, name, fromDir, tmp);
+  if (await entryIn(toDir, newName)) { await moveOne(fromDir, tmp, fromDir, name); throw new Error(what); }
+  await moveOne(fromDir, tmp, toDir, newName);
+}
+
+const lowerEq = (a, b) => a.toLowerCase() === b.toLowerCase();
+const extPart = n => { const i = n.lastIndexOf('.'); return i < 0 ? '' : n.slice(i); };
 
 export function createMove() {
   return {
-    async exists(root, path) {
+    // exists(root, path, fromPath?): with fromPath, a target that is the source file itself
+    // (a case-only rename on a case-insensitive disk) does not count.
+    async exists(root, path, fromPath) {
       const { dirs, name } = split(path);
       let dir;
       try { dir = await walk(needHandle(root), dirs); }
       catch (e) { if (e?.name === 'NotFoundError') return false; if (e?.name === 'TypeMismatchError') return true; throw e; }
-      return existsIn(dir, name);
+      const p = normPath(path), f = fromPath == null ? null : normPath(fromPath);
+      if (f == null || f === p || !lowerEq(f, p)) return existsIn(dir, name);
+      const a = split(f);
+      let from;
+      try { from = await walk(needHandle(root), a.dirs); } catch { return existsIn(dir, name); }
+      return taken(from, a.name, dir, name, true);
     },
 
-    async move(root, fromPath, toPath) {
+    // move(root, fromPath, toPath, { liveVideo }) -> { liveVideo }: the new path of the
+    // paired Live Photo MOV (record field `liveVideo`), which moves with its still and takes
+    // the still's new stem; null when there is none.
+    async move(root, fromPath, toPath, { liveVideo = null } = {}) {
       const top = needHandle(root);
       const a = split(fromPath), b = split(toPath);
-      if (normPath(fromPath) === normPath(toPath)) return;
+      if (normPath(fromPath) === normPath(toPath)) return { liveVideo };
       const from = await walk(top, a.dirs);
       const to = await walk(top, b.dirs, true);
-      const caseOnly = sameIgnoringCase(normPath(fromPath), normPath(toPath));
-      if (!caseOnly && await existsIn(to, b.name)) throw new Error(`${normPath(toPath)} already exists, so ${a.name} was not moved`);
-      const pairs = await sidecarPairs(from, a.name, b.name);
-      for (const [, n] of pairs) {
-        if (!caseOnly && await existsIn(to, n)) throw new Error(`a sidecar named ${n} already exists there, so ${a.name} was not moved`);
+      const dirsCase = lowerEq(a.dirs.join('/'), b.dirs.join('/'));
+      const co = (o, n) => dirsCase && lowerEq(o, n);
+      const exists = `${normPath(toPath)} already exists, so ${a.name} was not moved`;
+      if (await taken(from, a.name, to, b.name, co(a.name, b.name))) throw new Error(exists);
+      const pairs = (await sidecarPairs(from, a.name, b.name)).map(([o, n]) => [o, n, `a sidecar named ${n} already exists there, so ${a.name} was not moved`]);
+      let liveTo = null;
+      if (liveVideo) {
+        const lv = split(liveVideo);
+        if (lowerEq(lv.dirs.join('/'), a.dirs.join('/')) && await existsIn(from, lv.name)) {
+          const n = stemOf(b.name) + extPart(lv.name);
+          pairs.push([lv.name, n, `the Live Photo movie ${n} already exists there, so ${a.name} was not moved`]);
+          liveTo = [...b.dirs, n].join('/');
+        }
       }
-      await moveOne(from, a.name, to, b.name);
-      for (const [o, n] of pairs) await moveOne(from, o, to, n);
+      for (const [o, n, why] of pairs) if (await taken(from, o, to, n, co(o, n))) throw new Error(why);
+      await moveChecked(from, a.name, to, b.name, co(a.name, b.name), exists);
+      for (const [o, n, why] of pairs) await moveChecked(from, o, to, n, co(o, n), why);
+      return { liveVideo: liveTo };
     },
   };
 }

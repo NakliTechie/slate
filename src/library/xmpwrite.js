@@ -13,6 +13,9 @@
 // library shows it, reject as -1, and every tag (from the files and from
 // Slate). An existing sidecar is merged: only those properties change. When
 // only the stem form (`IMG_1.xmp`) exists, its text seeds the new full-name file.
+// An existing sidecar that buildXmp cannot merge into (no rdf:Description it can find, a
+// UTF-16 file, an `RDF:` prefix) is never replaced: the write is skipped and the file is
+// reported once through lib 'error' (review S11).
 
 import { buildXmp, sidecarNames } from './xmp.js';
 
@@ -28,6 +31,7 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
   let on = false;
   const pending = new Set();
   let timer = null;
+  const reported = new Set();   // sidecar paths already reported as not editable
 
   const ready = Promise.resolve(lib.store?.getKv?.(XMP_SETTING_KEY)).then(v => { on = v === true; }).catch(() => {});
 
@@ -53,8 +57,19 @@ export function initXmpWrite(lib, { delay = DELAY_MS } = {}) {
     if (!perms.get(root.id)) return false;
     const dir = await lib.getHandle(id, { parent: true });
     const [full, stem] = sidecarNames(r.name);
-    const existing = (await readText(dir, full)) ?? (stem ? await readText(dir, stem) : null);
+    const own = await readText(dir, full);
+    const seedName = own != null ? full : stem;
+    const existing = own ?? (stem ? await readText(dir, stem) : null);
     const text = buildXmp({ rating: lib.rating(id), flag: c.flag, tags: lib.tagsOf(id), existing, regions: lib.services.faces?.regionsFor?.(id) });
+    if (text == null) {
+      const dirPath = r.path.slice(0, r.path.lastIndexOf('/') + 1);
+      const path = dirPath + seedName;
+      if (!reported.has(path)) {
+        reported.add(path);
+        lib.emit('error', { message: `Slate left the XMP sidecar ${path} unchanged, because it could not read its format. Edit it in another program, or remove it, to let Slate write ratings and tags there.` });
+      }
+      return false;
+    }
     if (text === existing) return false;
     const fh = await dir.getFileHandle(full, { create: true });
     const w = await fh.createWritable();

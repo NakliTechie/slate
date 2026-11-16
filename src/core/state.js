@@ -47,6 +47,7 @@ export const state = {
     quality: 90,
     stripExif: true,
     embedEdits: false,
+    removeLocation: true,
     saveMode: 'download'
   }
 };
@@ -70,6 +71,7 @@ export function loadPrefs() {
     if (p.exportFormat) state.export.format = p.exportFormat;
     if (p.stripExif != null) state.export.stripExif = p.stripExif;
     if (p.embedEdits != null) state.export.embedEdits = p.embedEdits;
+    if (p.removeLocation != null) state.export.removeLocation = p.removeLocation;
     if (p.numericPanelPos) state._numericPanelPos = p.numericPanelPos;
     if (p.blurStrength != null) state.toolSettings.blurStrength = p.blurStrength;
     if (typeof p.activeTool === 'string') {
@@ -90,6 +92,7 @@ export function savePrefs() {
       exportFormat: state.export.format,
       stripExif: state.export.stripExif,
       embedEdits: state.export.embedEdits,
+      removeLocation: state.export.removeLocation,
       numericPanelPos: state._numericPanelPos,
       blurStrength: state.toolSettings.blurStrength,
       activeTool: state.activeTool && state.activeTool !== 'eyedropper' ? state.activeTool : null

@@ -22,7 +22,7 @@
 export const DB_NAME = 'slate.library';
 
 // Rebuild index keeps the person's settings, the hidden-photo lock and text already read from photos.
-export function keepKv(key) { return typeof key === 'string' && (key.startsWith('setting:') || key.startsWith('lock:') || key === 'textindex'); }
+export function keepKv(key) { return typeof key === 'string' && (key.startsWith('setting:') || key.startsWith('lock:') || key === 'textindex' || key.startsWith('textindex:')); }
 export const DB_VERSION = 1;
 
 export function memoryStore() {

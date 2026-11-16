@@ -5,7 +5,7 @@ import { Library } from '../src/library/library.js';
 import { memoryStore } from '../src/library/store.js';
 import { newRecord } from '../src/library/schema.js';
 import { query } from '../src/library/query.js';
-import { initTextIndex, TEXT_INDEX_KEY, TEXT_SETTING_KEY } from '../src/library/textindex.js';
+import { initTextIndex, TEXT_INDEX_KEY, TEXT_SETTING_KEY, textKey } from '../src/library/textindex.js';
 
 const TEXT = { 'a.jpg': 'INVOICE 2047\nPaid', 'b.jpg': 'Goa beach shack menu', 'c.jpg': '' };
 
@@ -48,9 +48,9 @@ async function makeLib(store = memoryStore()) {
   await ti.flush();
   assert.deepEqual(calls.sort(), ['a.jpg', 'b.jpg', 'c.jpg']);
   assert.equal(await store.getKv(TEXT_SETTING_KEY), true);
-  const saved = await store.getKv(TEXT_INDEX_KEY);
-  assert.equal(saved[`${root.id}/a.jpg`].t, 'INVOICE 2047\nPaid');
-  assert.equal(saved[`${root.id}/c.jpg`].t, '', 'a photo with no text is stored as read');
+  assert.equal((await store.getKv(textKey(`${root.id}/a.jpg`))).t, 'INVOICE 2047\nPaid');
+  assert.equal((await store.getKv(textKey(`${root.id}/c.jpg`))).t, '', 'a photo with no text is stored as read');
+  assert.equal(await store.getKv(TEXT_INDEX_KEY), undefined, 'no single whole-index value');
   assert.equal(ti.textOf(`${root.id}/b.jpg`), 'Goa beach shack menu');
   assert.equal(ti.count(), 3);
 
@@ -83,6 +83,7 @@ async function makeLib(store = memoryStore()) {
   await ti.forget();
   assert.equal(ti.count(), 0);
   assert.equal(await store.getKv(TEXT_INDEX_KEY), undefined);
+  assert.equal(await store.getKv(textKey(`${root.id}/a.jpg`)), undefined, 'forget deletes the per-photo keys');
 }
 
 // 3. Read text for a selection runs with the setting off, and a changed file is read again.

@@ -4,6 +4,9 @@
 // the trash; that is the only permanent delete in the library.
 //
 // createTrash() -> { move(root, path), restore(root, path), purge(root, path) }
+//   move and restore return { renamed: [{ from, to }] }: a sidecar whose name was already taken
+//   in the target folder is moved under a free name, `IMG_1.jpg (2).xmp`, so both are kept
+//   (review S27).
 //
 // Moves use FileSystemHandle.move() where the browser has it; otherwise the
 // file is copied, then the original removed.
@@ -35,11 +38,11 @@ async function exists(dir, name) {
   }
 }
 
-async function moveFile(fromDir, name, toDir) {
+async function moveFile(fromDir, name, toDir, newName = name) {
   const fh = await fromDir.getFileHandle(name);
-  if (typeof fh.move === 'function') { await fh.move(toDir, name); return; }
+  if (typeof fh.move === 'function') { await fh.move(toDir, newName); return; }
   const file = await fh.getFile();
-  const out = await toDir.getFileHandle(name, { create: true });
+  const out = await toDir.getFileHandle(newName, { create: true });
   const w = await out.createWritable();
   await w.write(file);
   await w.close();
@@ -63,6 +66,25 @@ async function sidecarsOf(dir, name) {
   return out;
 }
 
+// `name`, or `stem (2).ext`, `stem (3).ext` ... whichever is free in `dir`.
+async function freeName(dir, name) {
+  if (!(await exists(dir, name))) return name;
+  const i = name.lastIndexOf('.');
+  const stem = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
+  for (let n = 2; ; n++) { const c = `${stem} (${n})${ext}`; if (!(await exists(dir, c))) return c; }
+}
+
+// Move the sidecars after their photo, keeping both copies when a name is taken.
+async function moveSidecars(from, to, sidecars) {
+  const renamed = [];
+  for (const s of sidecars) {
+    const n = await freeName(to, s);
+    await moveFile(from, s, to, n);
+    if (n !== s) renamed.push({ from: s, to: n });
+  }
+  return { renamed };
+}
+
 function needHandle(root) {
   if (!root?.handle) throw new Error('this folder is browse-only, so Slate cannot move its files');
   return root.handle;
@@ -78,7 +100,7 @@ export function createTrash() {
       if (await exists(to, name)) throw new Error(`a file named ${name} is already in the trash for this folder`);
       const sidecars = await sidecarsOf(from, name);
       await moveFile(from, name, to);
-      for (const s of sidecars) if (!(await exists(to, s))) await moveFile(from, s, to);
+      return moveSidecars(from, to, sidecars);
     },
 
     async restore(root, path) {
@@ -89,7 +111,7 @@ export function createTrash() {
       if (await exists(to, name)) throw new Error(`${normPath(path)} already exists, so the trashed copy was left in the trash`);
       const sidecars = await sidecarsOf(from, name);
       await moveFile(from, name, to);
-      for (const s of sidecars) if (!(await exists(to, s))) await moveFile(from, s, to);
+      return moveSidecars(from, to, sidecars);
     },
 
     async purge(root, path) {

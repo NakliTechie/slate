@@ -15,7 +15,7 @@ const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const STAMP = Date.now().toString(36);
 const F = { main: `slate-livecheck-v1x-${STAMP}`, exp: `slate-livecheck-exp-${STAMP}`, zipdest: `slate-livecheck-zip-${STAMP}` };
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => { const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` }); const v = JSON.parse(t); if (v && v.exc) throw new Error(v.exc); return v == null ? v : JSON.parse(v); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -27,12 +27,14 @@ const L = 'const S=window.__slateLibrary, L=S.lib;';
 const OPFS = (name) => `(await (await navigator.storage.getDirectory()).getDirectoryHandle(${JSON.stringify(name)}, { create: true }))`;
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await raw('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
   await until('return !!window.__slateLibrary', 15000);
-  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
+  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.download.ocr','1'); localStorage.setItem('slate.download.depth','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
 
   // ── a folder with a Google Takeout JSON beside the photo that has no EXIF ──
   await ev(makeFolderJs({ name: F.main, count: 240, videos: 0 }));
@@ -41,8 +43,8 @@ try {
     await w.write(JSON.stringify({ title:'no-exif.png', description:'Lighthouse at dusk', photoTakenTime:{ timestamp:'1563546600' }, geoData:{ latitude:15.49, longitude:73.82, altitude:0 }, people:[{ name:'Asha' }], favorited:true })); await w.close(); return 1`);
   await ev(`${L} await S.addRoot(${OPFS(F.main)}); S.ui.showLibrary(); return 1`);
   await until(`${L} return L.jobs.status().idle && [...L.records.values()].every(r=>r.thumb!=null)`, 120000);
-  const tk = await ev(`${L} const r=[...L.records.values()].find(r=>r.name==='no-exif.png'); return r && { time:new Date(r.time).toISOString(), src:r.timeSource, lat:r.lat, desc:r.description, tags:L.tagsOf(r.id), fav:L.choice(r.id).fav, json: [...L.records.values()].some(x=>x.name.endsWith('.json')) }`);
-  check('I2', 'Takeout JSON gives a photo without EXIF its date, place, caption, people and favourite', tk && tk.src === 'takeout' && tk.time.startsWith('2019-07-19T14:30') && tk.lat === 15.49 && tk.desc === 'Lighthouse at dusk' && tk.tags.includes('people/Asha') && tk.fav && !tk.json, JSON.stringify(tk));
+  const tk = await ev(`${L} const r=[...L.records.values()].find(r=>r.name==='no-exif.png'); const e=new Date(1563546600000); const expect=new Date(Date.UTC(e.getFullYear(),e.getMonth(),e.getDate(),e.getHours(),e.getMinutes(),e.getSeconds())).toISOString(); return r && { expect, time:new Date(r.time).toISOString(), src:r.timeSource, lat:r.lat, desc:r.description, tags:L.tagsOf(r.id), fav:L.choice(r.id).fav, json: [...L.records.values()].some(x=>x.name.endsWith('.json')) }`);
+  check('I2', 'Takeout JSON gives a photo without EXIF its date, place, caption, people and favourite', tk && tk.src === 'takeout' && tk.time === tk.expect && tk.lat === 15.49 && tk.desc === 'Lighthouse at dusk' && tk.tags.includes('people/Asha') && tk.fav && !tk.json, JSON.stringify(tk));
   check('I2', 'search finds the Takeout caption', (await ev(`${L} return L.search({ q: 'lighthouse' }).length`)) === 1);
 
   // ── On this day ──
@@ -109,6 +111,7 @@ try {
   } catch (e) { console.log('  cleanup failed', e.message); }
   await raw('Emulation.clearDeviceMetricsOverride').catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

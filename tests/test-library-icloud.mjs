@@ -5,6 +5,7 @@ import { parseCsv, parseICloudCsv, parseICloudDate, applyICloudCsv } from '../sr
 import { Library } from '../src/library/library.js';
 import { memoryStore } from '../src/library/store.js';
 import { newRecord, wallClockToTime } from '../src/library/schema.js';
+import { instantToWallClock as W } from '../src/library/takeout.js'; // CSV dates are GMT instants, stored as the local wall clock (review S9)
 
 // ── CSV ───────────────────────────────────────────────────────────────────
 {
@@ -38,7 +39,7 @@ const ALBUM = 'Images\nIMG_0001.HEIC\nimg_0002.jpg\nMISSING.JPG\n';
   const d = parseICloudCsv('Photo Details.csv', DETAILS);
   assert.equal(d.kind, 'details');
   assert.equal(d.rows.length, 5);
-  assert.deepEqual(d.rows[0], { name: 'IMG_0001.HEIC', favourite: true, hidden: false, deleted: false, time: wallClockToTime(2023, 3, 18, 15, 26, 0) });
+  assert.deepEqual(d.rows[0], { name: 'IMG_0001.HEIC', favourite: true, hidden: false, deleted: false, time: W(wallClockToTime(2023, 3, 18, 15, 26, 0)) });
   assert.equal(d.rows[2].name, 'IMG, odd.JPG');
   assert.equal(d.rows[3].deleted, true);
   assert.equal(d.rows[4].time, null);
@@ -82,7 +83,7 @@ const ALBUM = 'Images\nIMG_0001.HEIC\nimg_0002.jpg\nMISSING.JPG\n';
   assert.equal(lib.choice(id('2023/IMG_0001.HEIC')).fav, true);
   assert.equal(lib.choice(id('other/IMG, odd.JPG')).fav, true, 'a quoted name with a comma matches');
   assert.equal(lib.choice(id('2023/IMG_0002.JPG')).hidden, true);
-  assert.equal(lib.get(id('2023/IMG_0001.HEIC')).time, wallClockToTime(2023, 3, 18, 15, 26, 0));
+  assert.equal(lib.get(id('2023/IMG_0001.HEIC')).time, W(wallClockToTime(2023, 3, 18, 15, 26, 0)));
   assert.equal(lib.get(id('2023/IMG_0001.HEIC')).timeSource, 'icloud');
   assert.equal(lib.get(id('2023/IMG_0002.JPG')).time, wallClockToTime(2020, 1, 1), 'an EXIF date is kept');
   assert.equal(lib.get(id('2023/IMG_0002.JPG')).timeSource, 'exif');
@@ -131,9 +132,9 @@ const ALBUM = 'Images\nIMG_0001.HEIC\nimg_0002.jpg\nMISSING.JPG\n';
   assert.equal(lib.get(id).timeSource, 'file');
   const r = await applyICloudCsv(lib, root.id, [{ name: 'Photo Details.csv', text: DETAILS }]);
   await lib.flush();
-  assert.deepEqual(saved.items['IMG_0001.HEIC'].meta, { taken: '2023-03-18T15:26:00', source: 'icloud' });
+  assert.deepEqual(saved.items['IMG_0001.HEIC'].meta, { taken: new Date(W(Date.UTC(2023, 2, 18, 15, 26))).toISOString().slice(0, 19), source: 'icloud' });
   await lib.rebuild();
-  assert.equal(lib.get(id).time, wallClockToTime(2023, 3, 18, 15, 26, 0), 'the CSV date comes back after a rebuild');
+  assert.equal(lib.get(id).time, W(wallClockToTime(2023, 3, 18, 15, 26, 0)), 'the CSV date comes back after a rebuild');
   assert.equal(lib.get(id).timeSource, 'icloud');
   await lib.undo(r.undo);
   assert.equal(lib.meta.has(id), false, 'undo removes the saved date');

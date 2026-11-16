@@ -49,6 +49,11 @@ export function buildLayout(items, { width, zoom = 1, grouped = true, gap = GAP 
   return { rows, cols, tile, gap, height: y, unit, itemRow };
 }
 
+// ARIA for the virtual grid (review S24): only the rows near the viewport exist in the DOM,
+// so the grid states the full row count and each rendered row its 1-based position.
+export function ariaRowCount(layout) { return layout.rows.length; }
+export function ariaRowIndex(r) { return r + 1; }
+
 // Index of the last row whose top is at or above `y` (0 when none).
 export function rowAt(layout, y) {
   const rows = layout.rows;

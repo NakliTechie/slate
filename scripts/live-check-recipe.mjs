@@ -10,7 +10,7 @@ const args = process.argv.slice(2);
 const URL0 = (() => { const i = args.indexOf('--url'); return i >= 0 ? args[i + 1] : 'http://127.0.0.1:8493/index.html'; })();
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => {
   const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` });
@@ -31,7 +31,9 @@ const MAKE = (name, hue) => `const c=new OffscreenCanvas(400,300); const g=c.get
   return new File([await c.convertToBlob({type:'image/png'})], '${name}', {type:'image/png'});`;
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await until('return !!window.__slate', 15000);
@@ -81,6 +83,7 @@ try {
 } finally {
   await ev(`for (const n of ['slate.library','slate.v1']) await new Promise(r=>{const q=indexedDB.deleteDatabase(n); q.onsuccess=q.onerror=q.onblocked=()=>r();}); return 1`).catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

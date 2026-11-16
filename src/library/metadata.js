@@ -9,16 +9,19 @@
 //
 // Only the fields found are set. It never throws: unreadable metadata gives {}.
 // Capture time is the EXIF wall clock stored as if it were UTC (schema.wallClockToTime),
-// so no time-zone shift happens here. Videos are left to thumbs.js (duration, size).
+// so no time-zone shift happens here. Videos (MP4, MOV, M4V) get only a capture date here,
+// from videoTime(); thumbs.js reads their duration and size.
 
 import { parse } from '../vendor/exifr.mjs';
-import { wallClockToTime, extOf } from './schema.js';
+import { wallClockToTime, instantToWallClock, extOf } from './schema.js';
 
 // Formats exifr can read. Others (gif, bmp, svg, psd, tga, dds, jxl) have no EXIF to find.
 const EXIF_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif', 'tif', 'tiff',
   'dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
 // TIFF-based RAW files keep the preview size in IFD0, so IFD0 width and height are not the photo's.
 const RAW_EXTS = new Set(['dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
+// Videos in the ISO base media format (QuickTime and MP4 boxes). WebM is Matroska and has no mvhd.
+const ISO_VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v']);
 // Formats a Motion Photo can be (row M6).
 const MOTION_EXTS = new Set(['jpg', 'jpeg', 'heic', 'heif']);
 // The main XMP packet sits in the first APP1 blocks of a JPEG; HEIC keeps it near the head too.
@@ -36,7 +39,12 @@ const OPTIONS = {
 export async function readMetadata(file, record) {
   try {
     const ext = record?.ext ?? extOf(file.name);
-    if ((record?.kind ?? 'photo') !== 'photo' || !EXIF_EXTS.has(ext)) return {};
+    if ((record?.kind ?? 'photo') === 'video') {
+      if (!ISO_VIDEO_EXTS.has(ext)) return {};
+      const time = await videoTime(file);
+      return time != null ? { time, timeSource: 'video' } : {};
+    }
+    if (!EXIF_EXTS.has(ext)) return {};
     // In the browser exifr reads the File in chunks from its head; elsewhere hand it the head.
     const input = typeof FileReader === 'function' ? file : new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
     const m = await parse(input, OPTIONS);
@@ -157,4 +165,124 @@ export function motionFromXmp(text) {
   const micro = Number(prop(text, ['GCamera:MicroVideoOffset']));
   if (micro > 0 && flag !== '0') return { offset: micro, length: micro };
   return null;
+}
+
+// ── video capture date (review S9) ─────────────────────────────────────────
+// An MP4 or MOV is a list of boxes: 4-byte size, 4-byte type, then the body (size 1 means a
+// 64-bit size follows; size 0 means "to the end of the file"). The `moov` box sits at the head
+// or the tail of the file. Inside it:
+//   mvhd   creation time, seconds since 1904-01-01 UTC: a true instant, so it is turned into
+//          this browser's local wall clock (schema.instantToWallClock). Zero means unset.
+//   meta   QuickTime metadata: `keys` names each item and `ilst` holds the values. The key
+//          com.apple.quicktime.creationdate is "2023-05-01T09:30:15+0530", the wall clock where
+//          it was filmed, kept as written (the zone is ignored, as for EXIF).
+// The QuickTime date wins, because it carries the place's own wall clock.
+// Only box headers are read while walking, and only mvhd, meta and udta bodies are read whole.
+
+const MAC_EPOCH_S = 2082844800;      // seconds from 1904-01-01 to 1970-01-01
+const MAX_BOXES = 4096;
+const MAX_META_BYTES = 4 * 1024 * 1024;
+
+async function readBytes(file, at, len) {
+  return new Uint8Array(await file.slice(at, Math.min(file.size, at + len)).arrayBuffer());
+}
+const u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const u64 = (b, o) => u32(b, o) * 4294967296 + u32(b, o + 4);
+const type4 = (b, o) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+
+// Children of the box body [start, end) in the file, from headers only.
+async function boxesIn(file, start, end) {
+  const out = [];
+  let at = start;
+  while (at + 8 <= end && out.length < MAX_BOXES) {
+    const h = await readBytes(file, at, 16);
+    if (h.length < 8) break;
+    let size = u32(h, 0), head = 8;
+    const type = type4(h, 4);
+    if (size === 1) { if (h.length < 16) break; size = u64(h, 8); head = 16; }
+    else if (size === 0) size = end - at;
+    if (size < head || at + size > end) break;
+    out.push({ type, start: at + head, end: at + size });
+    at += size;
+  }
+  return out;
+}
+
+// The same walk over bytes already in memory.
+function boxesInBytes(b, start, end) {
+  const out = [];
+  let at = start;
+  while (at + 8 <= end && out.length < MAX_BOXES) {
+    let size = u32(b, at), head = 8;
+    const type = type4(b, at + 4);
+    if (size === 1) { if (at + 16 > end) break; size = u64(b, at + 8); head = 16; }
+    else if (size === 0) size = end - at;
+    if (size < head || at + size > end) break;
+    out.push({ type, start: at + head, end: at + size });
+    at += size;
+  }
+  return out;
+}
+
+/** mvhd body (after the 8-byte header) -> stored time, or null. */
+export function mvhdTime(b) {
+  if (!b || b.length < 12) return null;
+  const secs = b[0] === 1 ? (b.length >= 12 ? u64(b, 4) : 0) : u32(b, 4);
+  if (!secs || secs <= MAC_EPOCH_S) return null;       // unset, or before 1970
+  return instantToWallClock((secs - MAC_EPOCH_S) * 1000);
+}
+
+/** A QuickTime `meta` body -> { 'com.apple.quicktime.creationdate': '...' , ... } (strings only). */
+export function quickTimeKeys(b) {
+  const out = {};
+  // QuickTime writes meta without the version and flags word that ISO meta has; tell them apart
+  // by where the first child box (hdlr) starts.
+  const start = b.length >= 8 && type4(b, 4) === 'hdlr' ? 0 : 4;
+  const kids = boxesInBytes(b, start, b.length);
+  const keysBox = kids.find(k => k.type === 'keys'), ilst = kids.find(k => k.type === 'ilst');
+  if (!keysBox || !ilst) return out;
+  const names = [];
+  const n = u32(b, keysBox.start + 4);
+  let at = keysBox.start + 8;
+  for (let i = 0; i < n && at + 8 <= keysBox.end; i++) {
+    const size = u32(b, at);
+    if (size < 8 || at + size > keysBox.end) break;
+    names.push(new TextDecoder().decode(b.subarray(at + 8, at + size)));
+    at += size;
+  }
+  for (const item of boxesInBytes(b, ilst.start, ilst.end)) {
+    const idx = u32(b, item.start - 4) - 1;  // the item's type is its 1-based key index
+    const name = names[idx];
+    if (!name) continue;
+    const data = boxesInBytes(b, item.start, item.end).find(k => k.type === 'data');
+    if (!data || data.end - data.start < 8) continue;
+    const kind = u32(b, data.start) & 0xffffff;
+    if (kind === 1) out[name] = new TextDecoder().decode(b.subarray(data.start + 8, data.end)).trim();
+  }
+  return out;
+}
+
+/** The capture date of an MP4 or MOV file, as a stored time, or null. Never throws. */
+export async function videoTime(file) {
+  try {
+    const top = await boxesIn(file, 0, file.size);
+    if (!top.length || !['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip', 'pnot'].includes(top[0].type)) return null;
+    const moov = top.find(x => x.type === 'moov');
+    if (!moov) return null;
+    let mvhd = null, qt = null;
+    const scanMeta = async (box) => {
+      if (box.end - box.start > MAX_META_BYTES) return;
+      const t = quickTimeKeys(await readBytes(file, box.start, box.end - box.start))['com.apple.quicktime.creationdate'];
+      const v = t ? parseWallClock(t) : null;
+      if (v != null && qt == null) qt = v;
+    };
+    for (const k of await boxesIn(file, moov.start, moov.end)) {
+      if (k.type === 'mvhd' && mvhd == null) mvhd = mvhdTime(await readBytes(file, k.start, Math.min(k.end - k.start, 32)));
+      else if (k.type === 'meta') await scanMeta(k);
+      else if (k.type === 'udta') for (const u of await boxesIn(file, k.start, k.end)) if (u.type === 'meta') await scanMeta(u);
+    }
+    return qt ?? mvhd;
+  } catch {
+    return null;
+  }
 }

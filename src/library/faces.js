@@ -14,7 +14,12 @@
 //   - Faces and people live only in this browser, in IndexedDB 'slate.faces'.
 //     Nothing goes into the photo files unless "Write XMP sidecars" is on, and
 //     then only the rectangles and names of named people (MWG regions, xmp.js).
-//   - deleteAll() removes the database, the downloaded models and the setting.
+//   - deleteAll() removes the database, the downloaded models and the setting. It returns
+//     { blocked: true } when another tab holds the database open, so the delete waits.
+//   - A photo's faces are deleted when the photo leaves the library: Empty trash, Remove
+//     folder, a move, or a full scan that finds the file missing ('records' events).
+//   - Photos the lock hides (lib.visible, locked.js) are not scanned, and their faces and
+//     photos stay out of every list until the lock opens.
 //
 // Grouping follows Immich's incremental DBSCAN: a face with at least MIN_FACES
 // faces (itself included) within MAX_DISTANCE (cosine distance) is a core
@@ -255,7 +260,7 @@ export function memoryFaceStore() {
     async deletePhotos(ids) { for (const id of ids) photos.delete(id); },
     async getKv(k) { return kv.has(k) ? clone(kv.get(k)) : undefined; },
     async setKv(k, v) { kv.set(k, clone(v)); },
-    async destroy() { photos.clear(); kv.clear(); },
+    async destroy() { photos.clear(); kv.clear(); return { blocked: false }; },
   };
 }
 
@@ -279,7 +284,13 @@ export async function idbFaceStore(name = DB_NAME) {
     async setKv(k, v) { await tx('kv', 'readwrite', s => s.put(v, k)); },
     async destroy() {
       if (db) { (await db).close(); db = null; }
-      await new Promise((res) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = r.onerror = r.onblocked = () => res(); });
+      // onblocked: another tab holds the database open; the delete finishes when that tab closes.
+      return new Promise((res) => {
+        const r = indexedDB.deleteDatabase(name);
+        r.onsuccess = () => res({ blocked: false });
+        r.onerror = () => res({ blocked: false, error: r.error?.message ?? 'the delete failed' });
+        r.onblocked = () => res({ blocked: true });
+      });
     },
   };
 }
@@ -417,6 +428,8 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
   }
   const saveState = () => getStore().then(s => s.setKv('people', state)).catch(e => lib.emit('error', { message: `Could not save people: ${e.message}` }));
 
+  const vis = (photoId) => (lib.visible ? lib.visible(photoId) : true);
+  const photoOf = (fid) => fid.slice(0, fid.lastIndexOf('#'));
   const allFaces = () => { const out = []; for (const p of photos.values()) for (const f of p.faces) out.push(f); return out; };
   const faceById = (fid) => photos.get(fid.slice(0, fid.lastIndexOf('#')))?.faces.find(f => f.id === fid) ?? null;
 
@@ -450,7 +463,7 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
   }
   const scheduleRecluster = () => { clearTimeout(reclusterTimer); reclusterTimer = setTimeout(recluster, RECLUSTER_MS); };
 
-  const wanted = (r) => r && r.kind !== 'video' && !r.missing && !lib.choice?.(r.id)?.trashed;
+  const wanted = (r) => r && r.kind !== 'video' && !r.missing && !lib.choice?.(r.id)?.trashed && vis(r.id);
   const todo = () => [...lib.records.values()].filter(r => wanted(r) && photos.get(r.id)?.sig !== sigOf(r));
 
   async function defaultSidecar(id) {
@@ -494,6 +507,34 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
     lib.jobs.add('faces', recs, processOne);
   }
 
+  // Face rows of photos that left the library: `ids` (or every row when null) whose record is
+  // gone or missing. Their assignments go at the next recluster.
+  async function prune(ids) {
+    if (!loaded) return;
+    const gone = (ids ?? [...photos.keys()]).filter(id => photos.has(id) && (!lib.get(id) || lib.get(id).missing));
+    if (!gone.length) return;
+    for (const id of gone) {
+      for (const f of photos.get(id)?.faces ?? []) { delete state.assign[f.id]; delete state.notPerson[f.id]; }
+      photos.delete(id);
+    }
+    try { await (await getStore()).deletePhotos(gone); }
+    catch (e) { lib.emit('error', { message: `Could not delete face data: ${e.message}` }); }
+    scheduleRecluster();
+    changed('photos');
+  }
+  // While faces are off the rows are not loaded; start() prunes them when faces turn on.
+  // A whole-table prune needs the records loaded, so it runs only when there are records
+  // (an emptied index must not delete every face).
+  const PRUNE = new Set(['empty-trash', 'remove-root', 'scan', 'move']);
+  let pruning = Promise.resolve();
+  const pruneAll = () => (lib.records.size ? prune(null) : undefined);
+  lib.on('records', (ev = {}) => {
+    if (PRUNE.has(ev.reason)) pruning = pruning.then(() => (Array.isArray(ev.ids) ? prune(ev.ids) : ev.reason === 'remove-root' ? prune(null) : pruneAll())).catch(() => {});
+    else if (ev.reason === 'load') pruning = pruning.then(pruneAll).catch(() => {});
+  });
+  // Unlocking makes hidden photos visible; the face job picks them up then.
+  lib.on('choices', (ev = {}) => { if (ev.reason === 'lock' && on && !paused) enqueue(todo()); });
+
   lib.on('records', ({ ids } = {}) => {
     if (!on || paused) return;
     if (!Array.isArray(ids)) { enqueue(todo()); return; }
@@ -502,6 +543,7 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
 
   async function start() {
     await loadData();
+    await pruneAll();
     lib.jobs.cancel('faces'); queued.clear();
     enqueue(todo());
     recluster();
@@ -534,6 +576,8 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
       return { on, paused, total, done, faces, people: people.length, named: people.filter(p => p.name).length, error: lastError };
     },
     hasData: () => photos.size > 0 || Object.keys(state.people).length > 0,
+    // Resolves when the face rows of removed photos are deleted (for tests and callers that wait).
+    settled: () => pruning,
     // Turns faces off and removes every face, vector, person, name and the downloaded models.
     async deleteAll() {
       on = false; paused = false;
@@ -543,30 +587,31 @@ export function initFaces(lib, { faceStore = null, detector = null, readSidecar 
       photos.clear();
       state = emptyState();
       loaded = false;
-      await (await getStore()).destroy();
+      const res = (await (await getStore()).destroy()) ?? { blocked: false };
       fstore = faceStore;
       if (typeof caches !== 'undefined') await caches.delete(MODEL_CACHE).catch(() => {});
       await lib.store?.setKv?.(SETTING_KEY, false);
       changed('deleted');
+      return { blocked: !!res.blocked, error: res.error ?? null };
     },
 
     people({ hidden = false } = {}) {
       const counts = new Map();
-      for (const pid of Object.values(state.assign)) counts.set(pid, (counts.get(pid) ?? 0) + 1);
+      for (const [fid, pid] of Object.entries(state.assign)) if (vis(photoOf(fid))) counts.set(pid, (counts.get(pid) ?? 0) + 1);
       return Object.values(state.people)
         .filter(p => hidden || !p.hidden)
-        .map(p => ({ ...p, faces: counts.get(p.id) ?? 0, photos: photosOfPid(p.id).length }))
+        .map(p => ({ ...p, faces: counts.get(p.id) ?? 0, photos: photosOfPid(p.id).filter(vis).length }))
         .filter(p => p.faces > 0)
         .sort((a, b) => (!!b.name - !!a.name) || b.faces - a.faces);
     },
     person: (pid) => state.people[pid] ?? null,
-    facesOf: (pid) => Object.entries(state.assign).filter(([, p]) => p === pid).map(([fid]) => faceById(fid)).filter(Boolean),
-    photosOf: (pid) => photosOfPid(pid).filter(id => lib.get(id)).sort((a, b) => (lib.get(b).time ?? 0) - (lib.get(a).time ?? 0)),
-    facesIn: (photoId) => (photos.get(photoId)?.faces ?? []).map(f => ({ ...f, person: state.assign[f.id] ?? null })),
+    facesOf: (pid) => Object.entries(state.assign).filter(([fid, p]) => p === pid && vis(photoOf(fid))).map(([fid]) => faceById(fid)).filter(Boolean),
+    photosOf: (pid) => photosOfPid(pid).filter(id => lib.get(id) && vis(id)).sort((a, b) => (lib.get(b).time ?? 0) - (lib.get(a).time ?? 0)),
+    facesIn: (photoId) => (vis(photoId) ? (photos.get(photoId)?.faces ?? []) : []).map(f => ({ ...f, person: state.assign[f.id] ?? null })),
     coverFace(pid) {
       const p = state.people[pid];
       if (!p) return null;
-      const cover = p.cover && state.assign[p.cover] === pid ? faceById(p.cover) : null;
+      const cover = p.cover && state.assign[p.cover] === pid && vis(photoOf(p.cover)) ? faceById(p.cover) : null;
       return cover ?? api.facesOf(pid).sort((a, b) => b.score * b.box[2] - a.score * a.box[2])[0] ?? null;
     },
 

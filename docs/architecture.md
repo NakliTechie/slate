@@ -78,7 +78,7 @@ Events: `lib.on('records' | 'choices' | 'albums' | 'roots' | 'saved' | 'error', 
 5. Call `lib.applyScan(root.id, { upserts })` in batches of about 500, then once more with `{ upserts: rest, seen }`. Hand the new and changed records to `lib.services.thumbs.enqueue(records)`.
 6. Report progress through `lib.jobs`, as kind `scan` for metadata work, so the status line counts it.
 
-`readMetadata(file, rec)` uses exifr on the head of the file. It returns `{ time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating }`, setting only the fields it finds. A file with no date keeps `lastModified` (`timeSource: 'file'`).
+`readMetadata(file, rec)` uses exifr on the head of the file. It returns `{ time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating }`, setting only the fields it finds. A file with no date takes its `lastModified` converted to the local wall clock (`timeSource: 'file'`), so it groups under the local day like an EXIF time. MP4, MOV and M4V take their date from the `mvhd` box or QuickTime `com.apple.quicktime.creationdate` (`timeSource: 'video'`). Google Takeout and iCloud instants are converted the same way.
 
 ## Thumbnails (thumbs.js)
 
@@ -119,7 +119,7 @@ The view owns layout, the sidebar (Timeline, Favourites, Videos, Albums, Folders
 
 ## Agent door (door.js, commands.js)
 
-`commands.js` is the one list: 26 library commands plus 12 editor commands from `src/editor/commands.js`. `door.js` registers it with `naklios.experimental_commands.register`, and also as WebMCP tools (`slate_<name with underscores>`) when `navigator.modelContext.registerTool` exists; destructive tools ask `confirm()` first. Each entry's handler is `input => runCommand(lib, name, input, { ui })`. Standalone, the SDK no-ops. Rules from the NakliOS rail: names match `/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*){0,3}$/`, scopes are read, write or destructive, at most 64 commands reach chat, and results stay under 256 KB. Write commands take at most 200 ids, `photo.bulk` (destructive) takes more, and `photo.trash`, `trash.empty` and `album.delete` are destructive, so NakliOS stages them for the person.
+`commands.js` is the one list: library commands plus the image.* editor commands from `src/editor/commands.js` (45 in all; commands.json is generated from it). `door.js` registers it with `naklios.experimental_commands.register`, and also as WebMCP tools (`slate_<name with underscores>`) when `navigator.modelContext.registerTool` exists; destructive tools ask `confirm()` first. Each entry's handler is `input => runCommand(lib, name, input, { ui })`. Standalone, the SDK no-ops. Rules from the NakliOS rail: names match `/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*){0,3}$/`, scopes are read, write or destructive, at most 64 commands reach chat, and results stay under 256 KB. Write commands take at most 200 ids, `photo.bulk` (destructive) takes more, and `photo.trash`, `trash.empty` and `album.delete` are destructive, so NakliOS stages them for the person.
 
 ## Testing
 

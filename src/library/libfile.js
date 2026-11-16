@@ -28,22 +28,70 @@
 // `source` is "takeout" or "icloud". The scanner applies each field only where the file's
 // own EXIF or XMP has none (scan.applyMeta). Every field inside `meta` is optional.
 //
+// Change times and deletions (review S2). Every item carries `t`, the time in ms of its last
+// change, so two tabs (or two deployments) that share one folder merge item by item: the newer
+// item wins (mergeLibFiles). An item that was removed (emptied, moved, deleted from the trash)
+// is kept for 30 days as a tombstone in `"deleted": { "<path>": t }`, so a merge does not bring
+// it back. Albums carry `t` the same way, and a deleted album is kept in
+// `"deletedAlbums": { "<id>": t }`. Files without `t` (older Slate) merge as time 0.
+//
+// Overrides (review S10): `"ratingSet": true` with no rating means the person cleared a rating
+// that came from the file's XMP; `"removedTags": [...]` hides tags that came from the file.
+//
+// Trash (review S21): a trashed item is keyed by its path inside the trash,
+// `.slate-trash/<original path>`, so a new file at the original path is a different item.
+// Older files kept the original path; parseLibFile moves those items (and album entries) over.
+//
+// Unknown fields (review S22) on an item and at the top level are kept and written back, so
+// two Slate versions do not strip each other's data.
+//
+// Import details (review S15): `meta` is saved apart, in `.slate-library-meta.json` beside this
+// file (LIBRARY_META_FILE, format below), so a favourite does not rewrite every caption.
+// persist.js joins the two files on load; in memory and in this module an item holds its `meta`.
+//   { "format": "slate-library-meta", "version": 1, "items": { "<relative path>": { meta } } }
+// An older file with `meta` inside its items still loads.
+//
 // Only non-default fields are written. `size` is written with every item so a
 // file that moved inside the root can be re-matched by name plus size.
 // An album spanning several roots appears in each root's file with the same id,
 // listing that root's members; the files merge on load. An album with no
 // members is kept in the first root's file.
 
-import { emptyChoice, isEmptyChoice, normPath, normTag, FLAGS } from './schema.js';
+import { emptyChoice, isEmptyChoice, normPath, normTag, FLAGS, TRASH_DIR } from './schema.js';
 
 export const LIBFILE_FORMAT = 'slate-library';
 export const LIBFILE_VERSION = 1;
+export const LIBRARY_META_FILE = '.slate-library-meta.json';
+export const META_FORMAT = 'slate-library-meta';
+export const TOMBSTONE_DAYS = 30;
+const TOMB_MS = TOMBSTONE_DAYS * 86400000;
+
+// Trash paths (review S21): a trashed item lives at `.slate-trash/<original path>`.
+export const TRASH_PREFIX = TRASH_DIR + '/';
+export const inTrash = (path) => typeof path === 'string' && path.startsWith(TRASH_PREFIX);
+export const toTrashPath = (path) => (inTrash(path) ? path : TRASH_PREFIX + path);
+export const fromTrashPath = (path) => (inTrash(path) ? path.slice(TRASH_PREFIX.length) : path);
+
+const ITEM_KEYS = new Set(['size', 'fav', 'rating', 'flag', 'hidden', 'tags', 'trashed', 'meta', 't', 'ratingSet', 'removedTags']);
+const TOP_KEYS = new Set(['format', 'version', 'updated', 'items', 'albums', 'deleted', 'deletedAlbums']);
 
 export function emptyLibFile() {
-  return { format: LIBFILE_FORMAT, version: LIBFILE_VERSION, updated: null, items: {}, albums: [] };
+  return { format: LIBFILE_FORMAT, version: LIBFILE_VERSION, updated: null, items: {}, albums: [], deleted: {}, deletedAlbums: {} };
 }
 
-// Parse and validate. Unknown fields are dropped; bad entries are skipped and
+// A choice with nothing to keep: no choice, no override and no unknown fields.
+export function isBlankChoice(c) {
+  return isEmptyChoice(c) && !c?.ratingSet && !c?.removedTags?.length && !(c?.x && Object.keys(c.x).length);
+}
+
+const okTime = (t) => Number.isFinite(t) && t >= 0;
+const extraOf = (raw, known) => {
+  const x = {};
+  for (const [k, v] of Object.entries(raw)) if (!known.has(k)) x[k] = v;
+  return Object.keys(x).length ? x : null;
+};
+
+// Parse and validate. Unknown fields are kept (in `x`); bad entries are skipped and
 // counted, never fatal, so a hand-edited file still loads.
 export function parseLibFile(text) {
   let raw;
@@ -56,22 +104,32 @@ export function parseLibFile(text) {
   }
   const file = emptyLibFile();
   file.updated = typeof raw.updated === 'string' ? raw.updated : null;
+  const x = extraOf(raw, TOP_KEYS);
+  if (x) file.x = x;
   let skipped = 0;
-  for (const [p, v] of Object.entries(raw.items && typeof raw.items === 'object' ? raw.items : {})) {
+  const renamed = new Map(); // an older file's trashed item: original path -> trash path
+  for (const [p0, v] of Object.entries(raw.items && typeof raw.items === 'object' ? raw.items : {})) {
     const c = cleanChoice(v);
     if (!c) { skipped++; continue; }
     const meta = cleanMeta(v.meta);
     if (meta) c.meta = meta;
-    file.items[normPath(p)] = c;
+    let p = normPath(p0);
+    if (c.trashed && !inTrash(p)) { renamed.set(p, toTrashPath(p)); p = toTrashPath(p); }
+    file.items[p] = c;
   }
+  for (const [p, t] of Object.entries(raw.deleted && typeof raw.deleted === 'object' ? raw.deleted : {})) if (okTime(t)) file.deleted[normPath(p)] = t;
+  for (const [id, t] of Object.entries(raw.deletedAlbums && typeof raw.deletedAlbums === 'object' ? raw.deletedAlbums : {})) if (okTime(t)) file.deletedAlbums[id] = t;
+  const re = (p) => renamed.get(p) ?? p;
   for (const a of Array.isArray(raw.albums) ? raw.albums : []) {
     if (!a || typeof a.id !== 'string' || typeof a.name !== 'string') { skipped++; continue; }
-    file.albums.push({
+    const al = {
       id: a.id, name: a.name.slice(0, 200),
       created: typeof a.created === 'string' ? a.created : null,
-      cover: typeof a.cover === 'string' ? normPath(a.cover) : null,
-      items: [...new Set((Array.isArray(a.items) ? a.items : []).filter(x => typeof x === 'string').map(normPath))],
-    });
+      cover: typeof a.cover === 'string' ? re(normPath(a.cover)) : null,
+      items: [...new Set((Array.isArray(a.items) ? a.items : []).filter(x => typeof x === 'string').map(p => re(normPath(p))))],
+    };
+    if (okTime(a.t)) al.t = a.t;
+    file.albums.push(al);
   }
   return { ok: true, file, skipped };
 }
@@ -86,7 +144,105 @@ function cleanChoice(v) {
   if (v.hidden === true) c.hidden = true;
   if (Array.isArray(v.tags)) c.tags = [...new Set(v.tags.filter(t => typeof t === 'string').map(normTag).filter(Boolean))];
   if (typeof v.trashed === 'string') c.trashed = v.trashed;
+  if (v.ratingSet === true) c.ratingSet = true;
+  if (Array.isArray(v.removedTags)) {
+    const r = [...new Set(v.removedTags.filter(t => typeof t === 'string').map(normTag).filter(Boolean))];
+    if (r.length) c.removedTags = r;
+  }
+  if (okTime(v.t)) c.t = v.t;
+  const x = extraOf(v, ITEM_KEYS);
+  if (x) c.x = x;
   return c;
+}
+
+// ── the import-details file (.slate-library-meta.json) ──────────────────────
+// The text of the meta file for a library file's items (sorted, so equal content gives equal text).
+export function metaFileText(file) {
+  const items = {};
+  for (const p of Object.keys(file.items).sort()) if (file.items[p].meta) items[p] = file.items[p].meta;
+  return JSON.stringify({ format: META_FORMAT, version: 1, items }, null, 2) + '\n';
+}
+export const EMPTY_META_TEXT = metaFileText({ items: {} });
+
+// Parse the meta file: Map(path -> meta), or null when it is not a meta file.
+export function parseMetaFile(text) {
+  let raw;
+  try { raw = JSON.parse(text); } catch { return null; }
+  if (!raw || raw.format !== META_FORMAT || !raw.items || typeof raw.items !== 'object') return null;
+  const out = new Map();
+  for (const [p, v] of Object.entries(raw.items)) { const m = cleanMeta(v); if (m) out.set(normPath(p), m); }
+  return out;
+}
+
+// Put the meta file's details into a parsed library file's items (in place).
+export function joinMeta(file, metaMap) {
+  for (const [p0, m] of metaMap) {
+    const p = file.items[p0] ? p0 : (file.items[toTrashPath(p0)] ? toTrashPath(p0) : p0);
+    if (file.deleted[p] && !file.items[p]) continue;
+    if (!file.items[p]) file.items[p] = emptyChoice();
+    file.items[p].meta = m;
+  }
+  return file;
+}
+
+// The library file without `meta` (that goes to the meta file).
+export function withoutMeta(file) {
+  const items = {};
+  for (const [p, it] of Object.entries(file.items)) { const { meta, ...rest } = it; items[p] = rest; }
+  return { ...file, items };
+}
+
+// ── merge (review S2) ───────────────────────────────────────────────────────
+// Merge two parsed library files for one root, item by item: the newer `t` wins, a tombstone
+// newer than an item removes it, and on equal times `a` wins unless `b.updated` is newer.
+// Returns { file, changed }: `changed` counts entries where `b` replaced what `a` had.
+export function mergeLibFiles(a, b) {
+  const bFirst = (b.updated ?? '') > (a.updated ?? '');
+  const out = emptyLibFile();
+  out.updated = [a.updated, b.updated].filter(Boolean).sort().pop() ?? null;
+  const x = { ...(a.x || {}), ...(b.x || {}) };
+  if (Object.keys(x).length) out.x = x;
+  let changed = 0;
+  const pick = (ea, eb) => {
+    if (!eb) return ea;
+    if (!ea) return eb;
+    if (eb.t !== ea.t) return eb.t > ea.t ? eb : ea;
+    return bFirst ? eb : ea;
+  };
+  const entry = (f, p) => {
+    const it = f.items[p], d = f.deleted?.[p];
+    if (it && !(d > (it.t ?? 0))) return { t: it.t ?? 0, item: it };
+    return d != null ? { t: d, del: true } : null;
+  };
+  const same = (e1, e2) => !!e1 && !!e2 && (e1.del ? e2.del && e1.t === e2.t : !e2.del && canon(e1.item) === canon(e2.item));
+  const paths = new Set([...Object.keys(a.items), ...Object.keys(a.deleted || {}), ...Object.keys(b.items), ...Object.keys(b.deleted || {})]);
+  for (const p of paths) {
+    const ea = entry(a, p), eb = entry(b, p), win = pick(ea, eb);
+    if (win === eb && !same(ea, eb)) changed++;
+    if (win.del) out.deleted[p] = win.t; else out.items[p] = win.item;
+  }
+  const albums = new Map();
+  const tombs = { ...(a.deletedAlbums || {}) };
+  for (const [id, t] of Object.entries(b.deletedAlbums || {})) tombs[id] = Math.max(tombs[id] ?? 0, t);
+  const aAl = new Map(a.albums.map(al => [al.id, al]));
+  for (const al of b.albums) {
+    const mine = aAl.get(al.id);
+    const win = pick(mine && { t: mine.t ?? 0, al: mine }, { t: al.t ?? 0, al });
+    if (win.al === al && JSON.stringify(mine) !== JSON.stringify(al)) changed++;
+    albums.set(al.id, win.al);
+  }
+  for (const al of a.albums) if (!albums.has(al.id)) albums.set(al.id, al);
+  for (const [id, t] of Object.entries(tombs)) {
+    const al = albums.get(id);
+    if (al && (al.t ?? 0) <= t) {
+      albums.delete(id);
+      if (aAl.has(id)) changed++;
+    }
+    out.deletedAlbums[id] = t;
+  }
+  for (const id of Object.keys(b.deletedAlbums || {})) if (!(id in (a.deletedAlbums || {})) && !aAl.has(id)) changed++;
+  out.albums = [...albums.values()].sort((p, q) => p.id.localeCompare(q.id));
+  return { file: out, changed };
 }
 
 export const META_SOURCES = ['takeout', 'icloud'];
@@ -111,38 +267,63 @@ export function metaTime(taken) {
   return Number.isFinite(t) ? t : null;
 }
 
+// One item as it is written: only non-default fields; unknown fields stay in `x`.
+function itemOut(c, m, size, t) {
+  const out = {};
+  if (typeof size === 'number') out.size = size;
+  if (c.fav) out.fav = true;
+  if (c.rating) out.rating = c.rating;
+  if (c.ratingSet && !c.rating) out.ratingSet = true;
+  if (c.flag) out.flag = c.flag;
+  if (c.hidden) out.hidden = true;
+  if (c.tags?.length) out.tags = [...c.tags].sort();
+  if (c.removedTags?.length) out.removedTags = [...c.removedTags].sort();
+  if (c.trashed) out.trashed = c.trashed;
+  if (okTime(t)) out.t = t;
+  if (m) out.meta = m;
+  if (c.x && Object.keys(c.x).length) out.x = { ...c.x };
+  return out;
+}
+const canon = (it) => JSON.stringify(itemOut(it, it.meta, it.size, it.t));
+
 // Build the file for one root from in-memory state.
 //   choices: Map(path -> choice) for this root
 //   meta:    Map(path -> meta) for this root (import details; see the header)
 //   sizes:   Map(path -> size) for this root (from the index)
-//   albums:  [{ id, name, created, cover: path|null, items: [path] }] restricted to this root
-export function buildLibFile({ choices, meta = new Map(), sizes, albums, now = new Date() }) {
+//   times:   Map(path -> ms) last change of each item; a path with no choice and no meta is a tombstone
+//   albums:  [{ id, name, created, cover: path|null, items: [path], t }] restricted to this root
+//   albumTombs: Map(albumId -> ms) deleted albums
+//   extra:   unknown top-level fields to write back
+// Tombstones older than TOMBSTONE_DAYS are left out.
+export function buildLibFile({ choices, meta = new Map(), sizes, albums, times = new Map(), albumTombs = new Map(), extra = null, now = new Date() }) {
   const file = emptyLibFile();
   file.updated = now.toISOString();
+  const cutoff = now.getTime() - TOMB_MS;
   const paths = [...new Set([...choices.keys(), ...meta.keys()])].sort();
   for (const p of paths) {
     const c = choices.get(p) ?? emptyChoice(), m = meta.get(p);
-    if (isEmptyChoice(c) && !m) continue;
-    const out = {};
-    const size = sizes?.get(p) ?? c.size;
-    if (typeof size === 'number') out.size = size;
-    if (c.fav) out.fav = true;
-    if (c.rating) out.rating = c.rating;
-    if (c.flag) out.flag = c.flag;
-    if (c.hidden) out.hidden = true;
-    if (c.tags?.length) out.tags = [...c.tags].sort();
-    if (c.trashed) out.trashed = c.trashed;
-    if (m) out.meta = m;
-    file.items[p] = out;
+    if (isBlankChoice(c) && !m) continue;
+    file.items[p] = itemOut(c, m, sizes?.get(p) ?? c.size, times.get(p) ?? c.t);
   }
+  for (const [p, t] of [...times].sort()) if (!(p in file.items) && t >= cutoff) file.deleted[p] = t;
+  for (const [id, t] of [...albumTombs].sort()) if (t >= cutoff) file.deletedAlbums[id] = t;
   file.albums = [...albums]
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map(a => ({ id: a.id, name: a.name, created: a.created ?? null, cover: a.cover ?? null, items: [...a.items].sort() }));
+    .map(a => {
+      const out = { id: a.id, name: a.name, created: a.created ?? null, cover: a.cover ?? null, items: [...a.items].sort() };
+      if (okTime(a.t)) out.t = a.t;
+      return out;
+    });
+  if (extra && Object.keys(extra).length) file.x = { ...extra };
   return file;
 }
 
+// Unknown fields (`x`, on the file and on each item) are written back in place.
 export function serialiseLibFile(file) {
-  return JSON.stringify(file, null, 2) + '\n';
+  const flat = (o, known) => { const { x, ...rest } = o; if (x) for (const [k, v] of Object.entries(x)) if (!known.has(k)) rest[k] = v; return rest; };
+  const items = {};
+  for (const [p, it] of Object.entries(file.items)) items[p] = flat(it, ITEM_KEYS);
+  return JSON.stringify(flat({ ...file, items }, TOP_KEYS), null, 2) + '\n';
 }
 
 // A file that moved inside its root: match an unknown path in the library file

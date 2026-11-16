@@ -1,7 +1,9 @@
 // The Duplicates view: exact copies first, then similar photos, each group as
 // a row of thumbnails with the suggested keeper marked. "Keep the marked one,
-// trash the rest" trashes one group; "Trash all suggested" does every group on
-// the page. Both go through runCommand('photo.trash') and offer Undo.
+// trash the rest" trashes one group; "Trash all suggested exact copies" does every
+// exact group on the page. Similar groups hold different pictures, so each needs its
+// own click. Both go through runCommand('photo.trash') and offer Undo.
+// Photos the lock hides (lib.visible, locked.js) are never compared or shown.
 //
 // initDupes(lib, ui) registers the view. Exact copies take two passes on
 // lib.jobs as kind 'dupes': a sampled fingerprint (first and last 1 MB plus the
@@ -13,7 +15,7 @@
 // Search by meaning keeps (lib.services.clip, clip.js): photos whose cosine is
 // at or above the slider value, leaving out pairs the first two passes grouped.
 
-import { runCommand } from '../../library/commands.js';
+import { runCommand, visible } from '../../library/commands.js';
 import { esc } from '../../core/html.js';
 import { exactGroups, fingerprintCandidates, splitByBytes, sampleFingerprint, sameBytes, nearGroupsAsync, clipGroupsAsync, sizeCollisions, dropCoveredNear, runOnJobs, DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT } from '../../library/dupes.js';
 
@@ -87,7 +89,7 @@ export function initDupes(lib, ui) {
     el.querySelector('button').addEventListener('click', async () => {
       clearTimeout(timer);
       el.remove();
-      try { for (const t of [...tokens].reverse()) await runCommand(lib, 'library.undo', { token: t }, { ui }); say('Undone', 'ok'); }
+      try { for (const t of [...tokens].reverse()) await lib.undo(t); say('Undone', 'ok'); }
       catch (e) { say(e?.message ?? String(e), 'error'); }
     });
     box.appendChild(el);
@@ -115,7 +117,7 @@ export function initDupes(lib, ui) {
     drawHeader();
     try {
       const o = opts();
-      const all = [...lib.records.values()];
+      const all = [...lib.records.values()].filter(r => visible(lib, r.id));
 
       // 1. Fingerprints for photos thumbnailed before dHash existed.
       const noHash = all.filter(r => r.thumb === 'ok' && !r.dhash && !r.missing && !o.isTrashed(r));
@@ -209,13 +211,15 @@ export function initDupes(lib, ui) {
   };
   const allGroups = () => [...exact, ...near, ...byMeaning];
   const visibleGroups = () => allGroups().slice(0, shown);
+  // "Trash all suggested" takes exact copies only.
+  const exactShown = () => visibleGroups().filter(g => g.kind === 'exact');
   const suggestedTrash = (groups) => groups.flatMap(g => { const k = marked(g); return k.size ? g.ids.filter(id => !k.has(id)) : []; });
 
   function drawHeader() {
     const head = host?.querySelector('.dup-head');
     if (!head) return;
     const groups = visibleGroups();
-    const count = suggestedTrash(groups).length;
+    const count = suggestedTrash(groups.filter(g => g.kind === 'exact')).length;
     head.innerHTML = `
       <div class="dup-status" role="status" aria-live="polite">
         <span class="dup-status-text">${esc(status || 'Looking for duplicates')}</span>
@@ -232,7 +236,7 @@ export function initDupes(lib, ui) {
           <input type="range" min="${CLIP_MIN_LIMIT}" max="${CLIP_MAX_LIMIT}" step="0.01" value="${clipMin}">
           <span class="dup-clip-value">${clipMin.toFixed(2)}</span>
         </label>` : ''}
-        <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested (${n(count)})</button>
+        <button type="button" class="btn btn-danger dup-trash-all" ${count && !busy ? '' : 'disabled'}>Trash all suggested exact copies (${n(count)})</button>
       </div>
       ${clipReady() ? '' : '<p class="dup-note">Turn on Search by meaning to also compare photos by what they show.</p>'}
       ${unhashed ? `<p class="dup-note">${plural(unhashed, 'photo')} have no thumbnail yet, so they are not compared for similarity.</p>` : ''}`;
@@ -240,7 +244,7 @@ export function initDupes(lib, ui) {
 
   function tileHtml(g, id) {
     const r = lib.get(id);
-    if (!r) return '';
+    if (!r || !visible(lib, id)) return '';
     const kept = marked(g).has(id);
     return `<label class="dup-tile${kept ? ' is-keep' : ''}" data-id="${esc(id)}">
       <span class="dup-thumb"><img alt="" data-id="${esc(id)}"></span>
@@ -300,6 +304,7 @@ export function initDupes(lib, ui) {
 
   // ── actions ──────────────────────────────────────────────────────────────
   async function trashIds(ids, what) {
+    ids = ids.filter(id => visible(lib, id));
     if (!ids.length) return;
     try {
       const tokens = []; let changed = 0;
@@ -325,7 +330,7 @@ export function initDupes(lib, ui) {
       trashIds(g.ids.filter(id => !k.has(id)), 'from the group');
       return;
     }
-    if (t.closest('.dup-trash-all')) { trashIds(suggestedTrash(visibleGroups()), 'from duplicate groups'); }
+    if (t.closest('.dup-trash-all')) { trashIds(suggestedTrash(exactShown()), 'from exact-copy groups'); }
   }
 
   function onChange(e) {

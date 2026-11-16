@@ -14,7 +14,7 @@ const SKIP_CLIP = args.includes('--skip-clip'), SKIP_FACES = args.includes('--sk
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const FOLDER = `slate-livecheck-b3-${Date.now().toString(36)}`;
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => { const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` }); const v = JSON.parse(t); if (v && v.exc) throw new Error(v.exc); return v == null ? v : JSON.parse(v); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -24,12 +24,14 @@ const check = (rows, what, ok, detail = '') => { results.push(ok); console.log(`
 const L = 'const S=window.__slateLibrary, L=S.lib;';
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await raw('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
   await until('return !!window.__slateLibrary', 15000);
-  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
+  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.download.ocr','1'); localStorage.setItem('slate.download.depth','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
 
   // ── the folder: red and blue pictures, photos with GPS in Goa and Lisbon, a receipt, three copies of messi5.jpg ──
   const made = await ev(`
@@ -75,7 +77,7 @@ try {
   const lk = await ev(`${L} const id=L.search({ q:'lisbon' })[0].id; L.setHidden([id], true); const lock=L.services.lock;
     await lock.set('correct horse'); lock.lock(); const lockedCount=L.search({ hidden:'only' }).length;
     const wrong=await lock.unlock('wrong horse').then(()=>true).catch(()=>false); const afterWrong=L.search({ hidden:'only' }).length;
-    await lock.unlock('correct horse'); const unlockedCount=L.search({ hidden:'only' }).length; await lock.reset(); L.setHidden([id], false);
+    await lock.unlock('correct horse'); const unlockedCount=L.search({ hidden:'only' }).length; await lock.remove('correct horse'); L.setHidden([id], false);
     return { lockedCount, wrongAccepted: wrong && afterWrong>0, unlockedCount }`);
   check('O9', 'locked: hidden photos stay out of every view until the passphrase is given', lk.lockedCount === 0 && !lk.wrongAccepted && lk.unlockedCount === 1, JSON.stringify(lk));
 
@@ -118,6 +120,7 @@ try {
   } catch (e) { console.log('  cleanup failed', e.message); }
   await raw('Emulation.clearDeviceMetricsOverride').catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

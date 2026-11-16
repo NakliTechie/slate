@@ -4,12 +4,16 @@
 // also matches the words it found. "Read text" in the action bar runs it now for
 // the selection, whether the setting is on or not.
 //
-// The text stays in this browser: lib.store kv under 'textindex', one object of
-// id -> { t: text, s: "size:mtime" }. It is never written to the library file.
-// A photo whose size or modified time changes is read again.
+// The text stays in this browser: lib.store kv, one key per photo,
+// 'textindex:<id>' -> { t: text, s: "size:mtime" }, so a save writes only the photos
+// read since the last save (review S15). It is never written to the library file.
+// A photo whose size or modified time changes is read again. The store cannot list
+// keys, so each record's key is read when the record first appears (load or scan).
+// An older build kept one object under 'textindex'; it is split into per-photo keys
+// once and deleted.
 //
 // initTextIndex(lib, { recognise, loadImage, saveDelay }) -> api
-//   api.ready              resolves once the setting and the text are loaded
+//   api.ready              resolves once the setting and the stored text of the known records are loaded
 //   api.enabled() / api.setEnabled(on)
 //   api.textOf(id)         the text read from that photo, '' when it has none, undefined when unread
 //   api.runFor(ids)        read these photos first; returns how many were queued
@@ -23,7 +27,10 @@
 import { extractText, ocrImage } from '../ops/ocr.js';
 
 export const TEXT_SETTING_KEY = 'setting:readText';
-export const TEXT_INDEX_KEY = 'textindex';
+export const TEXT_INDEX_KEY = 'textindex';            // older single-object form, read once and removed
+export const TEXT_KEY_PREFIX = 'textindex:';
+export const textKey = (id) => TEXT_KEY_PREFIX + id;
+const PROBE_BATCH = 500;
 const SAVE_DELAY_MS = 2000;
 
 const sigOf = (r) => `${r.size}:${r.mtime}`;
@@ -32,6 +39,7 @@ export function initTextIndex(lib, { recognise = (b) => extractText(b), loadImag
   const entries = new Map();   // id -> { t, s }
   const queued = new Set();    // ids waiting or running in lib.jobs
   const changed = new Set();   // ids read since the last save
+  const probed = new Set();    // ids whose kv key has been read
   let on = false;
   let timer = null;
 
@@ -61,13 +69,28 @@ export function initTextIndex(lib, { recognise = (b) => extractText(b), loadImag
 
   function enqueueAll() { add([...lib.records.keys()].filter(needs)); }
 
+  // Read the stored text of records not seen yet. Runs in batches so a 100,000-photo
+  // library does not open 100,000 requests at once.
+  async function probe(ids) {
+    const todo = ids.filter(id => !probed.has(id) && !entries.has(id));
+    for (const id of todo) probed.add(id);
+    for (let i = 0; i < todo.length; i += PROBE_BATCH) {
+      const part = todo.slice(i, i + PROBE_BATCH);
+      const got = await Promise.all(part.map(id => kv('getKv', textKey(id)).catch(() => undefined)));
+      part.forEach((id, k) => { if (got[k] && !entries.has(id)) entries.set(id, got[k]); });
+    }
+  }
+
+  // Loads run one after another; api.ready is the latest of them.
+  let chain = Promise.resolve();
+  function after(fn) { chain = chain.then(fn).catch(() => {}); return chain; }
+
   function scheduleSave() {
     clearTimeout(timer);
     timer = setTimeout(() => { api.flush().catch(e => lib.emit('error', { message: `Could not save the text read from photos: ${e.message}` })); }, saveDelay);
   }
 
   const api = {
-    ready: null,
     enabled: () => on,
     async setEnabled(value) {
       on = !!value;
@@ -88,35 +111,51 @@ export function initTextIndex(lib, { recognise = (b) => extractText(b), loadImag
     },
     async forget() {
       clearTimeout(timer);
+      const ids = new Set([...entries.keys(), ...probed]);
       entries.clear(); changed.clear();
+      await Promise.all([...ids].map(id => kv('deleteKv', textKey(id))));
       await kv('deleteKv', TEXT_INDEX_KEY);
       lib.emit('text', { ids: null });
     },
+    // Writes one kv key for each photo read since the last save, and nothing else.
     async flush() {
       clearTimeout(timer);
       const ids = [...changed]; changed.clear();
-      await kv('setKv', TEXT_INDEX_KEY, Object.fromEntries(entries));
+      for (const id of ids) {
+        const e = entries.get(id);
+        await kv(e ? 'setKv' : 'deleteKv', textKey(id), e);
+      }
       lib.emit('text', { ids });
     },
   };
+  Object.defineProperty(api, 'ready', { get: () => chain, enumerable: true });
 
-  api.ready = Promise.all([kv('getKv', TEXT_SETTING_KEY), kv('getKv', TEXT_INDEX_KEY)])
-    .then(([setting, saved]) => {
-      on = setting === true;
-      for (const [id, e] of Object.entries(saved ?? {})) if (!entries.has(id)) entries.set(id, e);
-      if (on && lib.records.size) enqueueAll();
-    }).catch(() => {});
+  after(async () => {
+    const [setting, legacy] = await Promise.all([kv('getKv', TEXT_SETTING_KEY), kv('getKv', TEXT_INDEX_KEY)]);
+    on = setting === true;
+    if (legacy && typeof legacy === 'object') {
+      for (const [id, e] of Object.entries(legacy)) if (!entries.has(id)) { entries.set(id, e); probed.add(id); changed.add(id); }
+      await api.flush();
+      await kv('deleteKv', TEXT_INDEX_KEY);
+    }
+    await probe([...lib.records.keys()]);
+    if (on && lib.records.size) enqueueAll();
+  });
 
   lib.on('records', (ev = {}) => {
-    // Rebuild clears every kv entry; write the setting and the text back.
+    // Rebuild clears the kv store (store.keepKv keeps settings); write the setting and every text back.
     if (ev.reason === 'rebuild') {
       kv('setKv', TEXT_SETTING_KEY, on).catch(() => {});
+      for (const id of entries.keys()) changed.add(id);
       if (entries.size) scheduleSave();
     }
     if (Array.isArray(ev.ids)) {
-      for (const id of ev.ids) if (!lib.records.has(id) && entries.delete(id)) scheduleSave();
-      if (on) add(ev.ids.filter(needs));
-    } else if (on) enqueueAll();
+      const ids = ev.ids;
+      for (const id of ids) if (!lib.records.has(id) && entries.delete(id)) { changed.add(id); scheduleSave(); }
+      after(async () => { await probe(ids.filter(id => lib.records.has(id))); if (on) add(ids.filter(needs)); });
+    } else {
+      after(async () => { await probe([...lib.records.keys()]); if (on) enqueueAll(); });
+    }
   });
 
   lib.textOf = api.textOf;

@@ -1,5 +1,5 @@
 // Locked hidden photos (row O9, src/library/locked.js) with Node's webcrypto:
-// set a passphrase, verify it, refuse a wrong one, reset; and the query gate.
+// set a passphrase, verify it, refuse a wrong one, remove it with the passphrase; and the query gate.
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { memoryStore } from '../src/library/store.js';
@@ -47,8 +47,10 @@ const l3 = createLock(other, { crypto: webcrypto, iterations: 1000 });
 await l3.set('blue heron 7');
 assert.notEqual((await other.getKv(LOCK_KEY)).salt, v.salt);
 
-// Reset removes the lock and nothing else.
-await s2.reset();
+// Removing the lock needs the current passphrase; then it removes the lock and nothing else.
+assert.equal(await s2.remove('wrong one'), false, 'a wrong passphrase removes nothing');
+assert.ok((await store.getKv(LOCK_KEY))?.hash);
+assert.equal(await s2.remove('blue heron 7'), true);
 assert.equal(await store.getKv(LOCK_KEY), undefined);
 assert.equal(s2.isSet(), false);
 assert.equal(s2.isLocked(), false);

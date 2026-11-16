@@ -6,6 +6,8 @@
 //
 // initPeople(lib, ui) registers the view. The service is lib.services.faces
 // (src/library/faces.js); names and groups live in this browser only.
+// A person's faces and photos are virtualised: only the rows near the visible part of
+// the panel are in the DOM (visibleRows), so a person with 20,000 photos stays fast.
 
 import { esc } from '../../core/html.js';
 import { OPT_IN_TEXT, MIN_FACES } from '../../library/faces.js';
@@ -24,6 +26,51 @@ export function cropStyle(box) {
   return `background-size:${100 / w}% ${100 / h}%;background-position:${pos(x, w)}% ${pos(y, h)}%`;
 }
 
+// Which rows of a grid to draw. `top` is the scroll offset into the grid (it may be negative
+// when the grid starts below the visible area) and `height` the visible height.
+export function visibleRows({ count, cols, rowH, gap = 0, top, height, overscan = 2 }) {
+  const rows = Math.ceil(count / Math.max(1, cols));
+  const step = rowH + gap;
+  const first = Math.max(0, Math.floor(top / step) - overscan);
+  const last = Math.max(first - 1, Math.min(rows - 1, Math.floor((top + height) / step) + overscan));   // first - 1: no row
+  return { rows, first, last, total: Math.max(0, rows * step - gap), offset: first * step };
+}
+
+// A grid of `items` in `box` that keeps only the visible rows in the DOM. `scroller` scrolls.
+// `tile` is { min, h(colW), gap } in px; `html(item)` draws one tile. Returns a cleanup.
+function virtualGrid(box, scroller, items, tile, html, onDraw) {
+  box.style.position = 'relative';
+  const inner = document.createElement('div');
+  inner.style.cssText = 'position:absolute;left:0;right:0;top:0;display:grid';
+  box.replaceChildren(inner);
+  let key = '';
+  const draw = () => {
+    const w = box.clientWidth || scroller.clientWidth || 600;
+    const cols = Math.max(1, Math.floor((w + tile.gap) / (tile.min + tile.gap)));
+    const colW = (w - tile.gap * (cols - 1)) / cols;
+    const rowH = tile.h(colW);
+    const top = scroller.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    const r = visibleRows({ count: items.length, cols, rowH, gap: tile.gap, top, height: scroller.clientHeight || 800 });
+    box.style.height = `${r.total}px`;
+    const next = `${cols}|${r.first}|${r.last}`;
+    if (next === key) return;
+    key = next;
+    inner.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    inner.style.gridAutoRows = `${rowH}px`;
+    inner.style.gap = `${tile.gap}px`;
+    inner.style.transform = `translateY(${r.offset}px)`;
+    inner.innerHTML = r.last < r.first ? '' : items.slice(r.first * cols, (r.last + 1) * cols).map(html).join('');
+    onDraw?.(inner);
+  };
+  let raf = 0;
+  const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
+  scroller.addEventListener('scroll', later, { passive: true });
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(later) : null;
+  ro?.observe(box);
+  draw();
+  return () => { scroller.removeEventListener('scroll', later); ro?.disconnect(); cancelAnimationFrame(raf); };
+}
+
 export function initPeople(lib, ui) {
   const faces = lib.services.faces;
   if (!faces) throw new Error('initPeople needs lib.services.faces (initFaces first)');
@@ -31,6 +78,7 @@ export function initPeople(lib, ui) {
   let showHidden = false;
   let confirming = false;
   let host = null;
+  let unVirtual = [];           // cleanups of the person page's virtual grids
 
   const say = (m, level = 'info') => ui.toast?.(m, level);
   // A background update never redraws over a name or a choice being made.
@@ -40,6 +88,12 @@ export function initPeople(lib, ui) {
     if (a && host.contains(a) && /^(INPUT|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return;
     draw();
   };
+
+  const photoName = (id) => lib.get(id)?.name ?? 'Photo';
+  const faceCell = (f, cover) => `<div class="ppl-facecell${cover?.id === f.id ? ' ppl-cover' : ''}">${faceTile(f)}
+        <button type="button" class="btn" data-act="cover" data-face="${esc(f.id)}"${cover?.id === f.id ? ' disabled' : ''}>Set as cover</button>
+        <button type="button" class="btn" data-act="wrong" data-face="${esc(f.id)}">Not this person</button></div>`;
+  const photoCell = (id) => `<button type="button" class="ppl-photo" data-open="${esc(id)}" title="${esc(photoName(id))}" aria-label="Open ${esc(photoName(id))} in the editor"><img alt="" data-id="${esc(id)}"></button>`;
 
   function loadCrops(root) {
     for (const el of root.querySelectorAll('[data-crop]')) {
@@ -115,26 +169,31 @@ export function initPeople(lib, ui) {
         </div>
       </div>
       <h3 class="ppl-section">Faces (${n(list.length)})</h3>
-      <div class="ppl-faces">${list.map(f => `<div class="ppl-facecell${cover?.id === f.id ? ' ppl-cover' : ''}">${faceTile(f)}
-        <button type="button" class="btn" data-act="cover" data-face="${esc(f.id)}"${cover?.id === f.id ? ' disabled' : ''}>Set as cover</button>
-        <button type="button" class="btn" data-act="wrong" data-face="${esc(f.id)}">Not this person</button></div>`).join('')}</div>
+      <div class="ppl-vfaces"></div>
       <h3 class="ppl-section">Photos (${n(photos.length)})</h3>
-      <div class="ppl-photos">${photos.map(id => `<button type="button" class="ppl-photo" data-open="${esc(id)}" title="${esc(lib.get(id)?.name ?? '')}"><img alt="" data-id="${esc(id)}"></button>`).join('')}</div>
+      <div class="ppl-vphotos"></div>
     </div>`;
+    // Faces: 72 px crops with two buttons, about 136 px a cell. Photos: square tiles of at least 120 px.
+    unVirtual.push(virtualGrid(el.querySelector('.ppl-vfaces'), el, list, { min: 120, h: () => 136, gap: 12 }, f => faceCell(f, cover), loadCrops));
+    unVirtual.push(virtualGrid(el.querySelector('.ppl-vphotos'), el, photos, { min: 120, h: w => w, gap: 4 }, photoCell, loadCrops));
   }
 
   function draw() {
+    for (const off of unVirtual) off();
+    unVirtual = [];
+    const st = host.scrollTop;   // a redraw keeps the place on a long person page
     if (!faces.enabled()) drawOff(host);
     else if (page) drawPerson(host, page);
     else drawGrid(host);
     loadCrops(host);
+    if (st) host.scrollTop = st;
   }
 
   async function act(e) {
     const t = e.target.closest('[data-act], [data-person], [data-open]');
     if (!t || !host.contains(t)) return;
     try {
-      if (t.dataset.person) { page = t.dataset.person; return draw(); }
+      if (t.dataset.person) { page = t.dataset.person; host.scrollTop = 0; return draw(); }
       if (t.dataset.open) return ui.openInEditor(t.dataset.open);
       switch (t.dataset.act) {
         case 'on': await faces.setEnabled(true); say('Faces are on. Models download first, then photos are looked at in the background.'); break;
@@ -142,9 +201,9 @@ export function initPeople(lib, ui) {
         case 'pause': faces.pause(); break;
         case 'resume': faces.resume(); break;
         case 'hidden': showHidden = t.checked; break;
-        case 'delete': if (!faces.enabled()) { await faces.deleteAll(); say('Deleted all face data.', 'ok'); } else confirming = true; break;
+        case 'delete': if (!faces.enabled()) deleted(await faces.deleteAll()); else confirming = true; break;
         case 'cancel': confirming = false; break;
-        case 'confirm-delete': confirming = false; page = null; await faces.deleteAll(); say('Deleted all face data.', 'ok'); break;
+        case 'confirm-delete': confirming = false; page = null; deleted(await faces.deleteAll()); break;
         case 'back': page = null; break;
         case 'hide': { const p = faces.hide(page, !faces.person(page).hidden); say(p.hidden ? 'Hidden. Show hidden people to see them again.' : 'Shown.'); break; }
         case 'merge': {
@@ -158,6 +217,13 @@ export function initPeople(lib, ui) {
       }
       draw(); ui.refreshView?.();
     } catch (err) { say(err?.message ?? String(err), 'error'); }
+  }
+
+  // deleteAll() reports a delete that another tab blocks; the data goes when that tab closes.
+  function deleted(r) {
+    if (r?.blocked) say('Slate is open in another tab, so the face data is deleted only when that tab closes. Close the other Slate tabs now.', 'warn');
+    else if (r?.error) say(`Could not delete the face data: ${r.error}`, 'error');
+    else say('Deleted all face data.', 'ok');
   }
 
   function onSubmit(e) {
@@ -179,7 +245,7 @@ export function initPeople(lib, ui) {
       draw();
       let timer = null;
       const off = faces.on(() => { clearTimeout(timer); timer = setTimeout(redraw, 400); });
-      return () => { off(); clearTimeout(timer); host = null; };
+      return () => { off(); clearTimeout(timer); for (const u of unVirtual) u(); unVirtual = []; host = null; };
     },
   });
 }

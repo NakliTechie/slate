@@ -159,8 +159,25 @@
     {
       "name": "library.undo",
       "label": "Undo",
-      "description": "Undo one earlier library change, by the undo token that change returned.",
+      "description": "Undo one earlier change to favourites, ratings, flags, tags, hidden photos or albums, by the undo token that change returned. A change that moved files (trash, restore, move, rename) is undone with library.undo_files.",
       "scope": "write",
+      "input": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      }
+    },
+    {
+      "name": "library.undo_files",
+      "label": "Undo a file change",
+      "description": "Undo one earlier trash, restore, move or rename, by the undo token that change returned. Files on disk move back, so NakliOS asks the person first.",
+      "scope": "destructive",
       "input": {
         "type": "object",
         "properties": {
@@ -470,8 +487,8 @@
     {
       "name": "photo.restore",
       "label": "Restore from trash",
-      "description": "Move trashed photos back to where they were.",
-      "scope": "write",
+      "description": "Move trashed photos back to where they were. NakliOS asks the person first, because files on disk change. Refuses to overwrite.",
+      "scope": "destructive",
       "input": {
         "type": "object",
         "properties": {
@@ -1108,18 +1125,23 @@
     {
       "name": "image.extract_text",
       "label": "Extract text",
-      "description": "Read printed English text from the open image on this device (Tesseract.js; downloads about 5 MB the first time). Returns the text and a confidence from 0 to 100.",
+      "description": "Read printed English text from the open image on this device. Downloads Tesseract.js (about 5 MB, from esm.sh and jsDelivr) the first time: ask the person, then pass allowDownload: true. Returns the text and a confidence from 0 to 100.",
       "scope": "read",
       "input": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "allowDownload": {
+            "type": "boolean",
+            "description": "set true, after the person agreed, to allow the first-time download"
+          }
+        },
         "required": []
       }
     },
     {
       "name": "image.lens_blur",
       "label": "Background blur",
-      "description": "Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. The depth model (about 27 to 50 MB) downloads the first time. Undo with image.undo.",
+      "description": "Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. Downloads the depth model (about 27 to 50 MB, from Hugging Face) the first time: ask the person, then pass allowDownload: true. Undo with image.undo.",
       "scope": "write",
       "input": {
         "type": "object",
@@ -1139,6 +1161,10 @@
             "minimum": 1,
             "maximum": 100,
             "description": "default 50"
+          },
+          "allowDownload": {
+            "type": "boolean",
+            "description": "set true, after the person agreed, to allow the first-time download"
           }
         },
         "required": [

@@ -10,7 +10,8 @@ export function initHelp() {
   // The library view emits this when the Library opens; the first time, a short library tour runs.
   // The editor tour points at editor controls, so it never sits on top of the Library.
   on('library:shown', () => { setAsideEditorTour(); setTimeout(() => showLibraryTour(), 300); });
-  on('library:hidden', () => { if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => showTour(), 300); });
+  // The Library may reopen within the delay; only show the editor tour if it is still closed.
+  on('library:hidden', () => { if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => { if (!document.getElementById('app')?.classList.contains('library-open')) showTour(); }, 300); });
 
   if (!localStorage.getItem(TOUR_KEY)) {
     // Defer until the toolbar and empty-state actions are real tour targets.
@@ -326,6 +327,13 @@ function library() {
       ${row('Trash', 'Move to trash puts the file in a <code>.slate-trash</code> folder inside its library folder. Restore puts it back. Only Empty trash deletes files, and it asks first.')}
       ${row('Index and thumbnails', 'The photo index lives in this browser (IndexedDB) and the thumbnails in its private storage (OPFS). Rebuild index recreates both from your folders.')}
       ${row('Batch and gallery', 'Select photos, then use Batch or Contact sheet / Gallery to run them on just the selection.')}
+    `)}
+    ${section('Lock hidden photos', `
+      <p class="help-p">In the Hidden view, Lock hidden photos sets a passphrase. Until you enter it, once each session, hidden photos stay out of every view, search, the Duplicates and People views, the trash and the agent commands, and Slate does not look for faces or meaning in them.</p>
+      ${row('What it does not do', 'The lock does not encrypt anything. The photo files stay as they are in the folder, and the <code>.slate-library.json</code> file lists which photos are hidden. Anyone who opens the folder outside Slate, or another browser, sees every photo. Use it to keep photos from casual viewers of this browser, not to protect them.')}
+      ${row('Remove the lock', 'Removing the lock asks for the current passphrase.')}
+      ${row('Forgot the passphrase', 'Slate cannot recover a passphrase. Forgot the passphrase lets you set a new one for photos you hide from now on. The photos hidden at that moment stay hidden and locked: they show again only with the old passphrase, or when someone with the folder removes their <code>hidden</code> entries from <code>.slate-library.json</code>.')}
+      ${row('Where it is kept', 'A salted PBKDF2 hash of the passphrase is kept in this browser (IndexedDB). The passphrase itself is never stored. Clearing this browser\'s site data removes the lock.')}
     `)}
     <div class="help-section">
       <h3>Library keys</h3>

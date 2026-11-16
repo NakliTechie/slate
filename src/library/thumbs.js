@@ -102,6 +102,15 @@ export function createThumbs(lib) {
     if (!patchTimer) patchTimer = setTimeout(flush, PATCH_DELAY_MS);
   };
 
+  // Records left 'pending' by a session that ended during a main-thread decode.
+  const failStale = () => {
+    const stale = [];
+    for (const r of lib.records?.values?.() ?? []) if (r.thumb === 'pending' && !queued.has(r.id)) stale.push({ id: r.id, thumb: 'fail' });
+    if (stale.length) lib.patchRecords(stale, 'thumb').catch(e => console.warn('[slate library] thumbnail state not saved', e));
+  };
+  lib.on?.('records', (ev) => { if (ev?.reason === 'load') failStale(); });
+  if (lib.loaded) failStale();
+
   const toWorker = (msg, transfer = []) => {
     if (!pool) pool = makePool(WORKERS);
     const w = pool[next++ % pool.length];
@@ -132,6 +141,9 @@ export function createThumbs(lib) {
       catch { /* not decodable in a worker here (HEIC off Safari, for one): try the registry */ }
     }
     if (!isSupportedFile(file)) return null;
+    // A main-thread decode that kills the tab must not run again on every visit (S16): the
+    // record is saved as 'pending' first, and a 'pending' found when the library loads becomes 'fail'.
+    await lib.patchRecords([{ id: rec.id, thumb: 'pending' }], 'thumb');
     const bmp = await decode(file);
     return toWorker({ name, src: bmp }, [bmp]);
   }

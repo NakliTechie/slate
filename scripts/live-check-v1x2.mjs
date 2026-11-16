@@ -12,7 +12,7 @@ const URL0 = (() => { const i = args.indexOf('--url'); return i >= 0 ? args[i + 
 const DAEMON = process.env.CDP_DAEMON || 'http://127.0.0.1:9334/';
 const FOLDER = `slate-livecheck-b2-${Date.now().toString(36)}`;
 const call = async (body) => (await fetch(DAEMON, { method: 'POST', body: JSON.stringify(body) })).text();
-let T = null;
+let T = null, CTX = null;
 const raw = (method, params = {}) => call({ cmd: 'raw', t: T, text: JSON.stringify({ method, params }) });
 const ev = async (js) => { const t = await call({ cmd: 'eval', t: T, js: `(async()=>JSON.stringify(await (async()=>{${js}})()))()` }); const v = JSON.parse(t); if (v && v.exc) throw new Error(v.exc); return v == null ? v : JSON.parse(v); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -44,12 +44,14 @@ const HELPERS = `
   return 1`;
 
 try {
-  T = JSON.parse(await call({ cmd: 'open', url: `${URL0}?lc=${Date.now()}` })).targetId;
+  // Own browser context: other sessions' tab clean-ups cannot match this tab, and storage starts empty.
+  CTX = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createBrowserContext', params: {} }) })).browserContextId;
+  T = JSON.parse(await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.createTarget', params: { url: `${URL0}?lc=${Date.now()}`, browserContextId: CTX } }) })).targetId;
   await raw('Target.activateTarget', { targetId: T }); await raw('Page.bringToFront');
   await raw('Page.enable'); await raw('Page.setWebLifecycleState', { state: 'active' }); await raw('Emulation.setFocusEmulationEnabled', { enabled: true });
   await raw('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
   await until('return !!window.__slateLibrary && !!window.__slate', 15000);
-  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
+  await ev(`localStorage.setItem('slate.v2.tour-complete','1'); localStorage.setItem('slate.download.ocr','1'); localStorage.setItem('slate.download.depth','1'); localStorage.setItem('slate.v2.library-tour-complete','1'); document.querySelector('.tour-skip')?.click(); return 1`);
   await ev(HELPERS);
 
   // ── files: a Slate edit beside its original, a burst, a Motion Photo, a Live Photo pair ──
@@ -82,10 +84,12 @@ try {
   await raw('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await raw('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   const vopen = await until(`return !document.querySelector('.lib-viewer').hidden`, 5000);
   const vstate = await ev(`return { open: ${vopen}, vis: document.visibilityState, buttons: [...document.querySelectorAll('.lib-viewer button')].map(b=>(b.getAttribute('aria-label')||b.innerText).trim()).slice(0,10) }`);
-  const vplay = await ev(`const b=[...document.querySelectorAll('.lib-viewer button')].find(b=>/play|motion|live/i.test(b.innerText+' '+(b.getAttribute('aria-label')||''))); b?.click();
-    const t0=performance.now(); let v; while(performance.now()-t0<6000){ v=document.querySelector('.lib-viewer video'); if (v && v.readyState>=2) break; await new Promise(r=>setTimeout(r,100)); }
-    return v ? { ready:v.readyState, dur:v.duration, src: v.src.slice(0,5) } : null`);
-  check('M6', 'the viewer plays the embedded video', vplay && vplay.ready >= 2 && vplay.dur > 0.5, JSON.stringify(vplay) + ' ' + JSON.stringify(vstate));
+  // The clip is short and the still returns when it ends, so record the clip element when it appears.
+  const vplay = await ev(`window.__clip=null; new MutationObserver((l,o)=>{ const v=document.querySelector('.lib-viewer video.lv-clip'); if(v && !window.__clip){ window.__clip={ src:v.src.slice(0,5) }; v.addEventListener('loadedmetadata',()=>{ window.__clip.dur=v.duration; window.__clip.ready=v.readyState; }); o.disconnect(); } }).observe(document.querySelector('.lib-viewer'),{subtree:true,childList:true});
+    const b=[...document.querySelectorAll('.lib-viewer button')].find(b=>/play the motion|play the live/i.test(b.getAttribute('aria-label')||b.innerText)); b?.click();
+    const t0=performance.now(); while(performance.now()-t0<6000 && !(window.__clip && window.__clip.dur)) await new Promise(r=>setTimeout(r,50));
+    return window.__clip`);
+  check('M6', 'the viewer plays the embedded video', vplay && vplay.src === 'blob:' && vplay.dur > 0.5, JSON.stringify(vplay) + ' ' + JSON.stringify(vstate));
   await raw('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await raw('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
 
   // ── stacks ──
@@ -100,11 +104,11 @@ try {
     const moved=L.search({ q:'beach.jpg' }).find(x=>x.path==='best/beach.jpg');
     let onDisk=false; try { await (await __root.getDirectoryHandle('best')).getFileHandle('beach.jpg'); onDisk=true; } catch {}
     const fav=moved && L.choice(moved.id).fav;
-    await S.run('library.undo',{ token: res.undo });
+    await S.run('library.undo_files',{ token: res.undo });
     let back=false; try { await (await __root.getDirectoryHandle('trip')).getFileHandle('beach.jpg'); back=true; } catch {}
     return { dry, changed: res.changed, onDisk, fav, back }`);
   check('O10', 'move: dry run, move with the favourite kept, undo moves it back', mv.dry?.dryRun && mv.changed === 1 && mv.onDisk && mv.fav && mv.back, JSON.stringify(mv));
-  const rn = await ev(`${L} const ids=L.search({ q:'burst' }).map(r=>r.id); const res=await S.run('photo.rename',{ ids, template:'{date} burst {n}' }); const names=L.search({ q:'burst' }).map(r=>r.name).sort(); await S.run('library.undo',{ token: res.undo }); return { changed: res.changed, names, after: L.search({ q:'burst' }).map(r=>r.name).sort() }`);
+  const rn = await ev(`${L} const ids=L.search({ q:'burst' }).map(r=>r.id); const res=await S.run('photo.rename',{ ids, template:'{date} burst {n}' }); const names=L.search({ q:'burst' }).map(r=>r.name).sort(); await S.run('library.undo_files',{ token: res.undo }); return { changed: res.changed, names, after: L.search({ q:'burst' }).map(r=>r.name).sort() }`);
   check('O10', 'rename from a template, then undo', rn.changed === 3 && rn.names.every(n => /^2024-03-02 burst \d+\.jpg$/.test(n)) && rn.after.every(n => /^burst_\d\.jpg$/.test(n)), JSON.stringify(rn));
 
   // ── iCloud CSV details ──
@@ -146,6 +150,7 @@ try {
   } catch (e) { console.log('  cleanup failed', e.message); }
   await raw('Emulation.clearDeviceMetricsOverride').catch(() => {});
   await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.closeTarget', params: { targetId: T } }) }).catch(() => {});
+  if (CTX) await call({ cmd: 'raw', text: JSON.stringify({ method: 'Target.disposeBrowserContext', params: { browserContextId: CTX } }) }).catch(() => {});
   const pass = results.filter(Boolean).length;
   console.log(JSON.stringify({ pass, fail: results.length - pass, total: results.length }));
   process.exit(pass === results.length ? 0 : 1);

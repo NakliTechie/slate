@@ -19,12 +19,19 @@
 //
 // Time: Takeout's photoTakenTime is a true instant (Unix seconds), while Slate stores the EXIF
 // wall clock as if it were UTC (schema.wallClockToTime). Slate has no zone for the photo, so the
-// instant is stored as its UTC wall clock: a photo taken at 09:00 in India (UTC+05:30) groups
-// under 03:30. scan.js uses it only when the photo has no EXIF or XMP time.
+// instant is stored as the wall clock of this computer's zone (instantToWallClock): a photo
+// taken at 09:00 in India shows as 09:00 when Slate runs in India. Negative timestamps (photos
+// before 1970) are valid. scan.js uses it only when the photo has no EXIF or XMP time.
 // scan.js saves what the JSON says in the library file (libfile.js `meta`) the first time and
 // does not read the JSON again after that.
 
 import { kindOf } from './schema.js';
+
+// A true instant (ms) -> the local wall clock stored as if it were UTC, as EXIF times are.
+export function instantToWallClock(ms) {
+  const d = new Date(ms);
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
+}
 
 const SUPPLEMENTAL = 'supplemental-metadata';
 // Suffixes Google adds to edited copies, by export language.
@@ -154,8 +161,10 @@ export function readTakeoutJson(text) {
 
   const secs = Number(j.photoTakenTime?.timestamp ?? NaN);
   const made = Number(j.creationTime?.timestamp ?? NaN);
-  const s = Number.isFinite(secs) && secs > 0 ? secs : Number.isFinite(made) && made > 0 ? made : null;
-  if (s != null) out.time = s * 1000; // the instant, read as the UTC wall clock (see the header)
+  // 0 is what Takeout writes when it has no time; a negative value is a photo from before 1970.
+  const ok = v => Number.isFinite(v) && v !== 0;
+  const s = ok(secs) ? secs : ok(made) ? made : null;
+  if (s != null) out.time = instantToWallClock(s * 1000); // see the header
 
   for (const g of [j.geoData, j.geoDataExif]) {
     const lat = Number(g?.latitude), lon = Number(g?.longitude);

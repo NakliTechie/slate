@@ -96,7 +96,9 @@ assert.equal(dayKey(T(1, 23)), '2024-03-01', 'capture time groups by its own wal
   const text = persist.files.get(root.id);
   const parsed = parseLibFile(text);
   assert.ok(parsed.ok);
-  assert.deepEqual(parsed.file.items['2024/home/IMG_3.heic'], { size: 300, fav: true, rating: 5, flag: null, hidden: false, tags: [], trashed: null });
+  const { t, ...item } = parsed.file.items['2024/home/IMG_3.heic'];
+  assert.deepEqual(item, { size: 300, fav: true, rating: 5, flag: null, hidden: false, tags: [], trashed: null });
+  assert.ok(t > 0, 'each item carries its change time (review S2)');
   assert.equal(parsed.file.albums[0].name, 'Home');
   const before = JSON.stringify([...lib.choices]);
   await lib.rebuild();
@@ -196,7 +198,7 @@ assert.equal(dayKey(T(1, 23)), '2024-03-01', 'capture time groups by its own wal
   await assert.rejects(runCommand(lib, 'photo.get', {}), /id is required/);
 }
 
-// two overlapping rescans of one root scan it once
+// overlapping rescans of one root never run side by side; together they ask for one more scan (review S14)
 {
   let calls = 0;
   const slowScan = async (lib, root) => { calls++; await new Promise(r => setTimeout(r, 30)); await lib.applyScan(root.id, { upserts: [], seen: new Set() }); };
@@ -205,9 +207,9 @@ assert.equal(dayKey(T(1, 23)), '2024-03-01', 'capture time groups by its own wal
   const root = await lib.addRoot({ handle: null, name: 'P', files: [] });
   calls = 0;
   await Promise.all([lib.rescan(root.id), lib.rescan(root.id), lib.rescan()]);
-  assert.equal(calls, 1, 'concurrent rescans join the running scan');
+  assert.equal(calls, 2, 'rescans asked for during a scan give exactly one more scan after it');
   await lib.rescan(root.id);
-  assert.equal(calls, 2, 'a later rescan scans again');
+  assert.equal(calls, 3, 'a later rescan scans again');
 }
 
 console.log('Slate library core: PASS');

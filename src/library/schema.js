@@ -64,7 +64,7 @@ export function folderOf(path) {
  * @property {number} size      bytes
  * @property {number} mtime     File.lastModified, ms
  * @property {number} time      capture time, ms since epoch (local wall clock read as UTC; see note)
- * @property {'exif'|'xmp'|'takeout'|'icloud'|'file'} timeSource
+ * @property {'exif'|'xmp'|'video'|'takeout'|'icloud'|'file'} timeSource  'video': an MP4 or MOV header (metadata.js)
  * @property {number} w         pixel width after orientation (0 when unknown)
  * @property {number} h         pixel height after orientation (0 when unknown)
  * @property {number} orient    EXIF orientation 1..8 (1 when unknown)
@@ -92,7 +92,10 @@ export function folderOf(path) {
  * Capture time note: EXIF DateTimeOriginal has no zone. It is stored as if it
  * were UTC (Date.UTC of the wall-clock fields) so a photo taken at 09:00
  * groups under 09:00 on its day wherever the library is opened. Day and month
- * keys below therefore use UTC getters.
+ * keys below therefore use UTC getters. A true instant (File.lastModified, an
+ * MP4 mvhd time) is first turned into this browser's local wall clock with
+ * instantToWallClock, so a file written at 01:30 IST on 2 January groups
+ * under 2 January (review S9).
  */
 
 /**
@@ -111,7 +114,7 @@ export function newRecord(rootId, path, file) {
     id: makeId(rootId, path), rootId, path: normPath(path), name, ext: extOf(name),
     kind: kindOf(name) ?? 'photo',
     size: file?.size ?? 0, mtime: file?.lastModified ?? 0,
-    time: file?.lastModified ?? 0, timeSource: 'file',
+    time: file?.lastModified ? instantToWallClock(file.lastModified) : 0, timeSource: 'file',
     w: 0, h: 0, orient: 1, camera: '', lens: '', lat: null, lon: null, dur: 0,
     thumb: null, sidecar: false, xmpTags: [], xmpRating: 0,
     missing: false, indexed: Date.now(),
@@ -126,6 +129,14 @@ export function unchanged(rec, file) {
 // Wall-clock fields to the stored time (see note above).
 export function wallClockToTime(y, mo, d, h = 0, mi = 0, s = 0) {
   return Date.UTC(y, mo - 1, d, h, mi, s);
+}
+
+// A true instant (ms since the epoch) to the stored time: the local wall clock of this
+// browser at that instant, read as UTC. Not for EXIF times, which are wall clocks already.
+export function instantToWallClock(ms) {
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return 0;
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
 export function dayKey(time) {
