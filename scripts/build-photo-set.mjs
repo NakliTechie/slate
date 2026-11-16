@@ -25,6 +25,11 @@ const API = 'https://commons.wikimedia.org/w/api.php';
 const UA = 'slate-photo-testset/1.0 (local test fixtures)';
 const MAX_ORIGINAL = 6.5 * 1024 * 1024;   // "about 6 MB"
 const MAX_VIDEO = 30 * 1024 * 1024;
+// Wikimedia answers bulk original downloads with HTTP 429 and asks clients to use a standard
+// thumbnail size instead, so images come down as 1920 px thumbnails. Thumbnails carry no EXIF, so
+// the script writes the original's camera EXIF (Make, Model, DateTimeOriginal, and GPS when the
+// original's EXIF had it) back into each core photo from the API's commonmetadata.
+const THUMB_WIDTH = 1920;
 const MAX_VIDEO_SECONDS = 60;
 
 // ---- target shape ---------------------------------------------------------------------------
@@ -43,18 +48,39 @@ const COUNTRIES = {
   'Egypt': [22, 31.7, 24.7, 36.9], 'Tanzania': [-11.8, -1, 29.3, 40.5],
   'Australia': [-43.7, -10.6, 113, 153.7], 'New Zealand': [-47.3, -34.4, 166.4, 178.6],
   'Antarctica': [-90, -60, -180, 180],
+  // added for the larger set (top-up pass)
+  'South Korea': [33, 38.7, 124.5, 130], 'Nepal': [26.3, 30.5, 80, 88.3], 'Sri Lanka': [5.9, 9.9, 79.5, 82],
+  'Philippines': [4.5, 21.2, 116.9, 126.7], 'Malaysia': [0.8, 7.4, 99.6, 119.3], 'Taiwan': [21.8, 25.4, 119.9, 122.1],
+  'Turkey': [35.8, 42.2, 25.6, 44.9], 'Jordan': [29.1, 33.4, 34.9, 39.3], 'United Arab Emirates': [22.6, 26.1, 51.5, 56.4],
+  'Greece': [34.8, 41.8, 19.3, 28.3], 'Portugal': [36.9, 42.2, -9.6, -6.1], 'Netherlands': [50.7, 53.6, 3.3, 7.3],
+  'Switzerland': [45.8, 47.9, 5.9, 10.5], 'Austria': [46.3, 49.1, 9.5, 17.2], 'Poland': [49, 54.9, 14.1, 24.2],
+  'Czech Republic': [48.5, 51.1, 12.1, 18.9], 'Ireland': [51.4, 55.4, -10.5, -6], 'Sweden': [55.3, 69.1, 11, 24.2],
+  'Finland': [59.8, 70.1, 20.5, 31.6], 'Croatia': [42.4, 46.6, 13.4, 19.5],
+  'Colombia': [-4.2, 12.5, -79, -66.8], 'Ecuador': [-5, 1.5, -81, -75.2], 'Bolivia': [-22.9, -9.7, -69.7, -57.4],
+  'Cuba': [19.8, 23.3, -85, -74.1], 'Guatemala': [13.7, 17.8, -92.3, -88.2], 'Costa Rica': [8, 11.3, -86, -82.5],
+  'Ghana': [4.7, 11.2, -3.3, 1.2], 'Ethiopia': [3.4, 14.9, 33, 48], 'Namibia': [-29, -16.9, 11.7, 25.3],
+  'Uganda': [-1.5, 4.2, 29.5, 35], 'Senegal': [12.3, 16.7, -17.6, -11.3], 'Madagascar': [-25.7, -11.9, 43.2, 50.5],
+  'Fiji': [-21, -12.4, 176.8, 180],
 };
-const PER_COUNTRY = 4;            // ~27 countries x 4 ≈ 100 core photos (some yield fewer)
+const PER_COUNTRY = 4;            // first pass: ~27 countries x 4 ≈ 100 core photos
+// Top-up pass (the "go big" scope): extend core to about CORE_TARGET without re-selecting.
+const TOPUP_VERSION = 3;   // 3: artwork reproductions pruned from core, then refilled
+const CORE_TARGET = 500;
+const MAX_ORIGINAL_TOPUP = 4 * 1024 * 1024;   // smaller originals keep the set under ~2 GB
+const TOTAL_BUDGET = 1.9e9;                     // bytes across every selected file
+const TOPUP_TERMS = ['old town', 'harbour', 'park', 'temple', 'church', 'museum', 'sunset', 'river', 'lake', 'bridge', 'village', 'architecture', 'road', 'coast', 'forest', 'square'];
 const TRAVEL_TERMS = ['landscape', 'city', 'street', 'view', 'beach', 'mountain', 'market', ''];
 // A few core photos taken on the same month and day across different years ("On this day").
-const SAME_DAY = { monthDay: '11-17', years: [2012, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024], want: 6 };
+const SAME_DAY = { monthDay: '11-17', years: [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025], want: 12 };
 const PORTRAIT_PEOPLE = ['Pete Buttigieg', 'Kamala Harris', 'Lloyd Austin'];
 const PORTRAITS_PER_PERSON = 4;
 const TEXT_QUERIES = ['shop sign', 'storefront', 'street sign', 'signboard', 'notice board', 'menu board', 'road sign', 'shop front', 'poster wall', 'information sign'];
-const TEXT_WANT = 10;
+const TEXT_WANT = 30;
+const TEXT_QUERIES_TOPUP = ['shop sign', 'storefront', 'street sign', 'signboard', 'notice board', 'menu board', 'road sign', 'shop front', 'information sign', 'plaque', 'restaurant menu', 'bus stop sign', 'neon sign', 'banner', 'billboard', 'warning sign', 'station name sign', 'inscription', 'shop window', 'street name'];
 const VIDEO_QUERIES = ['street', 'waves', 'river', 'train', 'beach', 'city'];
-const VIDEO_WANT = 4;
-const BURST_SOURCES = 2;          // core photos to derive near-duplicates from
+const VIDEO_WANT = 8;
+const VIDEO_QUERIES_TOPUP = ['street', 'waves', 'river', 'train', 'beach', 'city', 'waterfall', 'traffic', 'market', 'boat', 'snow', 'birds'];
+const BURST_SOURCES = 8;          // core photos to derive near-duplicates from (8 x 4 = 32 files)
 const BURST_VARIANTS = [          // [suffix, sips args, note]
   ['a-copy', null, 'byte-identical copy of the source'],
   ['b-q60', ['-s', 'formatOptions', '60'], 're-saved at JPEG quality 60'],
@@ -63,9 +89,11 @@ const BURST_VARIANTS = [          // [suffix, sips args, note]
 ];
 
 const CHILD_RX = /\b(child|children|kid|kids|baby|babies|infant|toddler|pupil|pupils|schoolchild|schoolchildren|school ?girl|school ?boy|boy|boys|girl|girls|minor|minors|kindergarten|nursery)\b/i;
-const NON_TRAVEL_RX = /\b(certificate|document|receipt|screenshot|diagram|map of|logo|chart|scan|x-ray|self-portrait|selfie|nude|naked|corpse|dead body)\b/i;
+const ART_RX = /\b(paintings?|artworks?|oil on canvas|drawings?|engravings?|lithographs?|etchings?|watercolou?rs?)\b/i;
+const NON_TRAVEL_RX = /\b(paintings?|artworks?|oil on canvas|drawings?|engravings?|lithographs?|etchings?|watercolou?rs?|certificate|document|receipt|screenshot|diagram|map of|logo|chart|scan|x-ray|self-portrait|selfie|nude|naked|corpse|dead body)\b/i;
 
 // ---- small helpers --------------------------------------------------------------------------
+const cleanUrl = (u) => (u ? u.split('?')[0] : u);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const jitter = (lo, hi) => sleep(lo + Math.random() * (hi - lo));
 const stripHtml = (s) => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
@@ -95,7 +123,7 @@ async function search(query, { limit = 50, offset = 0 } = {}) {
   const p = new URLSearchParams({
     action: 'query', format: 'json', formatversion: '2', maxlag: '5',
     generator: 'search', gsrnamespace: '6', gsrlimit: String(limit), gsroffset: String(offset), gsrsearch: query,
-    prop: 'imageinfo|coordinates', iiprop: 'url|size|mime|extmetadata|commonmetadata', iiurlwidth: '2048',
+    prop: 'imageinfo|coordinates', iiprop: 'url|size|mime|extmetadata|commonmetadata', iiurlwidth: String(THUMB_WIDTH),
   });
   await jitter(400, 900);          // one API request at a time, spaced out
   const d = await http(`${API}?${p}`);
@@ -110,11 +138,12 @@ function toCandidate(p) {
   const lat = p.coordinates?.[0]?.lat ?? (cm.GPSLatitude != null ? Number(cm.GPSLatitude) : null);
   const lon = p.coordinates?.[0]?.lon ?? (cm.GPSLongitude != null ? Number(cm.GPSLongitude) : null);
   return {
-    title: p.title, page: ii.descriptionurl, url: ii.url, thumb: ii.thumburl, size: ii.size, mime: ii.mime,
+    title: p.title, page: ii.descriptionurl, url: cleanUrl(ii.url), thumb: cleanUrl(ii.thumburl), size: ii.size, mime: ii.mime,
     width: ii.width, height: ii.height, duration: ii.duration ?? null,
     licence: stripHtml(em.LicenseShortName), licenceUrl: em.LicenseUrl ?? '', author: stripHtml(em.Artist),
     categories: em.Categories ?? '', description: stripHtml(em.ImageDescription),
     make: cm.Make ?? null, model: cm.Model ?? null, taken: cm.DateTimeOriginal ?? null, lat, lon,
+    exifGps: cm.GPSLatitude != null && cm.GPSLongitude != null ? { lat: Number(cm.GPSLatitude), lon: Number(cm.GPSLongitude) } : null,
   };
 }
 
@@ -129,13 +158,14 @@ const inCountry = (c, name) => { const [a, b, x, y] = COUNTRIES[name]; return c.
 const yearOf = (c) => (c.taken ? Number(String(c.taken).slice(0, 4)) : null);
 const seriesKey = (t) => t.replace(/^File:/, '').replace(/\(.*?\)/g, '').replace(/[\d_\-.,]+/g, ' ').replace(/\.\w+$/, '').trim().toLowerCase().slice(0, 30);
 
+const coreBaseOk = (c) => isFree(c) && !hasChildren(c) && !NON_TRAVEL_RX.test(`${c.title} ${c.categories}`) &&
+  c.mime === 'image/jpeg' && c.size <= MAX_ORIGINAL && c.make && c.model && c.taken && c.lat != null && c.width >= 1200;
+
 // ---- selection ------------------------------------------------------------------------------
 async function select() {
   const picked = []; const seenTitles = new Set(); const seenSeries = new Set();
   const take = (c, group, extra) => { picked.push({ ...c, group, ...extra }); seenTitles.add(c.title); seenSeries.add(seriesKey(c.title)); };
-  const coreOk = (c) => isFree(c) && !hasChildren(c) && !NON_TRAVEL_RX.test(`${c.title} ${c.categories}`) &&
-    c.mime === 'image/jpeg' && c.size <= MAX_ORIGINAL && c.make && c.model && c.taken && c.lat != null &&
-    c.width >= 1200 && !seenTitles.has(c.title) && !seenSeries.has(seriesKey(c.title));
+  const coreOk = (c) => coreBaseOk(c) && !seenTitles.has(c.title) && !seenSeries.has(seriesKey(c.title));
 
   // core: per country, travel-flavoured searches
   const yearCount = {};
@@ -157,19 +187,6 @@ async function select() {
     }
     log(`core ${country}: ${n}`);
   }
-
-  // core: same month-day across years
-  let sd = 0;
-  for (const y of SAME_DAY.years) {
-    if (sd >= SAME_DAY.want) break;
-    const day = `${y}-${SAME_DAY.monthDay}`;
-    const q = `incategory:"Photographs taken on ${day}" filetype:bitmap filemime:image/jpeg hastemplate:Cc-zero hastemplate:Location`;
-    let results = [];
-    try { results = await search(q); } catch (e) { log('search failed:', e.message); continue; }
-    const c = results.find((r) => coreOk(r) && String(r.taken).startsWith(day.replace(/-/g, ':')) && countryOf(r.lat, r.lon));
-    if (c) { take(c, 'core', { country: countryOf(c.lat, c.lon), query: q, note: `same-day set: taken ${day}` }); sd++; }
-  }
-  log(`core same-day (${SAME_DAY.monthDay}): ${sd}`);
 
   // portraits: public-domain photos of public figures (adults), several distinct photos each
   for (const person of PORTRAIT_PEOPLE) {
@@ -221,28 +238,123 @@ async function select() {
     try { const r = await search(`filemime:${m}`, { limit: 5 }); rawFound.push(...r.filter(isFree)); } catch { /* ignore */ }
   }
 
-  // assign stable local paths
+  return { createdAt: new Date().toISOString(), files: picked, rawHeicSearch: rawFound.map((r) => r.title) };
+}
+
+// Same month-day across several years, for "On this day". Appended to core once; recorded in the manifest.
+async function sameDayPass(man) {
+  const seenTitles = new Set(man.files.map((f) => f.title));
+  const seenSeries = new Set(man.files.map((f) => seriesKey(f.title)));
+  const haveYears = new Set(man.files.filter((f) => /^same-day/.test(f.note ?? '')).map((f) => String(f.taken).slice(0, 4)));
+  let sd = haveYears.size;
+  for (const y of SAME_DAY.years) {
+    if (sd >= SAME_DAY.want) break;
+    if (haveYears.has(String(y))) continue;
+    const day = `${y}-${SAME_DAY.monthDay}`;
+    const q = `deepcat:"Photographs taken on ${day}" filetype:bitmap filemime:image/jpeg hastemplate:Cc-zero`;
+    let results = [];
+    try { results = await search(q); } catch (e) { log('search failed:', e.message); continue; }
+    const c = results.find((r) => coreBaseOk(r) && !seenTitles.has(r.title) && !seenSeries.has(seriesKey(r.title)) &&
+      String(r.taken).startsWith(day.replace(/-/g, ':')) && countryOf(r.lat, r.lon));
+    if (c) { man.files.push({ ...c, group: 'core', country: countryOf(c.lat, c.lon), query: q, note: `same-day set: taken ${day}` }); seenTitles.add(c.title); seenSeries.add(seriesKey(c.title)); sd++; }
+  }
+  man.sameDayDone = sd; man.sameDayVersion = TOPUP_VERSION;
+  log(`core same-day (${SAME_DAY.monthDay}): ${sd}`);
+}
+
+// Top-up: extend every group toward its larger target, keeping what is already selected.
+async function topUp(man) {
+  const seenTitles = new Set(man.files.map((f) => f.title));
+  const seenSeries = new Set(man.files.map((f) => seriesKey(f.title)));
+  const bytes = () => man.files.reduce((a, f) => a + (f.group === 'video' ? f.size : 0.8e6), 0);
+  const count = (g) => man.files.filter((f) => f.group === g).length;
+  const add = (c, group, extra) => { man.files.push({ ...c, group, ...extra }); seenTitles.add(c.title); seenSeries.add(seriesKey(c.title)); };
+  const fresh = (c) => !seenTitles.has(c.title) && !seenSeries.has(seriesKey(c.title));
+
+  // core: round-robin over countries so every continent grows evenly
+  const countries = Object.keys(COUNTRIES);
+  const perCountry = Math.ceil(CORE_TARGET / countries.length) + 1;
+  const yearCount = {}; for (const f of man.files.filter((x) => x.group === 'core')) { const y = yearOf(f); yearCount[y] = (yearCount[y] ?? 0) + 1; }
+  const yearCap = Math.round(CORE_TARGET * 0.15);
+  const terms = [...TRAVEL_TERMS, ...TOPUP_TERMS];
+  for (const country of countries) {
+    if (count('core') >= CORE_TARGET || bytes() > TOTAL_BUDGET * 0.9) break;
+    let n = man.files.filter((f) => f.group === 'core' && f.country === country).length;
+    const authors = {}; for (const f of man.files.filter((x) => x.country === country)) authors[f.author || '?'] = (authors[f.author || '?'] ?? 0) + 1;
+    for (const term of terms) {
+      if (n >= perCountry || count('core') >= CORE_TARGET) break;
+      const q = `filetype:bitmap filemime:image/jpeg hastemplate:Cc-zero hastemplate:Location "${country}" ${term}`.trim();
+      let results = [];
+      try { results = await search(q); } catch (e) { log('search failed:', e.message); continue; }
+      for (const c of results) {
+        if (n >= perCountry) break;
+        if (!coreBaseOk(c) || !fresh(c) || !inCountry(c, country)) continue;
+        const a = c.author || '?'; if ((authors[a] ?? 0) >= 4) continue;
+        const y = yearOf(c); if ((yearCount[y] ?? 0) >= yearCap) continue;
+        authors[a] = (authors[a] ?? 0) + 1; yearCount[y] = (yearCount[y] ?? 0) + 1;
+        add(c, 'core', { country, query: q }); n++;
+      }
+    }
+    log(`top-up core ${country}: ${n} (core total ${count('core')})`);
+  }
+
+  // text: several per query
+  for (const term of TEXT_QUERIES_TOPUP) {
+    if (count('text') >= TEXT_WANT) break;
+    const q = `filetype:bitmap filemime:image/jpeg hastemplate:Cc-zero ${term}`;
+    let results = [];
+    try { results = await search(q, { limit: 30 }); } catch (e) { log('search failed:', e.message); continue; }
+    let k = 0;
+    for (const r of results) {
+      if (k >= 3 || count('text') >= TEXT_WANT) break;
+      if (isFree(r) && !hasChildren(r) && fresh(r) && r.width >= 1000) { add(r, 'text', { query: q }); k++; }
+    }
+  }
+  log(`top-up text: ${count('text')}`);
+
+  // video
+  for (const term of VIDEO_QUERIES_TOPUP) {
+    if (count('video') >= VIDEO_WANT) break;
+    const q = `filetype:video hastemplate:Cc-zero ${term}`;
+    let results = [];
+    try { results = await search(q, { limit: 40 }); } catch (e) { log('search failed:', e.message); continue; }
+    let k = 0;
+    for (const r of results) {
+      if (k >= 2 || count('video') >= VIDEO_WANT) break;
+      if (isFree(r) && !hasChildren(r) && fresh(r) && r.size <= MAX_VIDEO && r.duration != null && r.duration >= 3 &&
+        r.duration <= MAX_VIDEO_SECONDS && !/software|animation|fractal|speech|interview/i.test(r.categories + r.title)) { add(r, 'video', { query: q }); k++; }
+    }
+  }
+  log(`top-up video: ${count('video')}`);
+  man.topUpVersion = TOPUP_VERSION;
+}
+
+// Stable local paths (deterministic from the manifest order), then the derived bursts.
+function layout(man) {
   const used = new Set();
-  for (const p of picked) {
-    const ext = p.group === 'video' ? path.extname(p.url).toLowerCase()
-      : (p.size <= MAX_ORIGINAL ? path.extname(p.url).toLowerCase() : '.jpg');
+  for (const p of man.files) {
+    if (!p.fetched) { p.useThumb = p.group !== 'video' && p.width > THUMB_WIDTH && !!p.thumb; p.downloadUrl = p.useThumb ? thumbAt(p.thumb) : p.url; }
+    const ext0 = path.extname(new URL(p.downloadUrl).pathname).toLowerCase();
+    const ext = ext0 === '.jpeg' ? '.jpg' : ext0;
     const prefix = p.country ? slug(p.country, 20) + '-' : p.person ? slug(p.person, 20) + '-' : '';
-    let rel = `${p.group}/${prefix}${slug(p.title, 56)}${ext === '.jpeg' ? '.jpg' : ext}`;
+    let rel = `${p.group}/${prefix}${slug(p.title, 56)}${ext}`;
     for (let i = 2; used.has(rel); i++) rel = rel.replace(/(\.\w+)$/, `-${i}$1`);
     used.add(rel); p.path = rel;
-    p.useThumb = p.group !== 'video' && p.size > MAX_ORIGINAL;
-    p.downloadUrl = p.useThumb ? p.thumb : p.url;
   }
-  // bursts: derived near-duplicates of the first core photos with GPS (CC0 sources only)
-  const sources = picked.filter((p) => p.group === 'core' && /cc0|cc-zero/i.test(p.licence)).slice(0, BURST_SOURCES);
-  const bursts = [];
-  sources.forEach((s, i) => {
+  // bursts: near-duplicates derived locally from CC0 core photos; sources are fixed by title once chosen
+  man.burstSources = (man.burstSources ?? []).filter((t) => man.files.some((f) => f.title === t));
+  for (const p of man.files) {
+    if (man.burstSources.length >= BURST_SOURCES) break;
+    if (p.group === 'core' && /cc0|cc-zero/i.test(p.licence) && !man.burstSources.includes(p.title)) man.burstSources.push(p.title);
+  }
+  man.bursts = [];
+  man.burstSources.forEach((title, i) => {
+    const s = man.files.find((f) => f.title === title); if (!s) return;
     for (const [suffix, , note] of BURST_VARIANTS) {
-      bursts.push({ group: 'bursts', derivedFrom: s.path, variant: suffix, path: `bursts/set${i + 1}-${suffix}.jpg`,
+      man.bursts.push({ group: 'bursts', derivedFrom: s.path, variant: suffix, path: `bursts/set${i + 1}-${suffix}.jpg`,
         title: s.title, page: s.page, url: s.url, author: s.author, licence: s.licence, licenceUrl: s.licenceUrl, note: `derived: ${note}` });
     }
   });
-  return { createdAt: new Date().toISOString(), files: picked, bursts, rawHeicSearch: rawFound.map((r) => r.title) };
 }
 
 // ---- EXIF (JPEG APP1) reader: Make, Model, DateTimeOriginal, GPS ----------------------------
@@ -287,12 +399,94 @@ function parseTiff(t) {
   } catch { return null; }
 }
 
+const thumbAt = (u) => u.replace(/\/\d+px-([^/]+)$/, `/${THUMB_WIDTH}px-$1`);
+
+// Fill exifGps / camera fields for manifest entries chosen before those fields existed (50 titles per request).
+async function refreshMeta(man) {
+  const todo = man.files.filter((f) => f.group !== 'video' && !('exifGps' in f));
+  for (let i = 0; i < todo.length; i += 50) {
+    const batch = todo.slice(i, i + 50);
+    const p = new URLSearchParams({ action: 'query', format: 'json', formatversion: '2', maxlag: '5', titles: batch.map((f) => f.title).join('|'),
+      prop: 'imageinfo', iiprop: 'commonmetadata' });
+    await jitter(400, 900);
+    const d = await http(`${API}?${p}`);
+    for (const pg of d.query?.pages ?? []) {
+      const cm = Object.fromEntries((pg.imageinfo?.[0]?.commonmetadata ?? []).map((m) => [m.name, m.value]));
+      for (const f of batch.filter((x) => x.title === pg.title)) {
+        f.exifGps = cm.GPSLatitude != null && cm.GPSLongitude != null ? { lat: Number(cm.GPSLatitude), lon: Number(cm.GPSLongitude) } : null;
+        f.make ??= cm.Make ?? null; f.model ??= cm.Model ?? null; f.taken ??= cm.DateTimeOriginal ?? null;
+      }
+    }
+  }
+}
+
+// Minimal EXIF writer: IFD0 Make/Model/Software, Exif IFD DateTimeOriginal, GPS IFD lat/lon.
+function buildExif({ make, model, taken, gps }) {
+  const ascii = (v) => Buffer.from(String(v).replace(/[^\x20-\x7e]/g, '').trim() + '\0', 'latin1');
+  const rat3 = (deg) => { const a = Math.abs(deg); const d = Math.floor(a); const mF = (a - d) * 60; const m = Math.floor(mF); const sec = Math.round((mF - m) * 60 * 10000);
+    return [[d, 1], [m, 1], [sec, 10000]]; };
+  const ifds = { ifd0: [], exif: [], gps: [] };
+  if (make) ifds.ifd0.push([0x010f, 2, ascii(make)]);
+  if (model) ifds.ifd0.push([0x0110, 2, ascii(model)]);
+  ifds.ifd0.push([0x0131, 2, ascii('slate-photo-testset: EXIF copied from the Commons original')]);
+  const dt = String(taken ?? '').replace(/^(\d{4})-(\d{2})-(\d{2})[T ]?/, '$1:$2:$3 ').slice(0, 19);
+  if (/^\d{4}:\d{2}:\d{2}/.test(dt)) ifds.exif.push([0x9003, 2, ascii(dt.length === 10 ? dt + ' 00:00:00' : dt.padEnd(19, '0'))]);
+  if (gps) {
+    const rb = (r) => { const b = Buffer.alloc(24); r.forEach(([n, d], i) => { b.writeUInt32LE(n, i * 8); b.writeUInt32LE(d, i * 8 + 4); }); return b; };
+    ifds.gps.push([0x0000, 1, Buffer.from([2, 2, 0, 0])], [0x0001, 2, ascii(gps.lat < 0 ? 'S' : 'N')], [0x0002, 5, rb(rat3(gps.lat))],
+      [0x0003, 2, ascii(gps.lon < 0 ? 'W' : 'E')], [0x0004, 5, rb(rat3(gps.lon))]);
+  }
+  // layout: header(8) | IFD0 | ExifIFD | GPSIFD | data
+  const n0 = ifds.ifd0.length + 1 + (ifds.gps.length ? 1 : 0);
+  const sizeOf = (n) => 2 + n * 12 + 4;
+  const off0 = 8, offE = off0 + sizeOf(n0), offG = offE + sizeOf(ifds.exif.length);
+  let dataOff = offG + (ifds.gps.length ? sizeOf(ifds.gps.length) : 0);
+  const data = []; const tiff = [];
+  const writeIfd = (entries, extra) => {
+    const all = [...entries, ...extra].sort((a, b) => a[0] - b[0]);
+    const b = Buffer.alloc(sizeOf(all.length)); b.writeUInt16LE(all.length, 0);
+    all.forEach(([tag, type, val], i) => {
+      const e = 2 + i * 12; b.writeUInt16LE(tag, e); b.writeUInt16LE(type, e + 2);
+      if (type === 4) { b.writeUInt32LE(1, e + 4); b.writeUInt32LE(val, e + 8); return; }
+      const count = type === 5 ? val.length / 8 : val.length; b.writeUInt32LE(count, e + 4);
+      if (val.length <= 4) val.copy(b, e + 8); else { b.writeUInt32LE(dataOff, e + 8); data.push(val); dataOff += val.length + (val.length % 2); if (val.length % 2) data.push(Buffer.alloc(1)); }
+    });
+    b.writeUInt32LE(0, b.length - 4); tiff.push(b);
+  };
+  writeIfd(ifds.ifd0, [[0x8769, 4, offE], ...(ifds.gps.length ? [[0x8825, 4, offG]] : [])]);
+  writeIfd(ifds.exif, []);
+  if (ifds.gps.length) writeIfd(ifds.gps, []);
+  const header = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
+  const body = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), header, ...tiff, ...data]);
+  const seg = Buffer.alloc(4); seg.writeUInt16BE(0xffe1, 0); seg.writeUInt16BE(body.length + 2, 2);
+  return Buffer.concat([seg, body]);
+}
+export function injectExif(jpeg, meta) {
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return jpeg;
+  // drop any existing EXIF APP1, keep everything else
+  const parts = [jpeg.subarray(0, 2)]; let o = 2;
+  while (o + 4 < jpeg.length && jpeg[o] === 0xff && jpeg[o + 1] !== 0xda) {
+    const len = jpeg.readUInt16BE(o + 2);
+    const isExif = jpeg[o + 1] === 0xe1 && jpeg.toString('latin1', o + 4, o + 10) === 'Exif\0\0';
+    if (!isExif) parts.push(jpeg.subarray(o, o + 2 + len));
+    o += 2 + len;
+  }
+  parts.splice(1, 0, buildExif(meta));
+  parts.push(jpeg.subarray(o));
+  return Buffer.concat(parts);
+}
+
 // ---- download + derive ----------------------------------------------------------------------
 async function download(m) {
   const abs = path.join(OUT, m.path);
   if (fs.existsSync(abs) && fs.statSync(abs).size > 0) return false;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  const buf = await http(m.downloadUrl, { binary: true });
+  let buf = await http(m.downloadUrl, { binary: true });
+  m.fetched = m.useThumb ? 'thumb' : 'original';
+  if (m.useThumb && m.group === 'core' && /\.jpe?g$/i.test(m.path)) {
+    buf = injectExif(buf, { make: m.make, model: m.model, taken: m.taken, gps: m.exifGps });
+    m.exifRewritten = true;
+  }
   fs.writeFileSync(abs + '.part', buf); fs.renameSync(abs + '.part', abs);
   return true;
 }
@@ -318,7 +512,9 @@ function writeCredits(man) {
   for (const m of man.files) {
     if (!fs.existsSync(path.join(OUT, m.path))) continue;
     const notes = [m.country && `country: ${m.country}`, m.person && `person: ${m.person}`,
-      m.useThumb && 'downloaded as the 2048 px thumbnail (original over 6 MB); thumbnail usually lacks EXIF', m.note].filter(Boolean).join('; ');
+      m.fetched === 'original' && 'original file',
+      m.useThumb && `${THUMB_WIDTH} px Commons thumbnail (Wikimedia asks bulk clients to use thumbnails)`,
+      m.exifRewritten && `EXIF Make/Model/DateTimeOriginal${m.exifGps ? '/GPS' : ''} copied from the original's metadata via the Commons API`, m.note].filter(Boolean).join('; ');
     rows.push([m.path, m.page, m.url, m.author, m.licence, m.licenceUrl, 'no', notes]);
   }
   for (const b of man.bursts) {
@@ -335,6 +531,7 @@ function verify(man) {
   const media = walk(OUT).filter((f) => /\/(core|bursts|portraits|text|video|raw-heic)\//.test(f) && !f.endsWith('.part'));
   for (const f of media) { const g = path.relative(OUT, f).split('/')[0]; groups[g] = (groups[g] ?? 0) + 1; total += fs.statSync(f).size; }
   const core = man.files.filter((m) => m.group === 'core' && fs.existsSync(path.join(OUT, m.path)));
+  const originals = core.filter((m) => m.fetched === 'original').length, rewritten = core.filter((m) => m.exifRewritten).length;
   let withDate = 0, withGps = 0, withBoth = 0, withCamera = 0; const countries = new Set(), years = new Set(), monthDays = {};
   for (const m of core) {
     const ex = readExif(fs.readFileSync(path.join(OUT, m.path))) ?? {};
@@ -347,8 +544,8 @@ function verify(man) {
   const csvRows = fs.readFileSync(path.join(OUT, 'CREDITS.csv'), 'utf8').trim().split('\n').length - 1;
   const csvPaths = new Set(fs.readFileSync(path.join(OUT, 'CREDITS.csv'), 'utf8').trim().split('\n').slice(1).map((l) => l.split(',')[0]));
   const missingCredit = media.map((f) => path.relative(OUT, f)).filter((p) => !csvPaths.has(p));
-  return { groups, files: media.length, totalBytes: total, core: core.length, withCamera, withDate, withGps, withBoth,
-    countries: [...countries].sort(), years: [...years].sort(), sharedDays, csvRows, missingCredit };
+  return { groups, files: media.length, totalBytes: total, core: core.length, originals, rewritten, withCamera, withDate, withGps, withBoth,
+    countries: [...countries].sort(), labelledCountries: [...new Set(core.map((m) => m.country).filter(Boolean))].sort(), years: [...years].sort(), sharedDays, csvRows, missingCredit };
 }
 
 function writeReadme(man, v) {
@@ -363,16 +560,23 @@ Built ${man.createdAt.slice(0, 10)}; ${v.files} files, ${mb(v.totalBytes)} in to
 
 | Folder | Files | Purpose |
 |---|---|---|
-| core/ | ${v.groups.core ?? 0} | One travel library: camera EXIF (Make, Model, DateTimeOriginal) with GPS, ${v.countries.length} countries on every continent, years ${v.years[0]} to ${v.years.at(-1)}. Some share a month and day across years for "On this day". |
+| core/ | ${v.groups.core ?? 0} | One travel library: camera EXIF (Make, Model, DateTimeOriginal), GPS where the original kept it, ${v.labelledCountries.length} countries on every continent, years ${v.years[0]} to ${v.years.at(-1)}. Some share a month and day across years for "On this day". |
 | bursts/ | ${v.groups.bursts ?? 0} | Near-duplicates made locally from ${BURST_SOURCES} CC0 core photos: a copy, a quality-60 re-save, a 98% crop, a 99% crop at quality 40. Marked derived in CREDITS.csv. |
 | portraits/ | ${v.groups.portraits ?? 0} | Public-domain US government photos of adult public figures (${PORTRAIT_PEOPLE.join(', ')}), several different photos each, for face grouping. |
 | text/ | ${v.groups.text ?? 0} | Signs, shop fronts and notices, for OCR. |
 | video/ | ${v.groups.video ?? 0} | Short CC0 clips under ${MAX_VIDEO_SECONDS} s and 30 MB. |
 
+Core files: ${v.originals} are untouched originals with their own EXIF; ${v.rewritten} are ${THUMB_WIDTH} px
+thumbnails whose EXIF (Make, Model, DateTimeOriginal, and GPS when the original had it) the script copied
+from the original's metadata, because Wikimedia rate-limits bulk original downloads and thumbnails carry
+no EXIF. CREDITS.csv says which is which.
+
 Checked by parsing each core file's EXIF: ${v.withCamera} of ${v.core} have Make and Model, ${v.withDate} have
 DateTimeOriginal, ${v.withGps} have GPS, ${v.withBoth} have both.
 
-Countries (from GPS): ${v.countries.join(', ')}.
+Countries (from each photo's Commons location, ${v.labelledCountries.length}): ${v.labelledCountries.join(', ')}.
+
+Countries confirmed from the file's own EXIF GPS (${v.countries.length}): ${v.countries.join(', ')}.
 
 Years (from DateTimeOriginal): ${v.years.join(', ')}.
 
@@ -392,22 +596,38 @@ async function main() {
     log('selecting files from Wikimedia Commons ...');
     man = await select();
     fs.writeFileSync(MANIFEST, JSON.stringify(man, null, 2));
-    log(`selected ${man.files.length} files + ${man.bursts.length} derived`);
   }
+  for (const f of man.files) { f.url = cleanUrl(f.url); f.thumb = cleanUrl(f.thumb); }
+  for (const f of man.files) {   // files already on disk from an earlier run: original when the byte size matches
+    if (f.fetched || !f.path) continue;
+    const abs = path.join(OUT, f.path);
+    if (fs.existsSync(abs)) f.fetched = fs.statSync(abs).size === f.size ? 'original' : 'thumb';
+  }
+  // core is a camera travel library: drop photos of paintings and other artworks (and their files)
+  const art = man.files.filter((f) => f.group === 'core' && ART_RX.test(`${f.title} ${f.categories} ${f.description ?? ''}`));
+  for (const f of art) { const abs = f.path && path.join(OUT, f.path); if (abs && fs.existsSync(abs)) { fs.unlinkSync(abs); log('removed artwork file', f.path); } }
+  if (art.length) { man.files = man.files.filter((f) => !art.includes(f)); log(`pruned ${art.length} artwork entries from core`); }
+  if (man.sameDayVersion !== TOPUP_VERSION) await sameDayPass(man);
+  if (man.topUpVersion !== TOPUP_VERSION) await topUp(man);
+  await refreshMeta(man);
+  layout(man);
+  fs.writeFileSync(MANIFEST, JSON.stringify(man, null, 2));
+  log(`selected ${man.files.length} files + ${man.bursts.length} derived`);
   if (!flag('--verify-only')) {
     let i = 0;
     for (const m of man.files) {
       i++;
-      try { if (await download(m)) { log(`[${i}/${man.files.length}] ${m.path}`); await jitter(1000, 3000); } }
+      try { if (await download(m)) { log(`[${i}/${man.files.length}] ${m.path}`); await jitter(3000, 6000); } }
       catch (e) { log(`[${i}] FAILED ${m.path}: ${e.message}`); }
     }
     // core files whose EXIF lost date or GPS do not belong in core; drop them from the manifest
     for (const m of man.files.filter((x) => x.group === 'core')) {
       const abs = path.join(OUT, m.path); if (!fs.existsSync(abs)) continue;
       const ex = readExif(fs.readFileSync(abs));
-      if (!ex?.dateTimeOriginal || !ex?.gps) { m.rejected = 'EXIF lacks DateTimeOriginal or GPS after download'; log('core file lacks EXIF date/GPS, kept out of core:', m.path); fs.unlinkSync(abs); }
+      if (!ex?.dateTimeOriginal) { m.rejected = 'EXIF lacks DateTimeOriginal after download'; log('core file lacks EXIF date/GPS, kept out of core:', m.path); fs.unlinkSync(abs); }
     }
     man.files = man.files.filter((m) => !m.rejected);
+    layout(man);
     fs.writeFileSync(MANIFEST, JSON.stringify(man, null, 2));
     for (const b of man.bursts) derive(b);
   }

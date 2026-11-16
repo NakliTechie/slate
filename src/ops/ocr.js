@@ -41,8 +41,8 @@ async function toBlob(source) {
 // Returns { text, confidence }. `source` is a Blob, an ImageBitmap or a canvas.
 export async function extractText(source, { lang = 'eng', onProgress } = {}) {
   const worker = await getWorker(lang, onProgress);
-  const { data } = await worker.recognize(await toBlob(source));
-  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
+  const { data } = await worker.recognize(await toBlob(source), {}, { text: true, blocks: true });
+  return { text: confidentText(data), confidence: Math.round(data.confidence ?? 0) };
 }
 
 // A version of a photo file for recognition: a PNG Blob at most `max` px on the long edge.
@@ -59,6 +59,24 @@ export async function ocrImage(file, max = OCR_MAX_EDGE) {
 }
 
 // Trim trailing spaces on each line and collapse runs of three or more blank lines.
+// Photos without writing still produce "text" (texture read as letters: "Aq fg RT Te"), which would
+// pollute search. Keep a word only when Tesseract is confident in it and it looks like a word or a
+// number; keep a line only when most of it survives; drop the page when fewer than MIN_WORDS remain.
+// Found on the real photo test set (2026-11-17): 101 of 105 landscapes had noise text before this.
+export const WORD_CONFIDENCE = 75;
+export const MIN_WORDS = 2;
+export function confidentText(data) {
+  const lines = [];
+  for (const b of data?.blocks ?? []) for (const p of b.paragraphs ?? []) for (const l of p.lines ?? []) {
+    const words = l.words ?? [];
+    const keep = words.filter(w => (w.confidence ?? 0) >= WORD_CONFIDENCE && /^[\p{L}\p{N}][\p{L}\p{N}'’.,:;!?&%$£€₹/-]*$/u.test(w.text ?? '') && /\p{L}{2,}|\p{N}/u.test(w.text));
+    if (keep.length && keep.length >= words.length / 2) lines.push(keep.map(w => w.text).join(' '));
+  }
+  if (!data?.blocks) return cleanText(data?.text);   // older output shape: no word confidences
+  const text = lines.join('\n');
+  return text.split(/\s+/).filter(Boolean).length >= MIN_WORDS ? cleanText(text) : '';
+}
+
 export function cleanText(text) {
   return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 }

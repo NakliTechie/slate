@@ -175,4 +175,18 @@ assert.equal(dayKey(T(1, 23)), '2024-03-01', 'capture time groups by its own wal
   await assert.rejects(runCommand(lib, 'photo.get', {}), /id is required/);
 }
 
+// two overlapping rescans of one root scan it once
+{
+  let calls = 0;
+  const slowScan = async (lib, root) => { calls++; await new Promise(r => setTimeout(r, 30)); await lib.applyScan(root.id, { upserts: [], seen: new Set() }); };
+  const lib = new Library({ store: memoryStore(), services: { scanRoot: slowScan, persist: fakePersist(), trash: fakeTrash() }, saveDelay: 5 });
+  await lib.load();
+  const root = await lib.addRoot({ handle: null, name: 'P', files: [] });
+  calls = 0;
+  await Promise.all([lib.rescan(root.id), lib.rescan(root.id), lib.rescan()]);
+  assert.equal(calls, 1, 'concurrent rescans join the running scan');
+  await lib.rescan(root.id);
+  assert.equal(calls, 2, 'a later rescan scans again');
+}
+
 console.log('Slate library core: PASS');

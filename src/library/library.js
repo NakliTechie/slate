@@ -126,12 +126,20 @@ export class Library {
     this.emit('records', { ids: null, reason: 'remove-root' });
   }
 
+  // A rescan of a root that is already being scanned joins that scan instead of starting a
+  // second one (found on the real photo set: opening the Library while a new folder was
+  // scanning read every file twice).
   async rescan(rootId = null, { full = false } = {}) {
     const roots = rootId ? [this.roots.get(rootId)] : [...this.roots.values()];
+    this.scanning ??= new Map();
     for (const root of roots) {
       if (!root) throw new Error(`no root ${rootId}`);
       if (!this.services.scanRoot) throw new Error('scanning is not available');
-      await this.services.scanRoot(this, root, { full });
+      const running = this.scanning.get(root.id);
+      if (running && !full) { await running; continue; }
+      const p = Promise.resolve().then(() => this.services.scanRoot(this, root, { full }));
+      this.scanning.set(root.id, p);
+      try { await p; } finally { if (this.scanning.get(root.id) === p) this.scanning.delete(root.id); }
     }
   }
 
