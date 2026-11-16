@@ -27,7 +27,7 @@ Drop an image on the page to edit it. To build a library, press **Ctrl+L** (or t
 
 You have photos in folders on your own disk, and every photo app wants to copy them into its own store or its own cloud first. Slate leaves them where they are and builds its index beside them, so you can delete the index at any time and rebuild it from the folder.
 
-Slate is two tools in one page. The editor handles a single image: crop, redact, blur, pixelate, annotate, rotate and straighten, adjust in linear light, apply a `.cube` look, resize and sharpen. It reads JPG, PNG, WebP, GIF, AVIF, SVG, BMP, HEIC, TIFF, JPEG XL, PSD, TGA, DDS and RAW (through the embedded preview), and writes PNG, JPEG, WebP and TIFF. The Library handles tens of thousands of photos: a timeline by date, albums, favourites, star ratings, pick and reject, tags, hidden, trash, search, folders and a full-size viewer that also plays videos. Editing in the browser cannot write HEIC or RAW back, so Slate saves those as new files instead.
+Slate is two tools in one page. The editor handles a single image: crop, redact, blur, pixelate, annotate, rotate and straighten, adjust in linear light, apply a `.cube` look, resize and sharpen. It reads JPG, PNG, WebP, GIF, AVIF, SVG, BMP, HEIC, TIFF, JPEG XL, PSD, TGA, DDS and RAW (through the embedded preview), and writes PNG, JPEG, WebP and TIFF. The Library handles tens of thousands of photos: a timeline by date, albums, favourites, star ratings, pick and reject, tags, hidden, trash, search, folders and a full-size viewer that also plays videos. Open a HEIC off your phone, edit it, export it as PNG, JPEG, WebP or TIFF; browsers cannot encode HEIC or RAW, so Slate saves those as new files and never overwrites them. Animated GIF, WebP and APNG open as their first frame, because an animation timeline is intentionally out of scope.
 
 Chrome and Edge get the full Library. Firefox and Safari cannot write to a picked folder, so there the Library is browse-only and keeps its choices in the browser, with a button to download the library file.
 
@@ -75,6 +75,6 @@ The tests check the index, the library file round trip, the scanner, the grid ma
 
 ## License
 
-MIT. Bundled and lazily loaded libraries, with their licences, are listed in Help → Licences and in [SECURITY.md](./SECURITY.md).
+Current release: **Slate v2.0.0**, with the photo library on main. MIT. Bundled and lazily loaded libraries, with their licences, are listed in Help → Licences and in [SECURITY.md](./SECURITY.md).
 
 [Photo library spec](docs/specs/slate-photos-parity-001.md) · [Architecture](docs/architecture.md) · [Guide](https://slate.naklitechie.com/guide/) · [Issues](https://github.com/NakliTechie/slate/issues)
