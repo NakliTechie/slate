@@ -10,13 +10,15 @@ import { navigateTo, hasDirPicker } from '../../core/fs.js';
 import { esc } from '../../core/html.js';
 import { dayLabel, monthLabel } from '../../library/schema.js';
 import { runCommand } from '../../library/commands.js';
-import { buildLayout, visibleRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, toggleGroup, rangeIds } from './grid-model.js';
+import { buildStacks } from '../../library/stacks.js';
+import { collapseStacks, buildLayout, visibleRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, toggleGroup, rangeIds } from './grid-model.js';
 import { createPhotoViewer, formatDuration, formatTaken } from './photo-viewer.js';
 import { openStoragePanel, needsDownload } from './storage.js';
 import { downloadLibFile } from '../../library/persist.js';
 import { openImportDialog } from './import.js';
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
+const STACKS_KEY = 'slate.v1.library.stacks';
 const PAD = 12;              // grid padding, px
 const STRUCTURAL = new Set(['scan', 'load', 'rebuild', 'remove-root', 'empty-trash']);
 const SLIDESHOW_MAX = 1000;
@@ -61,6 +63,7 @@ export function initLibraryView(lib) {
           <h2 class="lib-viewname">Timeline</h2>
           <span class="lib-count"></span>
           <span class="lib-month" aria-hidden="true"></span>
+          <label class="lib-check lib-stacks"><input type="checkbox" class="lib-stacks-on"> Stack similar files</label>
         </div>
         <div class="lib-gridwrap">
           <div class="lib-grid library-grid" role="grid" tabindex="0" aria-label="Photos" aria-multiselectable="true">
@@ -91,6 +94,7 @@ export function initLibraryView(lib) {
   const emptyEl = $('.lib-empty'), countEl = $('.lib-count'), monthEl = $('.lib-month'), viewNameEl = $('.lib-viewname');
   const jobEl = $('.lib-job'), pauseBtn = $('.lib-pause'), storageDlg = $('.lib-storage');
   const panelEl = $('.lib-panel');
+  const stacksBox = $('.lib-stacks-on');
   // Views other modules add to the sidebar (ui.registerView): a view gives `ids()` to show
   // those photos in the grid, or `render(el, ctx)` to draw its own panel (returning a cleanup).
   const extraViews = new Map();
@@ -106,6 +110,9 @@ export function initLibraryView(lib) {
   let months = [];
   let sel = new Set(), anchor = -1, focusId = null;
   let zoom = 1;
+  // Stacks (row B9): one tile for an edit and its original, RAW plus JPEG, and bursts.
+  let stacking = true, stackMembers = new Map();
+  try { stacking = localStorage.getItem(STACKS_KEY) !== '0'; } catch { /* storage blocked */ }
   try { const z = Number(localStorage.getItem(ZOOM_KEY)); if (z >= 0 && z <= 2) zoom = z; } catch { /* storage blocked */ }
   let dirty = true;                      // list needs a requery
   let savedScroll = 0;
@@ -136,6 +143,7 @@ export function initLibraryView(lib) {
 
   const viewer = createPhotoViewer(lib, $('.lib-viewer'), {
     getList: () => list,
+    getStack: (id) => stackMembers.get(id) ?? null,
     onShow: (i) => { focusId = ids[i]; },
     onClose: () => { const i = indexOf.get(focusId); if (i != null) setFocus(i); else grid.focus(); },
     onEdit: (id) => openInEditor(id),
@@ -280,6 +288,8 @@ export function initLibraryView(lib) {
     if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
     list = lib.search(currentOpts());
     if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
+    stackMembers = new Map();
+    if (stacking && cur.view !== 'trash') ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
@@ -400,6 +410,9 @@ export function initLibraryView(lib) {
     const label = [rec.name, formatTaken(rec.time)];
     const badges = [];
     if (rec.kind === 'video') { label.push(`video${rec.dur ? ' ' + formatDuration(rec.dur) : ''}`); badges.push(`<span class="lib-b lib-b-dur">${rec.dur ? formatDuration(rec.dur) : 'Video'}</span>`); }
+    const stack = stackMembers.get(rec.id);
+    if (stack) { label.push(`stack of ${stack.length}`); badges.push(`<span class="lib-b lib-b-stack">${stack.length}</span>`); }
+    if (rec.motion || rec.liveVideo) { label.push(rec.motion ? 'motion photo' : 'live photo'); badges.push(`<span class="lib-b lib-b-motion">${rec.motion ? 'Motion' : 'Live'}</span>`); }
     if (c.fav) { label.push('favourite'); badges.push('<span class="lib-b lib-b-fav">&#9829;</span>'); }
     if (rating) { label.push(`${rating} star${rating === 1 ? '' : 's'}`); badges.push(`<span class="lib-b lib-b-star">&#9733;${rating}</span>`); }
     if (c.flag === 'pick') { label.push('picked'); badges.push('<span class="lib-b lib-b-pick">&#10003;</span>'); }
@@ -1079,6 +1092,12 @@ export function initLibraryView(lib) {
   lib.on('roots', () => {
     if (cur.view === 'folder' && !lib.roots.has(cur.rootId)) cur = { view: 'timeline' };
     renderSidebar(); scheduleRequery(); queueJobs();
+  });
+  stacksBox.checked = stacking;
+  stacksBox.addEventListener('change', () => {
+    stacking = stacksBox.checked;
+    try { localStorage.setItem(STACKS_KEY, stacking ? '1' : '0'); } catch { /* storage blocked */ }
+    if (open) requery(); else dirty = true;
   });
   lib.on('error', (ev) => emit('error', { message: ev?.message ?? 'Library error' }));
 

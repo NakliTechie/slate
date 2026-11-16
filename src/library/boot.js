@@ -19,8 +19,11 @@ import { initMemories } from './memories.js';
 import { initXmpWrite } from './xmpwrite.js';
 import { initImport } from '../ui/library/import.js';
 import { initDupes } from '../ui/library/dupes.js';
+import { initWatch } from './watch.js';
 import { importTakeoutZips, ZIP_URL } from '../ui/library/import.js';
 import { exportFiles } from './export.js';
+import { applyICloudCsv } from './icloud.js';
+import { buildStacks } from './stacks.js';
 
 let _lib = null;
 export function getLibrary() { return _lib; }
@@ -47,6 +50,7 @@ export async function initLibrary() {
   initDoor(lib, ui);
 
   await lib.load();
+  lib.services.watch = initWatch(lib);
 
   window.__slateLibrary = {
     lib, ui,
@@ -54,7 +58,7 @@ export async function initLibrary() {
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
     // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
-    mods: { importTakeoutZips, ZIP_URL, exportFiles },
+    mods: { importTakeoutZips, ZIP_URL, exportFiles, applyICloudCsv, buildStacks },
   };
   return lib;
 }

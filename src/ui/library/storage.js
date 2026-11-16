@@ -28,6 +28,7 @@ export function openStoragePanel(lib, dlg) {
       <dt>Kept by the browser</dt><dd data-s="persisted">Checking</dd>
     </dl>
     <p class="lib-note">The index and thumbnails can be rebuilt from your folders at any time. Your choices and albums are kept in each folder's library file.</p>
+    <p class="lib-note">${lib.services.watch?.status?.() === 'watching' ? 'Slate watches your folders and picks up new, changed and removed files on its own.' : 'This browser cannot watch folders, so Slate looks for new and changed files each time the Library opens.'}</p>
     <label class="lib-storage-xmp"><input type="checkbox" data-s-xmp> Write XMP sidecars for ratings, labels and tags</label>
     <p class="lib-note">Slate writes a photo.jpg.xmp file beside each photo you rate, reject or tag, so Lightroom, digiKam and darktable see the same choices. Your photos are never changed.</p>
     ${browseOnly.length ? `<div class="lib-storage-files"><p class="lib-note">Slate cannot write the library file into these folders, so their choices are kept in this browser. Download the library file and put it in the folder to keep a copy.</p>

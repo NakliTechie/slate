@@ -249,3 +249,32 @@ export function toggleGroup(sel, ids, start, count) {
   for (const id of group) { if (all) next.delete(id); else next.add(id); }
   return next;
 }
+
+// ── Stacks (row B9) ────────────────────────────────────────────────────────
+
+/**
+ * One tile per stack. `stackOf` maps a record id to its stack ({ top, members }), as
+ * stacks.js buildStacks gives. Only members present in `items` count: the stack shows its
+ * top when the top is present, else its first present member, at that member's place.
+ * @returns {{ items: object[], members: Map<string, string[]> }}  members: shown id -> present member ids (top first)
+ */
+export function collapseStacks(items, stackOf) {
+  if (!stackOf?.size) return { items, members: new Map() };
+  const present = new Map(); // stack -> present ids in item order
+  for (const r of items) {
+    const st = stackOf.get(r.id);
+    if (!st) continue;
+    if (!present.has(st)) present.set(st, []);
+    present.get(st).push(r.id);
+  }
+  const shown = new Map(); // shown id -> member ids
+  for (const [st, list] of present) {
+    if (list.length < 2) continue;
+    const head = list.includes(st.top) ? st.top : list[0];
+    const rank = new Map(st.members.map((id, i) => [id, i]));
+    shown.set(head, [head, ...list.filter(id => id !== head).sort((a, b) => rank.get(a) - rank.get(b))]);
+  }
+  const hidden = new Set();
+  for (const m of shown.values()) for (const id of m.slice(1)) hidden.add(id);
+  return { items: items.filter(r => !hidden.has(r.id)), members: shown };
+}

@@ -5,8 +5,9 @@ import assert from 'node:assert/strict';
 import {
   buildLayout, visibleRows, itemsInRows, itemRect, hitTest, lassoIndices, moveIndex,
   monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, rangeIds, toggleGroup,
-  ZOOMS, GAP, HEADER_H,
+  ZOOMS, GAP, HEADER_H, collapseStacks,
 } from '../src/ui/library/grid-model.js';
+import { buildStacks } from '../src/library/stacks.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; };
@@ -171,6 +172,30 @@ test('select all in a day, then clear it', () => {
   assert.deepEqual([...s].sort(), ['a', 'b', 'c', 'd']);
   s = toggleGroup(s, ids, 1, 3);
   assert.deepEqual([...s], ['a']);
+});
+
+test('stacks collapse to one tile each (row B9)', () => {
+  const T = Date.UTC(2025, 0, 1);
+  const r = (name, time, extra = {}) => ({ id: `r/${name}`, rootId: 'r', path: name, name, ext: name.split('.').pop().toLowerCase(), kind: 'photo', time, camera: '', timeSource: 'exif', ...extra });
+  // Newest first, as the view sorts.
+  const items = [
+    r('IMG_2-261116101010.jpg', T + 9000), r('IMG_1.JPG', T + 8000), r('IMG_1.CR2', T + 8000),
+    r('solo.jpg', T + 7000), r('IMG_2.jpg', T + 6000),
+    r('B2.jpg', T + 2800, { camera: 'X' }), r('B1.jpg', T + 2400, { camera: 'X' }), r('B0.jpg', T + 2000, { camera: 'X' }),
+  ];
+  const { stackOf } = buildStacks(items);
+  const { items: shown, members } = collapseStacks(items, stackOf);
+  assert.deepEqual(shown.map(x => x.name), ['IMG_2-261116101010.jpg', 'IMG_1.JPG', 'solo.jpg', 'B2.jpg']);
+  assert.deepEqual(members.get('r/IMG_2-261116101010.jpg'), ['r/IMG_2-261116101010.jpg', 'r/IMG_2.jpg']);
+  assert.deepEqual(members.get('r/IMG_1.JPG'), ['r/IMG_1.JPG', 'r/IMG_1.CR2']);
+  assert.equal(members.get('r/B2.jpg').length, 3);
+  const layout = buildLayout(shown, { width: 1000, grouped: false });
+  assert.equal(layout.rows.reduce((s, row) => s + (row.end - row.start), 0), 4, 'one tile per stack');
+  // A filter that hides the top: the first present member stands in; a lone member is no stack.
+  const { items: f1, members: m1 } = collapseStacks(items.filter(x => x.name !== 'IMG_1.JPG' && x.name !== 'IMG_2.jpg'), stackOf);
+  assert.ok(f1.some(x => x.name === 'IMG_1.CR2') && f1.some(x => x.name === 'IMG_2-261116101010.jpg'));
+  assert.ok(!m1.has('r/IMG_1.CR2') && !m1.has('r/IMG_2-261116101010.jpg'));
+  assert.deepEqual(collapseStacks(items, new Map()).items, items, 'stacking off');
 });
 
 console.log(`test-library-view: ${n} tests pass`);

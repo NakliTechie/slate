@@ -2651,6 +2651,8 @@ kbd {
 .imp-progress { display: flex; flex-direction: column; gap: var(--space-1); }
 .imp-bar { width: 100%; }
 .imp-status { margin: 0; font-size: 12px; color: var(--fg-1); overflow-wrap: anywhere; }
+.imp-status p { margin: 0 0 var(--space-1); }
+.imp-root { padding: var(--space-2); }
 
 
 /* ui/library/library.css */
@@ -2887,6 +2889,16 @@ kbd {
   .lv-info { width: 200px; }
 }
 
+/* Stacks, Motion Photos and Live Photos (rows B9, M6, M7) */
+.lib-stacks { margin-left: auto; font-size: 12px; color: var(--fg-2); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-1, 4px); }
+.lib-b-stack { font-variant-numeric: tabular-nums; }
+.lib-b-stack::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1.5px solid currentColor; border-radius: 1px; box-shadow: 2px -2px 0 -0.5px currentColor; vertical-align: -1px; }
+.lib-b-motion { text-transform: uppercase; letter-spacing: 0.04em; font-size: 9px; }
+.lv-motion, .lv-stack { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--fg-2); white-space: nowrap; }
+.lv-motion[hidden], .lv-stack[hidden] { display: none; }
+.lv-motion-badge { padding: 1px 6px; border-radius: 4px; background: var(--bg-2); color: var(--fg-1, inherit); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+.lv-stackpos { font-variant-numeric: tabular-nums; }
+
 
 /* ui/library/organise.css */
 /* ── Library organise: action bar, dialogs, menus, undo toast ─────────────── */
@@ -2971,6 +2983,14 @@ kbd {
 /* Storage panel: the XMP sidecar setting (storage.js) */
 .lib-storage-xmp { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--fg-0); margin-top: var(--space-3); }
 .lib-storage-xmp + .lib-note { margin-top: var(--space-1); }
+
+/* Move to folder and Rename dialogs (O10) */
+.org-review { font-size: 12px; color: var(--fg-1); overflow-wrap: anywhere; }
+.org-review p { margin: 0 0 var(--space-1); }
+.org-preview { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-1); overflow-wrap: anywhere; }
+.org-old { color: var(--fg-2); }
+.org-new { color: var(--fg-0); }
+.org-error { color: var(--danger); }
 
 
 /* ui/theme.css */
@@ -7867,7 +7887,7 @@ function folderOf(path) {
  * @property {number} size      bytes
  * @property {number} mtime     File.lastModified, ms
  * @property {number} time      capture time, ms since epoch (local wall clock read as UTC; see note)
- * @property {'exif'|'xmp'|'takeout'|'file'} timeSource
+ * @property {'exif'|'xmp'|'takeout'|'icloud'|'file'} timeSource
  * @property {number} w         pixel width after orientation (0 when unknown)
  * @property {number} h         pixel height after orientation (0 when unknown)
  * @property {number} orient    EXIF orientation 1..8 (1 when unknown)
@@ -7884,6 +7904,8 @@ function folderOf(path) {
  * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
  * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
  * @property {string} [sha256]   content hash, computed only for files whose size another file shares
+ * @property {{offset:number,length:number}} [motion] a Google Motion Photo's embedded MP4, as bytes from the end of the file
+ * @property {string} [liveVideo] path of the paired Apple Live Photo MOV in the same folder (that MOV has no record of its own)
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *
@@ -7952,6 +7974,342 @@ function normTag(t) {
 }
 
 return { SCHEMA_VERSION, PHOTO_EXTS, VIDEO_EXTS, SIDECAR_EXT, TRASH_DIR, LIBRARY_FILE, isSkippedDir, extOf, kindOf, normPath, makeId, splitId, folderOf, newRecord, unchanged, wallClockToTime, dayKey, monthKey, monthName, dayLabel, monthLabel, emptyChoice, FLAGS, isEmptyChoice, normTag };
+})();
+
+const __m_library_xmp = (() => {
+// XMP sidecars: read the keywords, rating, colour label, capture date and GPS
+// that Lightroom, digiKam and darktable write next to a photo. Plain text
+// matching, no DOMParser, so it runs in Node tests and in workers.
+//
+// Each property may be written as an attribute of rdf:Description
+// (xmp:Rating="3") or as an element (<xmp:Rating>3</xmp:Rating>). Lists
+// (dc:subject, lr:hierarchicalSubject) are rdf:Bag or rdf:Seq elements.
+//
+// parseXmp(text) -> { tags: string[], rating: number, label: string|null,
+//                     time: number|null, lat: number|null, lon: number|null }
+// sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
+// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
+
+const normTag = __m_library_schema.normTag;
+const wallClockToTime = __m_library_schema.wallClockToTime;
+
+function decode(s) {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\</body>');
+
+// The element body of `qname`, or null. Self-closing elements give ''.
+function elementBody(text, qname) {
+  const q = reEsc(qname);
+  const m = new RegExp(`<${q}(?:\\s[^>]*)?(?:/>|>([\\s\\S]*?)</${q}\\s*>)`).exec(text);
+  return m ? (m[1] ?? '') : null;
+}
+
+// A single value: attribute form first, then element form (first rdf:li when
+// the element holds an rdf:Alt, as photoshop and some writers do).
+function single(text, qname) {
+  const q = reEsc(qname);
+  const a = new RegExp(`(?<![\\w:.-])${q}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(text);
+  if (a) return decode((a[1] ?? a[2]).trim());
+  const body = elementBody(text, qname);
+  if (body == null) return null;
+  const li = /<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/.exec(body);
+  const v = decode((li ? li[1] : body).replace(/<[^>]*>/g, '').trim());
+  return v || null;
+}
+
+// A list: every rdf:li in the element; an attribute form gives one value.
+function list(text, qname) {
+  const body = elementBody(text, qname);
+  if (body != null) {
+    const out = [];
+    for (const m of body.matchAll(/<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/g)) {
+      const v = decode(m[1].replace(/<[^>]*>/g, '').trim());
+      if (v) out.push(v);
+    }
+    return out;
+  }
+  const one = single(text, qname);
+  return one ? [one] : [];
+}
+
+// "2024-03-01T09:15:30.12+05:30", "2024:03:01 09:15:30", "2024-03-01".
+// The wall clock is kept as written; any zone is ignored (see schema.js).
+function parseXmpDate(s) {
+  const m = /^\s*(\d{4})[-:](\d{2})(?:[-:](\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?)?/.exec(s ?? '');
+  if (!m) return null;
+  const [y, mo, d = 1, h = 0, mi = 0, sec = 0] = m.slice(1).map(v => (v == null ? undefined : +v));
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return wallClockToTime(y, mo, d, h, mi, sec);
+}
+
+// XMP GPS: "DD,MM.mmmN" or "DD,MM,SSN" (N, S, E, W last); a plain decimal is also accepted.
+function parseXmpGps(s) {
+  if (s == null) return null;
+  const t = String(s).trim();
+  const m = /^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?\s*([NSEW])$/i.exec(t);
+  let v;
+  if (m) {
+    v = +m[1] + +m[2] / 60 + (m[3] ? +m[3] / 3600 : 0);
+    if (/[SW]/i.test(m[4])) v = -v;
+  } else if (/^-?\d+(?:\.\d+)?$/.test(t)) {
+    v = +t;
+  } else return null;
+  return Number.isFinite(v) ? Math.round(v * 1e7) / 1e7 : null;
+}
+
+function parseXmp(text) {
+  const src = String(text ?? '');
+  const seen = new Set(), tags = [];
+  const add = (t) => { const n = normTag(t); if (n && !seen.has(n.toLowerCase())) { seen.add(n.toLowerCase()); tags.push(n); } };
+  for (const t of list(src, 'lr:hierarchicalSubject')) add(t.replace(/\|/g, '/'));
+  // A flat keyword that is already the leaf of a hierarchical tag adds nothing.
+  const leaves = new Set(tags.map(t => t.slice(t.lastIndexOf('/') + 1).toLowerCase()));
+  for (const t of list(src, 'dc:subject')) if (!leaves.has(normTag(t).toLowerCase())) add(t);
+
+  // Lightroom writes -1 for rejected; the library keeps ratings 0 to 5.
+  const r = Math.round(Number(single(src, 'xmp:Rating')));
+  const rating = Number.isFinite(r) ? Math.max(0, Math.min(5, r)) : 0;
+  const label = single(src, 'xmp:Label') || null;
+  const time = parseXmpDate(single(src, 'exif:DateTimeOriginal')) ?? parseXmpDate(single(src, 'photoshop:DateCreated'));
+  const lat = parseXmpGps(single(src, 'exif:GPSLatitude'));
+  const lon = parseXmpGps(single(src, 'exif:GPSLongitude'));
+  return { tags, rating, label, time, lat, lon };
+}
+
+function sidecarNames(name) {
+  const i = name.lastIndexOf('.');
+  const full = name + '.xmp', stem = (i < 0 ? name : name.slice(0, i)) + '.xmp';
+  return full === stem ? [full] : [full, stem];
+}
+
+// ── writing ─────────────────────────────────────────────────────────────────
+// buildXmp({ rating, flag, label, tags, existing }) writes the four properties
+// Slate owns and nothing else:
+//   xmp:Rating               0 to 5; a rejected photo writes -1
+//   xmp:Label                the colour label, when `label` is a string;
+//                            undefined leaves an existing label alone, null removes it
+//   dc:subject (rdf:Bag)     the leaf of every tag ('trips/goa' gives 'goa')
+//   lr:hierarchicalSubject   every tag in full, with '|' for '/' (Lightroom's form)
+// Flag mapping: Slate's choices have no colour label, so flags never become a
+// label. Only reject is written, as xmp:Rating -1, the convention Lightroom,
+// digiKam and darktable read. A pick writes nothing beyond its rating.
+// With `existing` (a sidecar's text), only these four properties are replaced,
+// in attribute or element form; every other property and namespace stays.
+
+const NS = {
+  xmp: 'http://ns.adobe.com/xap/1.0/',
+  dc: 'http://purl.org/dc/elements/1.1/',
+  lr: 'http://ns.adobe.com/lightroom/1.0/',
+};
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
+
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function removeProp(text, qname) {
+  const q = reEsc(qname);
+  return text
+    .replace(new RegExp(`\\s+${q}\\s*=\\s*(?:"[^"]*"|'[^']*')`, 'g'), '')
+    .replace(new RegExp(`[ \\t]*<${q}(?:\\s[^>]*)?(?:/>|>[\\s\\S]*?</${q}\\s*>)[ \\t]*\\r?\\n?`, 'g'), '');
+}
+
+function bag(qname, items, pad) {
+  return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
+}
+
+function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
+  const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  const clean = [...new Set(tags.map(normTag).filter(Boolean))];
+  const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
+  const keepLabel = label === undefined && existing ? single(existing, 'xmp:Label') : null;
+  const lab = typeof label === 'string' && label ? label : keepLabel;
+
+  const pad = '   ';
+  let props = `${pad}<xmp:Rating>${r}</xmp:Rating>\n`;
+  if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
+  if (leaves.length) props += bag('dc:subject', leaves, pad);
+  if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
+
+  let text = existing ? String(existing) : '';
+  const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
+  if (!open) {
+    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Slate">
+ <rdf:RDF xmlns:rdf="${RDF_NS}">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="${NS.xmp}"
+    xmlns:dc="${NS.dc}"
+    xmlns:lr="${NS.lr}">
+${props}  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
+`;
+  }
+  for (const q of OWNED) text = removeProp(text, q);
+  const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
+  let attrs = m[1];
+  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
+  const head = `<rdf:Description${attrs}>\n${props}`;
+  const tail = m[2] ? '  </rdf:Description>' : '';
+  return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');
+}
+
+return { parseXmpDate, parseXmpGps, parseXmp, sidecarNames, buildXmp };
+})();
+
+const __m_library_move = (() => {
+// Move or rename files inside one root folder (spec row O10). The photo's XMP
+// sidecar travels with it and is renamed to match, as trash.js does for the trash.
+//
+// createMove() -> { exists(root, path), move(root, fromPath, toPath) }
+//
+// `move` refuses to overwrite: it throws when a file (or folder) already sits at
+// the target path, or at the target path of a sidecar. Folders on the way to the
+// target are created. It uses FileSystemHandle.move() where the browser has it;
+// otherwise it copies the file, then removes the original.
+//
+// Sidecars: the full-name form (`IMG_1.jpg.xmp`) always travels and becomes
+// `<new name>.xmp`. The stem form (`IMG_1.xmp`) travels and becomes `<new stem>.xmp`
+// only when no other photo in the folder shares the stem (`IMG_1.jpg` beside
+// `IMG_1.dng`); a shared stem sidecar stays with the other photo.
+
+const normPath = __m_library_schema.normPath;
+const kindOf = __m_library_schema.kindOf;
+const sidecarNames = __m_library_xmp.sidecarNames;
+
+function split(path) {
+  const parts = normPath(path).split('/');
+  const name = parts.pop();
+  return { dirs: parts, name };
+}
+
+async function walk(dir, parts, create = false) {
+  for (const p of parts) dir = await dir.getDirectoryHandle(p, { create });
+  return dir;
+}
+
+async function existsIn(dir, name) {
+  try { await dir.getFileHandle(name); return true; }
+  catch (e) {
+    if (e?.name === 'NotFoundError') return false;
+    if (e?.name === 'TypeMismatchError') return true; // a folder with that name
+    throw e;
+  }
+}
+
+async function moveOne(fromDir, name, toDir, newName) {
+  const fh = await fromDir.getFileHandle(name);
+  if (typeof fh.move === 'function') { await fh.move(toDir, newName); return; }
+  const file = await fh.getFile();
+  const out = await toDir.getFileHandle(newName, { create: true });
+  const w = await out.createWritable();
+  await w.write(file);
+  await w.close();
+  await fromDir.removeEntry(name);
+}
+
+const stemOf = n => { const i = n.lastIndexOf('.'); return i < 0 ? n : n.slice(0, i); };
+
+// [[oldSidecarName, newSidecarName]] for the photo `name` in `dir` moving to `newName`.
+async function sidecarPairs(dir, name, newName) {
+  const [full, stem] = sidecarNames(name);
+  const out = [];
+  if (await existsIn(dir, full)) out.push([full, newName + '.xmp']);
+  if (stem && await existsIn(dir, stem)) {
+    const s = stemOf(name);
+    let shared = false;
+    for await (const [n, h] of dir.entries()) {
+      if (n === name || h.kind !== 'file' || !kindOf(n)) continue;
+      if (stemOf(n) === s) { shared = true; break; }
+    }
+    if (!shared) out.push([stem, stemOf(newName) + '.xmp']);
+  }
+  return out;
+}
+
+function needHandle(root) {
+  if (!root?.handle) throw new Error('this folder is browse-only, so Slate cannot move its files');
+  return root.handle;
+}
+
+// Only a change of letter case: on a case-insensitive disk the target "exists"
+// because it is the same file.
+const sameIgnoringCase = (a, b) => a !== b && a.toLowerCase() === b.toLowerCase();
+
+function createMove() {
+  return {
+    async exists(root, path) {
+      const { dirs, name } = split(path);
+      let dir;
+      try { dir = await walk(needHandle(root), dirs); }
+      catch (e) { if (e?.name === 'NotFoundError') return false; if (e?.name === 'TypeMismatchError') return true; throw e; }
+      return existsIn(dir, name);
+    },
+
+    async move(root, fromPath, toPath) {
+      const top = needHandle(root);
+      const a = split(fromPath), b = split(toPath);
+      if (normPath(fromPath) === normPath(toPath)) return;
+      const from = await walk(top, a.dirs);
+      const to = await walk(top, b.dirs, true);
+      const caseOnly = sameIgnoringCase(normPath(fromPath), normPath(toPath));
+      if (!caseOnly && await existsIn(to, b.name)) throw new Error(`${normPath(toPath)} already exists, so ${a.name} was not moved`);
+      const pairs = await sidecarPairs(from, a.name, b.name);
+      for (const [, n] of pairs) {
+        if (!caseOnly && await existsIn(to, n)) throw new Error(`a sidecar named ${n} already exists there, so ${a.name} was not moved`);
+      }
+      await moveOne(from, a.name, to, b.name);
+      for (const [o, n] of pairs) await moveOne(from, o, to, n);
+    },
+  };
+}
+
+// ── rename templates ─────────────────────────────────────────────────────────
+// renderName(template, record, n, width) -> the new file name, keeping the
+// record's extension. Fields:
+//   {name}    the current name without its extension
+//   {date}    capture date YYYY-MM-DD ("undated" when the record has no time)
+//   {time}    capture time HHmmss (empty when the record has no time)
+//   {n}       the counter, zero-padded to `width` digits
+//   {camera}  "Make Model" (empty when unknown)
+// Characters a file name cannot hold become "_"; a separator doubled by an empty
+// field is collapsed ("{date}_{time}_{n}" with no time gives "undated_001").
+const RENAME_FIELDS = ['name', 'date', 'time', 'n', 'camera'];
+
+function renderName(template, rec, n = 1, width = 3) {
+  const t = String(template ?? '');
+  if (!t.trim()) throw new Error('give a name template, such as {date}_{n}');
+  if (/[/\\]/.test(t)) throw new Error('a name template cannot contain / or \; use Move to folder for folders');
+  const dot = rec.name.lastIndexOf('.');
+  const stem = dot > 0 ? rec.name.slice(0, dot) : rec.name, ext = dot > 0 ? rec.name.slice(dot) : '';
+  const d = Number.isFinite(rec.time) && rec.time > 0 ? new Date(rec.time) : null;
+  const p = (v, k = 2) => String(v).padStart(k, '0');
+  // Capture times are wall clocks stored as UTC (schema.js), so UTC getters.
+  const fields = {
+    name: stem,
+    date: d ? `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` : 'undated',
+    time: d ? `${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}` : '',
+    n: p(n, width),
+    camera: (rec.camera || '').trim(),
+  };
+  let out = t.replace(/\{(\w+)\}/g, (m, k) => {
+    if (!(k in fields)) throw new Error(`unknown field {${k}}; use ${RENAME_FIELDS.map(f => `{${f}}`).join(', ')}`);
+    return fields[k];
+  });
+  out = out.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ')
+    .replace(/([-_ ])\1+/g, '$1').replace(/^[-_ .]+|[-_ .]+$/g, '');
+  if (!out) throw new Error('the template gives an empty name');
+  return out + ext;
+}
+
+return { createMove, RENAME_FIELDS, renderName };
 })();
 
 const __m_library_libfile = (() => {
@@ -8311,6 +8669,12 @@ const makeId = __m_library_schema.makeId;
 const splitId = __m_library_schema.splitId;
 const normTag = __m_library_schema.normTag;
 const FLAGS = __m_library_schema.FLAGS;
+const normPath = __m_library_schema.normPath;
+const kindOf = __m_library_schema.kindOf;
+const extOf = __m_library_schema.extOf;
+const folderOf = __m_library_schema.folderOf;
+const createMove = __m_library_move.createMove;
+const renderName = __m_library_move.renderName;
 const parseLibFile = __m_library_libfile.parseLibFile;
 const buildLibFile = __m_library_libfile.buildLibFile;
 const rematchMoved = __m_library_libfile.rematchMoved;
@@ -8436,6 +8800,16 @@ class Library {
     if (upserts.length) await this.store.putPhotos(upserts);
     let missing = [];
     if (seen) {
+      // A MOV now paired with a Live Photo has no record of its own: drop it rather than mark it missing.
+      const paired = new Set();
+      for (const r of this.records.values()) if (r.rootId === rootId && r.liveVideo) paired.add(makeId(rootId, r.liveVideo));
+      const dropped = [...paired].filter(id => this.records.has(id) && !seen.has(id) && !this.choices.get(id)?.trashed);
+      if (dropped.length) {
+        for (const id of dropped) this.records.delete(id);
+        await this.store.deletePhotos(dropped);
+        await this.services.thumbs?.remove(dropped);
+        missing.push(...dropped.map(id => ({ id })));
+      }
       for (const r of this.records.values()) {
         if (r.rootId !== rootId) continue;
         const gone = !seen.has(r.id) && !this.choices.get(r.id)?.trashed;
@@ -8757,6 +9131,108 @@ class Library {
     return best?.id ?? null;
   }
 
+  // ── move and rename (spec row O10) ─────────────────────────────────────
+  // moveFiles([{ id, toPath }]) moves each file inside its own root (toPath is
+  // relative to the root), with its XMP sidecar, and re-keys the record, its
+  // choices, album memberships and album covers to the new id. It never
+  // overwrites: any conflict refuses the whole call before a file moves.
+  // { dryRun: true } returns { changed, dryRun, moves: [{ id, from, to }], conflicts: [{ id, to, reason }] }.
+  // Otherwise { changed, undo, moved: [{ from, to }], failed: [{ id, reason }] }.
+  async moveFiles(moves, { dryRun = false } = {}) {
+    if (!Array.isArray(moves) || !moves.length) throw new Error('give at least one file to move');
+    this.#checkIds(moves.map(m => m?.id));
+    const mover = this.services.move ?? (this._mover ??= createMove());
+    const plan = [], conflicts = [], seenIds = new Set(), targets = new Set();
+    for (const { id, toPath } of moves) {
+      const { rootId, path } = splitId(id);
+      const to = normPath(String(toPath ?? '').trim()).replace(/\/+$/, '');
+      const root = this.roots.get(rootId), rec = this.records.get(id);
+      const no = (reason) => conflicts.push({ id, to, reason });
+      if (seenIds.has(id)) { no('the same file is listed twice'); continue; }
+      seenIds.add(id);
+      const segs = to.split('/');
+      if (!to || segs.some(s => !s || s === '.' || s === '..' || s.startsWith('.') || /[\\:*?"<>|\u0000-\u001f]/.test(s))) { no('not a valid path'); continue; }
+      if (to === path) continue;
+      if (!kindOf(segs[segs.length - 1])) { no('the new name needs a photo or video extension'); continue; }
+      if (!root?.handle) { no('the folder is browse-only'); continue; }
+      if (this.choice(id).trashed) { no('the file is in the trash'); continue; }
+      if (rec.missing) { no('the file is missing from disk'); continue; }
+      const key = to.toLowerCase();
+      if (targets.has(`${rootId}/${key}`)) { no('two files would get the same name'); continue; }
+      targets.add(`${rootId}/${key}`);
+      const caseOnly = key === path.toLowerCase();
+      if (!caseOnly && (this.records.has(makeId(rootId, to)) || await mover.exists(root, to))) { no('a file with that name already exists'); continue; }
+      plan.push({ id, from: path, to, rootId });
+    }
+    if (dryRun) return { changed: plan.length, dryRun: true, moves: plan.map(({ id, from, to }) => ({ id, from, to })), conflicts };
+    if (conflicts.length) {
+      const c = conflicts[0];
+      throw Object.assign(new Error(`${conflicts.length} of ${moves.length} files cannot be moved (${c.to || c.id}: ${c.reason}); nothing was moved`), { conflicts });
+    }
+    const moved = [], failed = [], oldIds = [], newRecs = [], roots = new Set();
+    for (const m of plan) {
+      try {
+        await mover.move(this.roots.get(m.rootId), m.from, m.to);
+      } catch (e) {
+        failed.push({ id: m.id, reason: e.message });
+        this.emit('error', { message: `Could not move ${m.from}: ${e.message}` });
+        continue;
+      }
+      const toId = makeId(m.rootId, m.to);
+      newRecs.push(this.#rekey(m.id, toId, m.to));
+      oldIds.push(m.id);
+      roots.add(m.rootId);
+      moved.push({ from: m.id, to: toId, fromPath: m.from });
+    }
+    if (!moved.length) return { changed: 0, undo: null, moved, failed };
+    await this.store.deletePhotos(oldIds);
+    await this.store.putPhotos(newRecs);
+    await this.services.thumbs?.remove?.(oldIds);
+    this.services.thumbs?.enqueue?.(newRecs);
+    for (const r of roots) this.markDirty(r);
+    this.emit('records', { ids: [...oldIds, ...newRecs.map(r => r.id)], reason: 'move' });
+    this.emit('choices', { ids: newRecs.map(r => r.id), reason: 'move' });
+    this.emit('albums', { albumId: null, reason: 'move' });
+    const undo = this.#remember('move', () => this.moveFiles(moved.map(d => ({ id: d.to, toPath: d.fromPath }))));
+    return { changed: moved.length, undo, moved: moved.map(({ from, to }) => ({ from, to })), failed };
+  }
+
+  // The new names renameFiles would give, without touching anything: [{ id, toPath }].
+  // Files are numbered in capture order (then path) for {n}, from `start`.
+  renamePlan(ids, template, { start = 1 } = {}) {
+    const list = this.#checkIds(ids).map(id => this.records.get(id))
+      .sort((a, b) => (a.time || 0) - (b.time || 0) || a.path.localeCompare(b.path));
+    const width = Math.max(3, String(start + list.length - 1).length);
+    return list.map((r, i) => {
+      const name = renderName(template, r, start + i, width);
+      const folder = folderOf(r.path);
+      return { id: r.id, toPath: folder ? `${folder}/${name}` : name };
+    });
+  }
+
+  // Rename files in place from a template: {name} {date} {time} {n} {camera}.
+  renameFiles(ids, template, { dryRun = false, start = 1 } = {}) {
+    return this.moveFiles(this.renamePlan(ids, template, { start }), { dryRun });
+  }
+
+  #rekey(fromId, toId, toPath) {
+    const rec = this.records.get(fromId);
+    const name = toPath.slice(toPath.lastIndexOf('/') + 1);
+    const next = { ...rec, id: toId, path: toPath, name, ext: extOf(name), thumb: null, indexed: Date.now() };
+    this.records.delete(fromId);
+    this.records.set(toId, next);
+    if (this.choices.has(fromId)) { this.choices.set(toId, this.choices.get(fromId)); this.choices.delete(fromId); }
+    for (const a of this.albums.values()) {
+      if (a.items.delete(fromId)) a.items.add(toId);
+      if (a.cover === fromId) a.cover = toId;
+    }
+    return next;
+  }
+
+  // An undo token for a change made outside these methods (icloud.js), so it
+  // shares the one undo log.
+  rememberUndo(reason, fn) { return this.#remember(reason, fn); }
+
   // ── undo ────────────────────────────────────────────────────────────────
   undo(token) {
     const entry = this.undoLog.get(token);
@@ -8976,6 +9452,188 @@ async function idbStore(name = DB_NAME) {
 return { DB_NAME, DB_VERSION, memoryStore, idbStore };
 })();
 
+const __m_editor_commands = (() => {
+// The editor's commands (row N5). They join the library's list in src/library/commands.js,
+// so they reach NakliOS and WebMCP through the same door. Each edit emits the same op event
+// as its button (oprunner.js), so it lands in the editor's history and Ctrl+Z undoes it.
+// A command returns once the editor reports `history:changed` (the op is applied), or fails
+// after OP_TIMEOUT_MS.
+//
+// `run(lib, args, ctx)`: `ctx.editor` may replace the editor ({ state, emit, on, off, flatten })
+// for tests; in the app it is the real state and event bus.
+
+const state = __m_core_state.state;
+const emit = __m_core_events.emit;
+const on = __m_core_events.on;
+const off = __m_core_events.off;
+const flattenLayers = __m_core_layers.flattenLayers;
+
+const OP_TIMEOUT_MS = 20000;
+const SAVE_TIMEOUT_MS = 60000;
+const SNAPSHOT_MAX_PX = 512;
+const SNAPSHOT_MAX_CHARS = 250000; // under the rail's 256 KB result limit
+
+const EDITOR = { state, emit, on, off, flatten: c => flattenLayers(c) };
+const ed = ctx => ctx?.editor ?? EDITOR;
+const obj = (properties = {}, required = []) => ({ type: 'object', properties, required });
+const num = (description, minimum, maximum) => ({ type: 'number', minimum, maximum, description });
+
+function needImage(e) {
+  if (!e.state.image.working) throw new Error('no image is open in the editor; open one with image.open');
+}
+
+function info(e) {
+  const s = e.state;
+  if (!s.image.working) return { open: false };
+  const entry = s.session.files[s.session.currentIndex];
+  return {
+    open: true, name: entry?.name ?? null, w: s.image.width, h: s.image.height, format: s.image.format,
+    history: s.history.size, edits: s.history.pointer + 1, canUndo: s.history.canUndo(), canRedo: s.history.canRedo(),
+    layers: s.layers.length,
+  };
+}
+
+// Emit an editor event and wait until the editor commits it to history.
+function applied(e, type, params, label) {
+  return new Promise((resolve, reject) => {
+    const done = () => { clearTimeout(timer); e.off('history:changed', done); resolve(info(e)); };
+    const timer = setTimeout(() => { e.off('history:changed', done); reject(new Error(`the editor did not apply ${label}`)); }, OP_TIMEOUT_MS);
+    e.on('history:changed', done);
+    e.emit(type, params);
+  });
+}
+
+function inRange(name, v, min, max) {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) throw new Error(`${name} must be a number from ${min} to ${max}`);
+  return v;
+}
+
+// Save through the editor's own save path (app.js doSave), never overwriting the original.
+function saved(e) {
+  return new Promise((resolve, reject) => {
+    let name = null;
+    const onToast = t => { const m = /^(?:Saved as|Downloaded) (.+)$/.exec(t?.message ?? ''); if (m) name = m[1]; };
+    const stop = () => { clearTimeout(timer); e.off('toast', onToast); e.off('save:complete', onDone); e.off('error', onError); };
+    const onDone = p => { stop(); resolve(p?.name ?? name); };
+    const onError = err => { stop(); reject(new Error(err?.message ?? 'save failed')); };
+    const timer = setTimeout(() => { stop(); reject(new Error('the editor did not finish saving')); }, SAVE_TIMEOUT_MS);
+    e.on('toast', onToast); e.on('save:complete', onDone); e.on('error', onError);
+    e.emit('save:request', {});
+  });
+}
+
+async function toDataUrl(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/jpeg;base64,${btoa(s)}`;
+}
+
+const EDITOR_COMMANDS = [
+  { name: 'image.info', label: 'Image info', description: 'Describe the image open in the editor: file name, width and height in pixels, format, and how many edits are in its history.', scope: 'read', input: obj(),
+    run: (lib, a, ctx) => info(ed(ctx)) },
+  { name: 'image.open', label: 'Edit photo', description: 'Open one library photo (an id from library.search) in the editor, so the image commands work on it.', scope: 'read', input: obj({ id: { type: 'string' } }, ['id']), shows: true,
+    run: async (lib, a, ctx) => {
+      const rec = lib.get(a.id);
+      if (!rec) throw new Error(`unknown photo id: ${a.id}`);
+      if (rec.kind === 'video') throw new Error('videos play in the library viewer; the editor opens photos');
+      if (!ctx?.ui?.openInEditor) throw new Error('the library view is not running');
+      await ctx.ui.openInEditor(a.id);
+      return info(ed(ctx));
+    } },
+  { name: 'image.crop', label: 'Crop', description: 'Crop the open image to a rectangle, in pixels from its top-left corner. Undo with image.undo.', scope: 'write',
+    input: obj({ x: num('left edge', 0), y: num('top edge', 0), w: num('width', 1), h: num('height', 1) }, ['x', 'y', 'w', 'h']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const { width: W, height: H } = e.state.image;
+      const x = inRange('x', a.x, 0, W - 1), y = inRange('y', a.y, 0, H - 1);
+      const w = inRange('w', a.w, 1, W - x), h = inRange('h', a.h, 1, H - y);
+      e.state.selection = { ...e.state.selection, shape: 'rect', x, y, w, h };
+      return applied(e, 'op:crop', null, 'the crop');
+    } },
+  { name: 'image.rotate', label: 'Rotate', description: 'Rotate the open image by 90 degrees clockwise (90), anticlockwise (-90), or 180.', scope: 'write', input: obj({ deg: { type: 'integer', enum: [90, -90, 180] } }, ['deg']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      if (![90, -90, 180].includes(a.deg)) throw new Error('deg must be 90, -90 or 180');
+      return applied(e, 'op:rotate', { deg: a.deg }, 'the rotation');
+    } },
+  { name: 'image.flip', label: 'Flip', description: 'Flip the open image horizontally (h, a mirror image) or vertically (v).', scope: 'write', input: obj({ axis: { type: 'string', enum: ['h', 'v'] } }, ['axis']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      if (a.axis !== 'h' && a.axis !== 'v') throw new Error('axis must be h or v');
+      return applied(e, 'op:flip', { axis: a.axis }, 'the flip');
+    } },
+  { name: 'image.resize', label: 'Resize', description: 'Resize the open image to a width and height in pixels (at most 16384 each).', scope: 'write',
+    input: obj({ w: { type: 'integer', minimum: 1, maximum: 16384 }, h: { type: 'integer', minimum: 1, maximum: 16384 } }, ['w', 'h']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const w = Math.round(inRange('w', a.w, 1, 16384)), h = Math.round(inRange('h', a.h, 1, 16384));
+      return applied(e, 'op:resize', { w, h }, 'the resize');
+    } },
+  { name: 'image.adjust', label: 'Adjust', description: 'Change exposure (-100 to 100, about 2 stops at the ends), contrast (-100 to 100) and saturation (-100 to 200) of the open image. 0 leaves a setting as it is.', scope: 'write',
+    input: obj({ exposure: num('-100 to 100', -100, 100), contrast: num('-100 to 100', -100, 100), saturation: num('-100 to 200', -100, 200) }),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const brightness = inRange('exposure', a.exposure ?? 0, -100, 100);
+      const contrast = inRange('contrast', a.contrast ?? 0, -100, 100);
+      const saturation = inRange('saturation', a.saturation ?? 0, -100, 200);
+      if (!brightness && !contrast && !saturation) throw new Error('give exposure, contrast or saturation other than 0');
+      return applied(e, 'op:adjust', { brightness, contrast, saturation }, 'the adjustment');
+    } },
+  { name: 'image.sharpen', label: 'Sharpen', description: 'Sharpen the open image. Amount 0.1 to 5; 1 is typical.', scope: 'write', input: obj({ amount: num('0.1 to 5', 0.1, 5) }, ['amount']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      return applied(e, 'op:sharpen', { amount: inRange('amount', a.amount, 0.1, 5) }, 'the sharpening');
+    } },
+  { name: 'image.straighten', label: 'Straighten', description: 'Rotate the open image by a small angle in degrees (-45 to 45, positive is clockwise). The canvas grows to fit.', scope: 'write', input: obj({ angle: num('degrees, -45 to 45', -45, 45) }, ['angle']),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const deg = inRange('angle', a.angle, -45, 45);
+      if (deg === 0) throw new Error('angle must not be 0');
+      return applied(e, 'op:straighten', { deg }, 'the straightening');
+    } },
+  { name: 'image.undo', label: 'Undo edit', description: 'Undo the last edit to the open image.', scope: 'write', input: obj(),
+    run: (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      if (!e.state.history.canUndo()) throw new Error('nothing to undo');
+      return applied(e, 'history:undo', null, 'the undo');
+    } },
+  { name: 'image.export', label: 'Export image', description: 'Save the edited image as a new file: beside the original when the editor has a save folder, otherwise as a download. The original file is never replaced. Returns the file name.', scope: 'write',
+    input: obj({ format: { type: 'string', enum: ['png', 'jpeg', 'webp'], description: 'default png' }, quality: { type: 'integer', minimum: 1, maximum: 100, description: 'jpeg and webp only, default 90' } }),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const format = a.format ?? 'png';
+      if (!['png', 'jpeg', 'webp'].includes(format)) throw new Error('format must be png, jpeg or webp');
+      const exp = e.state.export;
+      const prev = { format: exp.format, quality: exp.quality, saveMode: exp.saveMode };
+      exp.format = format;
+      exp.quality = Math.round(inRange('quality', a.quality ?? 90, 1, 100));
+      exp.saveMode = e.state.session.folderHandle ? 'sidecar' : 'download';
+      const to = exp.saveMode === 'sidecar' ? 'folder' : 'download';
+      try { return { saved: true, name: await saved(e), to, format }; }
+      finally { Object.assign(exp, prev); }
+    } },
+  { name: 'image.snapshot', label: 'Snapshot', description: `A small JPEG data URL of the open image as it looks now (at most ${SNAPSHOT_MAX_PX} px on the long edge), for looking at it.`, scope: 'read', input: obj(),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const src = e.flatten(e.state.image.working);
+      const scale = Math.min(1, SNAPSHOT_MAX_PX / Math.max(src.width, src.height));
+      const w = Math.max(1, Math.round(src.width * scale)), h = Math.max(1, Math.round(src.height * scale));
+      const c = new OffscreenCanvas(w, h);
+      const g = c.getContext('2d');
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+      g.drawImage(src, 0, 0, w, h);
+      for (const quality of [0.8, 0.6, 0.4, 0.2]) {
+        const dataUrl = await toDataUrl(await c.convertToBlob({ type: 'image/jpeg', quality }));
+        if (dataUrl.length <= SNAPSHOT_MAX_CHARS) return { w, h, dataUrl };
+      }
+      throw new Error('the snapshot is too large');
+    } },
+];
+
+return { OP_TIMEOUT_MS, SAVE_TIMEOUT_MS, SNAPSHOT_MAX_PX, SNAPSHOT_MAX_CHARS, EDITOR_COMMANDS };
+})();
+
 const __m_library_commands = (() => {
 // The library's command table: one list that backs the buttons, the keys and
 // the agent face (NakliOS `naklios.experimental_commands`). `manifest()` is the
@@ -8991,6 +9649,10 @@ const __m_library_commands = (() => {
 // Slate's own rules:
 //   - write commands take at most MAX_WRITE_IDS ids; `photo.bulk` (destructive) takes more;
 //   - every write takes `dryRun` and returns an `undo` token where the change can be undone.
+// The editor's commands (src/editor/commands.js, row N5) join the end of the list; they act on
+// the image open in the editor and are undone with image.undo.
+
+const EDITOR_COMMANDS = __m_editor_commands.EDITOR_COMMANDS;
 
 const MAX_WRITE_IDS = 200;
 const MAX_RESULTS = 500;
@@ -9134,6 +9796,12 @@ const COMMANDS = [
         default: throw new Error(`unknown op: ${a.op}`);
       }
     } },
+  { name: 'photo.move', label: 'Move to folder', description: 'Move photos to another folder inside the same library folder; XMP sidecars move with them. NakliOS asks the person first, because files on disk change. Refuses to overwrite.', scope: 'destructive',
+    input: obj({ moves: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, toPath: { type: 'string', description: 'new path inside the same root, e.g. "2024/Goa/IMG_1.jpg"' } }, required: ['id', 'toPath'] }, minItems: 1, maxItems: 5000 }, dryRun }, ['moves']),
+    run: (lib, a) => lib.moveFiles(a.moves, a) },
+  { name: 'photo.rename', label: 'Rename', description: 'Rename photos in place from a template with {name}, {date}, {time}, {n} and {camera}. NakliOS asks the person first, because files on disk change. Refuses to overwrite.', scope: 'destructive',
+    input: obj({ ids: ids(5000), template: { type: 'string', description: 'e.g. "{date} Goa {n}"; the extension is kept' }, dryRun }, ['ids', 'template']),
+    run: (lib, a) => lib.renameFiles(capIds(a.ids, 5000), a.template, a) },
   { name: 'trash.empty', label: 'Empty trash', description: 'Permanently delete the files in the trash (all of them, or the given ids). This cannot be undone.', scope: 'destructive', input: obj({ ids: ids(100000), dryRun }),
     run: (lib, a) => lib.emptyTrash({ ids: a.ids ?? null, dryRun: a.dryRun }) },
 
@@ -9152,6 +9820,9 @@ const COMMANDS = [
     run: (lib, a) => lib.albumSetCover(a.album, a.id, a) },
   { name: 'album.delete', label: 'Delete album', description: 'Delete an album. Its photos stay in the library.', scope: 'destructive', input: obj({ album: { type: 'string' }, dryRun }, ['album']),
     run: (lib, a) => lib.albumDelete(a.album, a) },
+
+  // ── the editor (row N5) ──────────────────────────────────────────────────
+  ...EDITOR_COMMANDS,
 ];
 
 const BY_NAME = new Map(COMMANDS.map(c => [c.name, c]));
@@ -9217,7 +9888,12 @@ return { Exifr: te, Options: q, allFormatters: X, chunkedProps: G, createDiction
 const __m_library_metadata = (() => {
 // Reads capture metadata from the head of a photo with exifr. See docs/architecture.md "Scan".
 //
-//   readMetadata(file, record) -> { time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating }
+//   readMetadata(file, record) -> { time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating, motion }
+//
+// `motion` (row M6) marks a Google Motion Photo: { offset, length } in bytes, where the
+// embedded MP4 starts `offset` bytes before the end of the file and runs `length` bytes.
+// motionFromXmp(text) reads it from the XMP packet; readMetadata keeps it only when the
+// bytes at that place start an MP4 ('ftyp' box).
 //
 // Only the fields found are set. It never throws: unreadable metadata gives {}.
 // Capture time is the EXIF wall clock stored as if it were UTC (schema.wallClockToTime),
@@ -9232,6 +9908,10 @@ const EXIF_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif',
   'dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
 // TIFF-based RAW files keep the preview size in IFD0, so IFD0 width and height are not the photo's.
 const RAW_EXTS = new Set(['dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
+// Formats a Motion Photo can be (row M6).
+const MOTION_EXTS = new Set(['jpg', 'jpeg', 'heic', 'heif']);
+// The main XMP packet sits in the first APP1 blocks of a JPEG; HEIC keeps it near the head too.
+const XMP_BYTES = 256 * 1024;
 // Bytes read where exifr cannot read a Blob in chunks itself (Node has no FileReader).
 const HEAD_BYTES = 512 * 1024;
 
@@ -9249,7 +9929,12 @@ async function readMetadata(file, record) {
     // In the browser exifr reads the File in chunks from its head; elsewhere hand it the head.
     const input = typeof FileReader === 'function' ? file : new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
     const m = await parse(input, OPTIONS);
-    return m ? fieldsFrom(m, RAW_EXTS.has(ext)) : {};
+    const out = m ? fieldsFrom(m, RAW_EXTS.has(ext)) : {};
+    if (MOTION_EXTS.has(ext)) {
+      const motion = await readMotion(file);
+      if (motion) out.motion = motion;
+    }
+    return out;
   } catch {
     return {};
   }
@@ -9300,195 +9985,70 @@ function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math
 function str(v) { return typeof v === 'string' ? v.replace(/\0+$/, '').trim() : ''; }
 function list(v) { return v == null ? [] : Array.isArray(v) ? v : [v]; }
 
-return { readMetadata, parseWallClock };
-})();
+// ── Motion Photos (row M6) ─────────────────────────────────────────────────
 
-const __m_library_xmp = (() => {
-// XMP sidecars: read the keywords, rating, colour label, capture date and GPS
-// that Lightroom, digiKam and darktable write next to a photo. Plain text
-// matching, no DOMParser, so it runs in Node tests and in workers.
-//
-// Each property may be written as an attribute of rdf:Description
-// (xmp:Rating="3") or as an element (<xmp:Rating>3</xmp:Rating>). Lists
-// (dc:subject, lr:hierarchicalSubject) are rdf:Bag or rdf:Seq elements.
-//
-// parseXmp(text) -> { tags: string[], rating: number, label: string|null,
-//                     time: number|null, lat: number|null, lon: number|null }
-// sidecarNames(name) -> ['photo.jpg.xmp', 'photo.xmp']  (full-name form first, as digiKam writes it)
-// buildXmp({ rating, flag, label, tags, existing }) -> XMP packet text (see below)
-
-const normTag = __m_library_schema.normTag;
-const wallClockToTime = __m_library_schema.wallClockToTime;
-
-function decode(s) {
-  return s
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d))
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
+async function readMotion(file) {
+  const head = latin1(new Uint8Array(await file.slice(0, XMP_BYTES).arrayBuffer()));
+  const motion = motionFromXmp(head);
+  if (!motion || motion.offset > file.size || motion.length > motion.offset) return null;
+  const at = file.size - motion.offset;
+  const box = latin1(new Uint8Array(await file.slice(at + 4, at + 8).arrayBuffer()));
+  return box === 'ftyp' ? motion : null;
 }
 
-const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\</body>');
-
-// The element body of `qname`, or null. Self-closing elements give ''.
-function elementBody(text, qname) {
-  const q = reEsc(qname);
-  const m = new RegExp(`<${q}(?:\\s[^>]*)?(?:/>|>([\\s\\S]*?)</${q}\\s*>)`).exec(text);
-  return m ? (m[1] ?? '') : null;
+function latin1(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return s;
 }
 
-// A single value: attribute form first, then element form (first rdf:li when
-// the element holds an rdf:Alt, as photoshop and some writers do).
-function single(text, qname) {
-  const q = reEsc(qname);
-  const a = new RegExp(`(?<![\\w:.-])${q}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(text);
-  if (a) return decode((a[1] ?? a[2]).trim());
-  const body = elementBody(text, qname);
-  if (body == null) return null;
-  const li = /<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/.exec(body);
-  const v = decode((li ? li[1] : body).replace(/<[^>]*>/g, '').trim());
-  return v || null;
-}
-
-// A list: every rdf:li in the element; an attribute form gives one value.
-function list(text, qname) {
-  const body = elementBody(text, qname);
-  if (body != null) {
-    const out = [];
-    for (const m of body.matchAll(/<rdf:li(?:\s[^>]*)?>([\s\S]*?)<\/rdf:li>/g)) {
-      const v = decode(m[1].replace(/<[^>]*>/g, '').trim());
-      if (v) out.push(v);
-    }
-    return out;
+// A property written as an attribute (ns:Name="v") or as an element (<ns:Name>v</ns:Name>).
+function prop(text, names) {
+  for (const n of names) {
+    const x = new RegExp(`${n}\\s*=\\s*["']([^"']*)["']|<${n}>([^<]*)<`).exec(text);
+    if (x) return (x[1] ?? x[2]).trim();
   }
-  const one = single(text, qname);
-  return one ? [one] : [];
+  return null;
 }
 
-// "2024-03-01T09:15:30.12+05:30", "2024:03:01 09:15:30", "2024-03-01".
-// The wall clock is kept as written; any zone is ignored (see schema.js).
-function parseXmpDate(s) {
-  const m = /^\s*(\d{4})[-:](\d{2})(?:[-:](\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?)?/.exec(s ?? '');
-  if (!m) return null;
-  const [y, mo, d = 1, h = 0, mi = 0, sec = 0] = m.slice(1).map(v => (v == null ? undefined : +v));
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return wallClockToTime(y, mo, d, h, mi, sec);
-}
+/**
+ * The embedded video of a Google Motion Photo, from XMP text (or any text holding the packet).
+ * Reads the Container directory (Container:Item with Item:Length and Item:Padding, or the
+ * older GContainer:Item with GContainer:ItemLength), else the older GCamera:MicroVideoOffset.
+ * @returns {{ offset: number, length: number } | null}  bytes from the end of the file
+ */
+function motionFromXmp(text) {
+  if (typeof text !== 'string' || !text) return null;
+  const flag = prop(text, ['GCamera:MotionPhoto', 'GCamera:MicroVideo']);
+  if (flag === '0') return null;
 
-// XMP GPS: "DD,MM.mmmN" or "DD,MM,SSN" (N, S, E, W last); a plain decimal is also accepted.
-function parseXmpGps(s) {
-  if (s == null) return null;
-  const t = String(s).trim();
-  const m = /^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?\s*([NSEW])$/i.exec(t);
-  let v;
-  if (m) {
-    v = +m[1] + +m[2] / 60 + (m[3] ? +m[3] / 3600 : 0);
-    if (/[SW]/i.test(m[4])) v = -v;
-  } else if (/^-?\d+(?:\.\d+)?$/.test(t)) {
-    v = +t;
-  } else return null;
-  return Number.isFinite(v) ? Math.round(v * 1e7) / 1e7 : null;
-}
-
-function parseXmp(text) {
-  const src = String(text ?? '');
-  const seen = new Set(), tags = [];
-  const add = (t) => { const n = normTag(t); if (n && !seen.has(n.toLowerCase())) { seen.add(n.toLowerCase()); tags.push(n); } };
-  for (const t of list(src, 'lr:hierarchicalSubject')) add(t.replace(/\|/g, '/'));
-  // A flat keyword that is already the leaf of a hierarchical tag adds nothing.
-  const leaves = new Set(tags.map(t => t.slice(t.lastIndexOf('/') + 1).toLowerCase()));
-  for (const t of list(src, 'dc:subject')) if (!leaves.has(normTag(t).toLowerCase())) add(t);
-
-  // Lightroom writes -1 for rejected; the library keeps ratings 0 to 5.
-  const r = Math.round(Number(single(src, 'xmp:Rating')));
-  const rating = Number.isFinite(r) ? Math.max(0, Math.min(5, r)) : 0;
-  const label = single(src, 'xmp:Label') || null;
-  const time = parseXmpDate(single(src, 'exif:DateTimeOriginal')) ?? parseXmpDate(single(src, 'photoshop:DateCreated'));
-  const lat = parseXmpGps(single(src, 'exif:GPSLatitude'));
-  const lon = parseXmpGps(single(src, 'exif:GPSLongitude'));
-  return { tags, rating, label, time, lat, lon };
-}
-
-function sidecarNames(name) {
-  const i = name.lastIndexOf('.');
-  const full = name + '.xmp', stem = (i < 0 ? name : name.slice(0, i)) + '.xmp';
-  return full === stem ? [full] : [full, stem];
-}
-
-// ── writing ─────────────────────────────────────────────────────────────────
-// buildXmp({ rating, flag, label, tags, existing }) writes the four properties
-// Slate owns and nothing else:
-//   xmp:Rating               0 to 5; a rejected photo writes -1
-//   xmp:Label                the colour label, when `label` is a string;
-//                            undefined leaves an existing label alone, null removes it
-//   dc:subject (rdf:Bag)     the leaf of every tag ('trips/goa' gives 'goa')
-//   lr:hierarchicalSubject   every tag in full, with '|' for '/' (Lightroom's form)
-// Flag mapping: Slate's choices have no colour label, so flags never become a
-// label. Only reject is written, as xmp:Rating -1, the convention Lightroom,
-// digiKam and darktable read. A pick writes nothing beyond its rating.
-// With `existing` (a sidecar's text), only these four properties are replaced,
-// in attribute or element form; every other property and namespace stays.
-
-const NS = {
-  xmp: 'http://ns.adobe.com/xap/1.0/',
-  dc: 'http://purl.org/dc/elements/1.1/',
-  lr: 'http://ns.adobe.com/lightroom/1.0/',
-};
-const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
-const OWNED = ['xmp:Rating', 'xmp:Label', 'dc:subject', 'lr:hierarchicalSubject'];
-
-const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-function removeProp(text, qname) {
-  const q = reEsc(qname);
-  return text
-    .replace(new RegExp(`\\s+${q}\\s*=\\s*(?:"[^"]*"|'[^']*')`, 'g'), '')
-    .replace(new RegExp(`[ \\t]*<${q}(?:\\s[^>]*)?(?:/>|>[\\s\\S]*?</${q}\\s*>)[ \\t]*\\r?\\n?`, 'g'), '');
-}
-
-function bag(qname, items, pad) {
-  return `${pad}<${qname}>\n${pad} <rdf:Bag>\n${items.map(t => `${pad}  <rdf:li>${xmlEsc(t)}</rdf:li>\n`).join('')}${pad} </rdf:Bag>\n${pad}</${qname}>\n`;
-}
-
-function buildXmp({ rating = 0, flag = null, label, tags = [], existing = null } = {}) {
-  const r = flag === 'reject' ? -1 : Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
-  const clean = [...new Set(tags.map(normTag).filter(Boolean))];
-  const leaves = [...new Set(clean.map(t => t.slice(t.lastIndexOf('/') + 1)))];
-  const keepLabel = label === undefined && existing ? single(existing, 'xmp:Label') : null;
-  const lab = typeof label === 'string' && label ? label : keepLabel;
-
-  const pad = '   ';
-  let props = `${pad}<xmp:Rating>${r}</xmp:Rating>\n`;
-  if (lab) props += `${pad}<xmp:Label>${xmlEsc(lab)}</xmp:Label>\n`;
-  if (leaves.length) props += bag('dc:subject', leaves, pad);
-  if (clean.length) props += bag('lr:hierarchicalSubject', clean.map(t => t.replace(/\//g, '|')), pad);
-
-  let text = existing ? String(existing) : '';
-  const open = /<rdf:Description\b[^>]*?(\/?)>/.exec(text);
-  if (!open) {
-    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
-<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Slate">
- <rdf:RDF xmlns:rdf="${RDF_NS}">
-  <rdf:Description rdf:about=""
-    xmlns:xmp="${NS.xmp}"
-    xmlns:dc="${NS.dc}"
-    xmlns:lr="${NS.lr}">
-${props}  </rdf:Description>
- </rdf:RDF>
-</x:xmpmeta>
-<?xpacket end="w"?>
-`;
+  // Container directory: items in file order; the video is the item whose semantic is
+  // MotionPhoto (or whose mime is video/*). Everything from it to the end follows the image.
+  const starts = [...text.matchAll(/<(?:Container|GContainer):Item\b/g)].map(m => m.index);
+  const items = starts.map((s, k) => {
+    const end = k + 1 < starts.length ? starts[k + 1] : text.indexOf('</rdf:Seq>', s) >>> 0;
+    const part = text.slice(s, end);
+    return {
+      semantic: prop(part, ['Item:Semantic', 'GContainer:ItemSemantic']) || '',
+      mime: prop(part, ['Item:Mime', 'GContainer:ItemMime']) || '',
+      length: Number(prop(part, ['Item:Length', 'GContainer:ItemLength']) || 0),
+      padding: Number(prop(part, ['Item:Padding', 'GContainer:ItemPadding']) || 0),
+    };
+  });
+  let k = items.findIndex(i => i.semantic === 'MotionPhoto');
+  if (k < 0) k = items.findIndex(i => i.mime.startsWith('video/'));
+  if (k > 0 && items[k].length > 0) {
+    let offset = 0;
+    for (let j = k; j < items.length; j++) offset += (items[j].length || 0) + (j < items.length - 1 ? items[j].padding || 0 : 0);
+    if (Number.isFinite(offset)) return { offset, length: items[k].length };
   }
-  for (const q of OWNED) text = removeProp(text, q);
-  const m = /<rdf:Description\b([^>]*?)(\/?)>/.exec(text);
-  let attrs = m[1];
-  for (const [p, uri] of Object.entries(NS)) if (!new RegExp(`xmlns:${p}\\s*=`).test(attrs)) attrs += ` xmlns:${p}="${uri}"`;
-  const head = `<rdf:Description${attrs}>\n${props}`;
-  const tail = m[2] ? '  </rdf:Description>' : '';
-  return text.slice(0, m.index) + head + tail + text.slice(m.index + m[0].length).replace(/^\s*\n/, '');
+
+  const micro = Number(prop(text, ['GCamera:MicroVideoOffset']));
+  if (micro > 0 && flag !== '0') return { offset: micro, length: micro };
+  return null;
 }
 
-return { parseXmpDate, parseXmpGps, parseXmp, sidecarNames, buildXmp };
+return { readMetadata, parseWallClock, motionFromXmp };
 })();
 
 const __m_library_takeout = (() => {
@@ -9683,6 +10243,10 @@ const __m_library_scan = (() => {
 // (favourite, hidden, and the reject flag) once: only for a photo new to the index that has no
 // entry in the library file, so a later rescan never overrides what the person chose.
 // When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
+//
+// Apple Live Photos (row M7): a HEIC or JPEG and a MOV with the same stem in the same folder
+// (IMG_1234.HEIC + IMG_1234.MOV) are one photo. The MOV gets no record of its own; the photo
+// record carries `liveVideo: '<relative path of the MOV>'`. A MOV with no such photo stays a video.
 
 const isSkippedDir = __m_library_schema.isSkippedDir;
 const kindOf = __m_library_schema.kindOf;
@@ -9725,6 +10289,9 @@ async function scanRoot(lib, root, { full = false } = {}) {
     add(path, async () => f);
   }
 
+  const { live, movs } = pairLivePhotos(found.map(e => e.path));
+  if (movs.size) found.splice(0, found.length, ...found.filter(e => !movs.has(e.path)));
+
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
   const takeout = { matched: 0, favourites: 0, hidden: 0, rejected: 0 };
   const res = { added: 0, changed: 0, unchanged: 0, missing: 0, failed: walk.failed };
@@ -9762,7 +10329,8 @@ async function scanRoot(lib, root, { full = false } = {}) {
     const side = sideOpen ? await sideOpen() : null;
     const tjOpen = takeoutFor.get(entry.path);
     const tj = tjOpen ? await tjOpen() : null;
-    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
+    const liveVideo = live.get(entry.path) ?? null;
+    const sideChanged = old && ((old.liveVideo ?? null) !== liveVideo || !!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
       || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
@@ -9771,6 +10339,7 @@ async function scanRoot(lib, root, { full = false } = {}) {
     }
     const rec = newRecord(root.id, entry.path, file);
     Object.assign(rec, await readMetadata(file, rec));
+    if (liveVideo) rec.liveVideo = liveVideo;
     if (side) applySidecar(rec, parseXmp(await side.text()));
     if (tj) {
       const t = readTakeoutJson(await tj.text());
@@ -9797,6 +10366,26 @@ async function scanRoot(lib, root, { full = false } = {}) {
   await applyTakeoutChoices(lib, fromTakeout, takeout);
   for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
   return res;
+}
+
+// Live Photo pairs (row M7) among relative paths: photo path -> MOV path, and the set of paired MOVs.
+const LIVE_STILLS = ['heic', 'heif', 'jpg', 'jpeg'];
+function pairLivePhotos(paths) {
+  const stills = new Map(); // folder/stem (lower case) -> photo path, preferring HEIC over JPEG
+  const stemKey = (p) => { const n = p.slice(p.lastIndexOf('/') + 1); const i = n.lastIndexOf('.'); return `${folderOf(p)}/${(i < 0 ? n : n.slice(0, i)).toLowerCase()}`; };
+  for (const p of paths) {
+    const rank = LIVE_STILLS.indexOf(extOf(p));
+    if (rank < 0) continue;
+    const k = stemKey(p), had = stills.get(k);
+    if (!had || rank < LIVE_STILLS.indexOf(extOf(had))) stills.set(k, p);
+  }
+  const live = new Map(), movs = new Set();
+  for (const p of paths) {
+    if (extOf(p) !== 'mov') continue;
+    const still = stills.get(stemKey(p));
+    if (still && !live.has(still)) { live.set(still, p); movs.add(p); }
+  }
+  return { live, movs };
 }
 
 // The sidecar wins over embedded metadata for tags, rating, time and GPS.
@@ -9898,7 +10487,7 @@ function runJobs(jobs, kind, items, fn) {
   });
 }
 
-return { BATCH, scanRoot, applySidecar, applyTakeout };
+return { BATCH, scanRoot, pairLivePhotos, applySidecar, applyTakeout };
 })();
 
 const __m_library_dupes = (() => {
@@ -10720,14 +11309,51 @@ return { createTrash };
 })();
 
 const __m_library_door = (() => {
-// The NakliOS door: registers the library commands (commands.js) with the host, so an
+// The NakliOS door: registers the library and editor commands (commands.js) with the host, so an
 // agent in NakliOS calls the same handlers as the buttons and keys, and follows the host
 // theme. Standalone, the SDK no-ops, so this does nothing visible.
+// Row N6: where the browser offers WebMCP (`navigator.modelContext.registerTool`, an experimental
+// proposal), every command is also a page tool named `slate_` plus its name with dots as underscores.
+// A destructive tool says it changes files and asks the person with confirm() before it runs.
 
 const COMMANDS = __m_library_commands.COMMANDS;
 const runCommand = __m_library_commands.runCommand;
 
+const webmcpName = name => `slate_${name.replace(/\./g, '_')}`;
+
+function registerWebMcp(lib, ui) {
+  const mc = globalThis.navigator?.modelContext;
+  if (typeof mc?.registerTool !== 'function') return 0;
+  let n = 0;
+  for (const c of COMMANDS) {
+    const destructive = c.scope === 'destructive';
+    try {
+      mc.registerTool({
+        name: webmcpName(c.name),
+        description: destructive ? `${c.description} This changes files, so Slate asks the person to confirm first.` : c.description,
+        inputSchema: c.input,
+        execute: async (input) => {
+          if (destructive && !globalThis.confirm?.(`An agent wants to run "${c.label}" in Slate. This changes files. Allow it?`)) {
+            return { content: [{ type: 'text', text: 'The person declined; nothing changed.' }], isError: true };
+          }
+          try {
+            const out = await runCommand(lib, c.name, input ?? {}, { ui });
+            return { content: [{ type: 'text', text: JSON.stringify(out ?? null) }] };
+          } catch (e) {
+            return { content: [{ type: 'text', text: e.message }], isError: true };
+          }
+        },
+      });
+      n++;
+    } catch (e) {
+      console.warn(`[slate] WebMCP registration of ${c.name} failed`, e);
+    }
+  }
+  return n;
+}
+
 function initDoor(lib, ui) {
+  registerWebMcp(lib, ui);
   const sdk = window.naklios;
   if (!sdk) return;
 
@@ -10752,7 +11378,103 @@ function initDoor(lib, ui) {
   }
 }
 
-return { initDoor };
+return { webmcpName, registerWebMcp, initDoor };
+})();
+
+const __m_library_stacks = (() => {
+// Stacks (row B9): group related photos so the grid shows one tile for them.
+//
+//   buildStacks(records) -> { stacks: Stack[], stackOf: Map<id, Stack> }
+//   Stack = { id, kind: 'edit'|'raw'|'burst', top: id, members: id[] }   (top first)
+//
+// Three kinds, each within one folder of one root, photos only:
+//   - an edited version Slate saved beside its original: `<stem>-<yymmddhhmmss>.<ext>`
+//     next to `<stem>.<any ext>` (app.js doSave names saves this way; an edit of an edit
+//     adds another suffix, and stacks with the same original)
+//   - RAW plus JPEG (or any other photo format) with the same stem
+//   - bursts: more than 2 photos from the same camera, each within 1 second of the one before
+// The top is the newest edited version, else the JPEG, else the first member in the order given.
+// A stack is a view of records only: choices (favourite, rating, flags) stay per file.
+
+const folderOf = __m_library_schema.folderOf;
+const extOf = __m_library_schema.extOf;
+
+const RAW_EXTS = new Set(['cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2']);
+const JPEG_EXTS = new Set(['jpg', 'jpeg']);
+const EDIT_SUFFIX = /-\d{12}$/;
+const BURST_GAP_MS = 1000;
+const BURST_MIN = 3;
+
+// 'IMG_1-261116101010-261117090000.jpg' -> { base: 'IMG_1', edit: '261117090000' }
+function editInfo(name) {
+  const i = name.lastIndexOf('.');
+  let stem = i < 0 ? name : name.slice(0, i);
+  let edit = null;
+  while (EDIT_SUFFIX.test(stem)) {
+    edit ??= stem.slice(-12);
+    stem = stem.slice(0, -13);
+  }
+  return { base: stem, edit };
+}
+
+function buildStacks(records) {
+  const photos = records.filter(r => r.kind === 'photo');
+  const order = new Map(photos.map((r, i) => [r.id, i]));
+  const stacks = [];
+  const stackOf = new Map();
+  const add = (kind, members) => {
+    const top = pickTop(members, order);
+    const st = { id: top.id, kind, top: top.id, members: [top.id, ...members.filter(m => m !== top).sort((a, b) => order.get(a.id) - order.get(b.id)).map(m => m.id)] };
+    stacks.push(st);
+    for (const id of st.members) stackOf.set(id, st);
+  };
+
+  // Name stacks: edits and RAW plus JPEG, grouped by root, folder and base stem.
+  const byStem = new Map();
+  for (const r of photos) {
+    const { base, edit } = editInfo(r.name);
+    const k = `${r.rootId}\u0000${folderOf(r.path)}\u0000${base.toLowerCase()}`;
+    if (!byStem.has(k)) byStem.set(k, []);
+    byStem.get(k).push({ r, edit });
+  }
+  for (const group of byStem.values()) {
+    if (group.length < 2) continue;
+    const originals = group.filter(g => !g.edit);
+    const hasEdit = originals.length > 0 && originals.length < group.length;
+    const hasRawPair = originals.some(g => RAW_EXTS.has(g.r.ext)) && originals.some(g => !RAW_EXTS.has(g.r.ext));
+    if (hasEdit || hasRawPair) add(hasEdit ? 'edit' : 'raw', group.map(g => g.r));
+  }
+
+  // Bursts among the photos left: same root, folder and camera, consecutive gaps of at most 1 s.
+  const byCam = new Map();
+  for (const r of photos) {
+    if (stackOf.has(r.id) || !r.camera || r.timeSource === 'file') continue;
+    const k = `${r.rootId}\u0000${folderOf(r.path)}\u0000${r.camera}`;
+    if (!byCam.has(k)) byCam.set(k, []);
+    byCam.get(k).push(r);
+  }
+  for (const list of byCam.values()) {
+    if (list.length < BURST_MIN) continue;
+    list.sort((a, b) => a.time - b.time || (a.name < b.name ? -1 : 1));
+    let run = [list[0]];
+    const close = () => { if (run.length >= BURST_MIN) add('burst', run); };
+    for (let i = 1; i < list.length; i++) {
+      if (list[i].time - list[i - 1].time <= BURST_GAP_MS) run.push(list[i]);
+      else { close(); run = [list[i]]; }
+    }
+    close();
+  }
+  return { stacks, stackOf };
+}
+
+function pickTop(members, order) {
+  const edits = members.map(r => ({ r, edit: editInfo(r.name).edit })).filter(x => x.edit);
+  if (edits.length) return edits.sort((a, b) => (a.edit < b.edit ? 1 : a.edit > b.edit ? -1 : 0))[0].r;
+  const byOrder = [...members].sort((a, b) => order.get(a.id) - order.get(b.id));
+  return byOrder.find(r => JPEG_EXTS.has(extOf(r.name))) ?? byOrder[0];
+}
+
+return { RAW_EXTS, BURST_GAP_MS, BURST_MIN, editInfo, buildStacks };
 })();
 
 const __m_ui_library_grid_model = (() => {
@@ -11009,18 +11731,52 @@ function toggleGroup(sel, ids, start, count) {
   return next;
 }
 
-return { ZOOMS, GAP, HEADER_H, buildLayout, rowAt, visibleRows, itemsInRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, rangeIds, toggleGroup };
+// ── Stacks (row B9) ────────────────────────────────────────────────────────
+
+/**
+ * One tile per stack. `stackOf` maps a record id to its stack ({ top, members }), as
+ * stacks.js buildStacks gives. Only members present in `items` count: the stack shows its
+ * top when the top is present, else its first present member, at that member's place.
+ * @returns {{ items: object[], members: Map<string, string[]> }}  members: shown id -> present member ids (top first)
+ */
+function collapseStacks(items, stackOf) {
+  if (!stackOf?.size) return { items, members: new Map() };
+  const present = new Map(); // stack -> present ids in item order
+  for (const r of items) {
+    const st = stackOf.get(r.id);
+    if (!st) continue;
+    if (!present.has(st)) present.set(st, []);
+    present.get(st).push(r.id);
+  }
+  const shown = new Map(); // shown id -> member ids
+  for (const [st, list] of present) {
+    if (list.length < 2) continue;
+    const head = list.includes(st.top) ? st.top : list[0];
+    const rank = new Map(st.members.map((id, i) => [id, i]));
+    shown.set(head, [head, ...list.filter(id => id !== head).sort((a, b) => rank.get(a) - rank.get(b))]);
+  }
+  const hidden = new Set();
+  for (const m of shown.values()) for (const id of m.slice(1)) hidden.add(id);
+  return { items: items.filter(r => !hidden.has(r.id)), members: shown };
+}
+
+return { ZOOMS, GAP, HEADER_H, buildLayout, rowAt, visibleRows, itemsInRows, itemRect, hitTest, lassoIndices, moveIndex, monthTable, monthAt, scrubberMarks, monthAtTrack, clickSelect, rangeIds, toggleGroup, collapseStacks };
 })();
 
 const __m_ui_library_photo_viewer = (() => {
 // The library's full-size viewer: one photo or video at a time, arrow keys,
 // an info panel, and a button that hands the photo to the editor.
 // Photos decode through Slate's decoder registry; videos play in <video>.
+// A Motion Photo (row M6, `rec.motion`) plays the MP4 sliced from the end of its file, and a
+// Live Photo (row M7, `rec.liveVideo`) plays its paired MOV, on hover or from the Play button.
+// A stack (row B9) steps through its members with the Up and Down arrows or the stack buttons;
+// the shown member is the one choices apply to.
 
 const decode = __m_decode_registry.decode;
 const esc = __m_core_html.esc;
 const dayKey = __m_library_schema.dayKey;
 const dayLabel = __m_library_schema.dayLabel;
+const makeId = __m_library_schema.makeId;
 
 const INFO_KEY = 'slate.v1.library.info';
 
@@ -11047,14 +11803,33 @@ function formatTaken(time) {
 /**
  * @param {object} lib
  * @param {HTMLElement} el  the viewer container (starts hidden)
- * @param {{ getList: () => object[], onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void }} hooks
+ * @param {{ getList: () => object[], getStack?: (id:string) => string[]|null, onShow: (index:number) => void, onClose: () => void, onEdit: (id:string) => void }} hooks
  */
-function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
+
+// The motion clip of a record as a Blob, or null: the embedded MP4 of a Motion Photo,
+// or the paired MOV of a Live Photo.
+async function motionClip(lib, rec) {
+  if (rec.motion) {
+    const file = await lib.getFile(rec.id);
+    const start = file.size - rec.motion.offset;
+    return file.slice(start, start + rec.motion.length, 'video/mp4');
+  }
+  if (rec.liveVideo) return lib.getFile(makeId(rec.rootId, rec.liveVideo));
+  return null;
+}
+
+function createPhotoViewer(lib, el, { getList, getStack = () => null, onShow, onClose, onEdit }) {
   el.innerHTML = `
     <div class="lv-bar">
       <button class="btn-icon" data-v="close" aria-label="Back to the grid (Escape)"><svg class="icon" aria-hidden="true"><use href="#icon-x"/></svg></button>
       <span class="lv-name"></span>
       <span class="lv-pos"></span>
+      <span class="lv-motion" hidden></span>
+      <span class="lv-stack" hidden>
+        <button class="btn-icon" data-v="sprev" aria-label="Previous in stack (Up arrow)"><span aria-hidden="true">&#8963;</span></button>
+        <span class="lv-stackpos"></span>
+        <button class="btn-icon" data-v="snext" aria-label="Next in stack (Down arrow)"><span aria-hidden="true">&#8964;</span></button>
+      </span>
       <span class="lv-spacer"></span>
       <button class="btn-icon" data-v="prev" aria-label="Previous photo (Left arrow)"><span aria-hidden="true">&#8249;</span></button>
       <button class="btn-icon" data-v="next" aria-label="Next photo (Right arrow)"><span aria-hidden="true">&#8250;</span></button>
@@ -11071,8 +11846,12 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
   const posEl = el.querySelector('.lv-pos');
   const infoBtn = el.querySelector('[data-v="info"]');
   const editBtn = el.querySelector('[data-v="edit"]');
+  const motionEl = el.querySelector('.lv-motion');
+  const stackEl = el.querySelector('.lv-stack');
+  const stackPosEl = el.querySelector('.lv-stackpos');
 
-  let index = -1, id = null, token = 0, videoUrl = null;
+  let index = -1, id = null, token = 0, videoUrl = null, clipUrl = null;
+  let members = null, member = 0; // the stack at `index`, and which member is shown
   let showInfo = true;
   try { showInfo = localStorage.getItem(INFO_KEY) !== '0'; } catch { /* storage blocked */ }
   applyInfo();
@@ -11085,8 +11864,14 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
     else if (a === 'prev') move(-1);
     else if (a === 'next') move(1);
     else if (a === 'info') toggleInfo();
+    else if (a === 'sprev') step(-1);
+    else if (a === 'snext') step(1);
+    else if (a === 'play') playMotion();
     else if (a === 'edit' && id) onEdit(id);
   });
+
+  // Hovering the photo plays its motion clip (rows M6 and M7).
+  stage.addEventListener('mouseenter', () => { if (!stage.querySelector('.lv-msg')) playMotion(); });
 
   function applyInfo() {
     info.hidden = !showInfo;
@@ -11101,6 +11886,7 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
   function clearStage() {
     for (const v of stage.querySelectorAll('video')) { v.pause(); v.removeAttribute('src'); v.load(); }
     if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+    if (clipUrl) { URL.revokeObjectURL(clipUrl); clipUrl = null; }
     stage.replaceChildren();
   }
   function message(text) {
@@ -11121,7 +11907,7 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
     token++;
     clearStage();
     el.hidden = true;
-    index = -1; id = null;
+    index = -1; id = null; members = null;
     onClose();
   }
 
@@ -11136,14 +11922,59 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
     const list = getList();
     if (!list.length) { close(); return; }
     index = Math.max(0, Math.min(list.length - 1, i));
-    const rec = list[index];
-    id = rec.id;
+    members = getStack(list[index].id);
+    member = 0;
     onShow(index);
+    showRecord(list[index]);
+  }
+
+  function step(delta) {
+    if (!members) return;
+    const next = Math.max(0, Math.min(members.length - 1, member + delta));
+    if (next === member) return;
+    member = next;
+    const rec = lib.get(members[member]);
+    if (rec) showRecord(rec);
+  }
+
+  function renderStack() {
+    stackEl.hidden = !members;
+    if (members) stackPosEl.textContent = `${member + 1} of ${members.length} in stack`;
+  }
+
+  // Play the motion clip over the still; the still comes back when the clip ends.
+  async function playMotion() {
+    const rec = lib.get(id);
+    if (!rec || (!rec.motion && !rec.liveVideo) || stage.querySelector('video.lv-clip')) return;
+    const t = token;
+    let blob;
+    try { blob = await motionClip(lib, rec); } catch { blob = null; }
+    if (t !== token || !blob) return;
+    const still = stage.firstElementChild;
+    if (clipUrl) URL.revokeObjectURL(clipUrl);
+    clipUrl = URL.createObjectURL(blob);
+    const v = document.createElement('video');
+    v.className = 'lv-clip';
+    v.muted = true; v.playsInline = true; v.autoplay = true;
+    v.setAttribute('aria-label', `${rec.motion ? 'Motion' : 'Live'} clip of ${rec.name}`);
+    const back = () => { if (t === token && v.isConnected) { stage.replaceChildren(...(still ? [still] : [])); } };
+    v.addEventListener('ended', back);
+    v.addEventListener('error', () => { back(); if (t === token) motionEl.textContent = 'This browser cannot play the clip'; });
+    v.src = clipUrl;
+    stage.replaceChildren(v);
+  }
+
+  async function showRecord(rec) {
+    id = rec.id;
+    renderStack();
     const t = ++token;
     nameEl.textContent = rec.name;
-    renderPos(list);
+    renderPos(getList());
     renderInfo(rec);
     editBtn.disabled = rec.kind === 'video';
+    const hasClip = !!(rec.motion || rec.liveVideo);
+    motionEl.hidden = !hasClip;
+    motionEl.innerHTML = hasClip ? `<span class="lv-motion-badge">${rec.motion ? 'Motion' : 'Live'}</span> <button class="btn btn-sm" data-v="play" aria-label="Play the ${rec.motion ? 'motion' : 'live'} clip (Space)">Play</button>` : '';
     clearStage();
     message('Loading');
     lib.services.thumbs?.url?.(rec.id).then(u => {
@@ -11214,11 +12045,18 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
     if (el.hidden) return;
     const list = getList();
     if (!list.length) { close(); return; }
-    const at = list.findIndex(r => r.id === id);
+    const shownId = members ? members[0] : id;
+    const at = list.findIndex(r => r.id === shownId);
     if (at < 0) { show(Math.min(index, list.length - 1)); return; }
     index = at;
+    const fresh = getStack(shownId);
+    if (members && (!fresh || !fresh.includes(id))) { show(at); return; }
+    members = fresh;
+    if (members) member = members.indexOf(id);
+    renderStack();
     renderPos(list);
-    renderInfo(list[at]);
+    const rec = lib.get(id) ?? list[at];
+    renderInfo(rec);
     onShow(index);
   }
 
@@ -11231,6 +12069,9 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
       case 'Home': show(0); return true;
       case 'End': show(getList().length - 1); return true;
       case 'Escape': close(); return true;
+      case 'ArrowUp': if (!members) return false; step(-1); return true;
+      case 'ArrowDown': if (!members) return false; step(1); return true;
+      case ' ': if (!lib.get(id)?.motion && !lib.get(id)?.liveVideo) return false; playMotion(); return true;
       case 'i': case 'I': toggleInfo(); return true;
       case 'e': case 'E': if (id && getList()[index]?.kind !== 'video') onEdit(id); return true;
       default: return false;
@@ -11240,7 +12081,7 @@ function createPhotoViewer(lib, el, { getList, onShow, onClose, onEdit }) {
   return { open, close, refresh, handleKey, isOpen: () => !el.hidden, id: () => (el.hidden ? null : id) };
 }
 
-return { formatBytes, formatDuration, formatTaken, createPhotoViewer };
+return { formatBytes, formatDuration, formatTaken, motionClip, createPhotoViewer };
 })();
 
 const __m_library_xmpwrite = (() => {
@@ -11371,6 +12212,7 @@ function openStoragePanel(lib, dlg) {
       <dt>Kept by the browser</dt><dd data-s="persisted">Checking</dd>
     </dl>
     <p class="lib-note">The index and thumbnails can be rebuilt from your folders at any time. Your choices and albums are kept in each folder's library file.</p>
+    <p class="lib-note">${lib.services.watch?.status?.() === 'watching' ? 'Slate watches your folders and picks up new, changed and removed files on its own.' : 'This browser cannot watch folders, so Slate looks for new and changed files each time the Library opens.'}</p>
     <label class="lib-storage-xmp"><input type="checkbox" data-s-xmp> Write XMP sidecars for ratings, labels and tags</label>
     <p class="lib-note">Slate writes a photo.jpg.xmp file beside each photo you rate, reject or tag, so Lightroom, digiKam and darktable see the same choices. Your photos are never changed.</p>
     ${browseOnly.length ? `<div class="lib-storage-files"><p class="lib-note">Slate cannot write the library file into these folders, so their choices are kept in this browser. Download the library file and put it in the folder to keep a copy.</p>
@@ -11439,6 +12281,191 @@ function openStoragePanel(lib, dlg) {
 return { needsDownload, openStoragePanel };
 })();
 
+const __m_library_icloud = (() => {
+// iCloud Photos export details (spec row I5), as immich-go's `from-icloud` reads them.
+// An iCloud Photos export (privacy.apple.com) holds the photos plus CSV files:
+//   "Photo Details.csv" (also "Photo Details-1.csv" ...), one row per photo:
+//     imgName,fileChecksum,favorite,hidden,deleted,originalCreationDate,viewCount,importDate
+//     favorite/hidden/deleted are "yes" or "no"; dates read like
+//     "Saturday March 18,2023 3:26 PM GMT"
+//   "Albums/<album name>.csv", one column headed "Images", one image name per row.
+//
+//   parseCsv(text) -> string[][]                     RFC 4180: quotes, "" escapes, CRLF, BOM
+//   parseICloudCsv(fileName, text) -> { kind: 'details', rows } | { kind: 'album', album, names } | { kind: 'unknown' }
+//   parseICloudDate(text) -> ms | null
+//   applyICloudCsv(lib, rootId, csvTexts, { dryRun }) -> summary with `undo`
+//     csvTexts: [{ name, text }]; photos in the root are matched by file name, ignoring case.
+//
+// Dates: the CSV gives an instant in GMT and Slate stores a wall clock as if it were UTC
+// (schema.wallClockToTime), so the GMT wall clock is stored, as takeout.js does. A CSV date
+// fills a record's time only when the file had no date of its own (timeSource 'file').
+
+function parseCsv(text) {
+  const s = String(text ?? '').replace(/^﻿/, '');
+  const rows = [];
+  let row = [], field = '', quoted = false, i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') { field += '"'; i += 2; continue; }
+        quoted = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if (ch === '"' && field === '') { quoted = true; i++; continue; }
+    if (ch === ',') { row.push(field); field = ''; i++; continue; }
+    if (ch === '\r' || ch === '\n') {
+      row.push(field); field = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+      i += ch === '\r' && s[i + 1] === '\n' ? 2 : 1;
+      continue;
+    }
+    field += ch; i++;
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
+
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const yes = v => /^(yes|true|1)$/i.test(String(v ?? '').trim());
+
+function parseICloudDate(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return null;
+  // "Saturday March 18,2023 3:26 PM GMT", "March 18, 2023 15:26 GMT"
+  const m = /([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i.exec(t);
+  if (m) {
+    const mo = MONTHS.indexOf(m[1].toLowerCase());
+    if (mo >= 0) {
+      let h = Number(m[4] ?? 0);
+      const ap = m[7]?.toUpperCase();
+      if (ap === 'PM' && h < 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
+      return Date.UTC(+m[3], mo, +m[2], h, Number(m[5] ?? 0), Number(m[6] ?? 0));
+    }
+  }
+  // ISO "2023-03-18 15:26:00" or with a zone
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(t);
+  if (iso) return Date.UTC(+iso[1], +iso[2] - 1, +iso[3], Number(iso[4] ?? 0), Number(iso[5] ?? 0), Number(iso[6] ?? 0));
+  return null;
+}
+
+const baseName = n => String(n ?? '').replace(/\\/g, '/').split('/').pop();
+
+function parseICloudCsv(fileName, text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return { kind: 'unknown' };
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const col = k => head.indexOf(k.toLowerCase());
+  const iName = col('imgName');
+  if (iName >= 0) {
+    const iFav = col('favorite'), iHid = col('hidden'), iDel = col('deleted'), iDate = col('originalCreationDate');
+    const out = [];
+    for (const r of rows.slice(1)) {
+      const name = (r[iName] ?? '').trim();
+      if (!name) continue;
+      out.push({
+        name,
+        favourite: iFav >= 0 && yes(r[iFav]),
+        hidden: iHid >= 0 && yes(r[iHid]),
+        deleted: iDel >= 0 && yes(r[iDel]),
+        time: iDate >= 0 ? parseICloudDate(r[iDate]) : null,
+      });
+    }
+    return { kind: 'details', rows: out };
+  }
+  if (head.length === 1) {
+    const album = baseName(fileName).replace(/\.csv$/i, '').trim();
+    const body = head[0] === 'images' ? rows.slice(1) : rows;
+    const names = body.map(r => (r[0] ?? '').trim()).filter(Boolean);
+    return album ? { kind: 'album', album, names } : { kind: 'unknown' };
+  }
+  return { kind: 'unknown' };
+}
+
+async function applyICloudCsv(lib, rootId, csvTexts, { dryRun = false } = {}) {
+  if (!lib.roots.has(rootId)) throw new Error(`no root ${rootId}`);
+  const byName = new Map();
+  for (const r of lib.records.values()) {
+    if (r.rootId !== rootId) continue;
+    const k = r.name.toLowerCase();
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k).push(r.id);
+  }
+  const unmatched = new Set(), matched = new Set();
+  const lookup = (name) => {
+    const ids = byName.get(baseName(name).toLowerCase()) ?? [];
+    if (ids.length) ids.forEach(id => matched.add(id)); else unmatched.add(name);
+    return ids;
+  };
+
+  const fav = new Set(), hid = new Set(), times = new Map(), albums = new Map();
+  let deleted = 0, skippedFiles = 0;
+  for (const { name, text } of csvTexts) {
+    const p = parseICloudCsv(name, text);
+    if (p.kind === 'details') {
+      for (const row of p.rows) {
+        const ids = lookup(row.name);
+        if (row.deleted) deleted++;
+        for (const id of ids) {
+          if (row.favourite) fav.add(id);
+          if (row.hidden) hid.add(id);
+          const rec = lib.get(id);
+          if (row.time != null && rec.timeSource === 'file' && rec.time !== row.time) times.set(id, row.time);
+        }
+      }
+    } else if (p.kind === 'album') {
+      if (!albums.has(p.album)) albums.set(p.album, new Set());
+      for (const n of p.names) for (const id of lookup(n)) albums.get(p.album).add(id);
+    } else skippedFiles++;
+  }
+
+  const favIds = [...fav].filter(id => !lib.choice(id).fav);
+  const hidIds = [...hid].filter(id => !lib.choice(id).hidden);
+  const findAlbum = (name) => [...lib.albums.values()].find(a => a.name.toLowerCase() === name.toLowerCase());
+  const albumPlan = [...albums].filter(([, ids]) => ids.size).map(([name, ids]) => {
+    const al = findAlbum(name);
+    return { name, albumId: al?.id ?? null, ids: [...ids].filter(id => !al?.items.has(id)) };
+  }).filter(a => a.ids.length || !a.albumId);
+  const summary = {
+    matched: matched.size,
+    unmatched: unmatched.size,
+    unmatchedNames: [...unmatched].slice(0, 20),
+    favourites: favIds.length,
+    hidden: hidIds.length,
+    dates: times.size,
+    albums: albumPlan.map(a => ({ name: a.name, added: a.ids.length, created: !a.albumId })),
+    deleted,
+    skippedFiles,
+  };
+  if (dryRun) return { ...summary, dryRun: true };
+
+  const tokens = [];
+  if (favIds.length) tokens.push(lib.setFavourite(favIds, true).undo);
+  if (hidIds.length) tokens.push(lib.setHidden(hidIds, true).undo);
+  for (const a of albumPlan) {
+    if (a.albumId) tokens.push(lib.albumAdd(a.albumId, a.ids).undo);
+    else tokens.push(lib.albumCreate(a.name, { ids: a.ids }).undo);
+  }
+  if (times.size) {
+    const before = [...times.keys()].map(id => ({ id, time: lib.get(id).time, timeSource: lib.get(id).timeSource }));
+    await lib.patchRecords([...times].map(([id, time]) => ({ id, time, timeSource: 'icloud' })), 'icloud');
+    tokens.push(lib.rememberUndo('icloud-dates', () => lib.patchRecords(before.filter(b => lib.get(b.id)), 'undo')));
+  }
+  const list = tokens.filter(Boolean);
+  const undo = list.length ? lib.rememberUndo('icloud', async () => {
+    for (const t of [...list].reverse()) if (lib.undoLog.has(t)) await lib.undo(t);
+  }) : null;
+  const changed = favIds.length + hidIds.length + times.size + albumPlan.reduce((n, a) => n + a.ids.length, 0);
+  return { ...summary, changed, undo };
+}
+
+return { parseCsv, parseICloudDate, parseICloudCsv, applyICloudCsv };
+})();
+
 const __m_ui_library_import = (() => {
 // Import from Google Takeout zips (spec row I3): read the takeout-*.zip parts one at a time,
 // one entry at a time, write the photos, videos and their JSON into a folder the person picks,
@@ -11447,6 +12474,9 @@ const __m_ui_library_import = (() => {
 //   initImport(lib, ui)        call once; the view then shows a control that calls openImportDialog()
 //   openImportDialog()         the dialog: zip parts, destination folder, progress, final count
 //   importTakeoutZips(opts)    the work, without DOM; tests drive it with a fake zip module
+//   openICloudDialog()         "Apply iCloud export details…" (spec row I5): pick the CSV files of an
+//                              iCloud Photos export for one library folder; icloud.js matches them by
+//                              file name and sets favourites, hidden, albums and missing dates
 //
 // zip.js loads from esm.sh at a pinned version on first use (SECURITY.md). Memory stays near
 // one entry's size: each entry streams into its file, and nothing is held for the whole zip.
@@ -11454,9 +12484,11 @@ const __m_ui_library_import = (() => {
 const kindOf = __m_library_schema.kindOf;
 const extOf = __m_library_schema.extOf;
 const esc = __m_core_html.esc;
+const applyICloudCsv = __m_library_icloud.applyICloudCsv;
 
 const ZIP_URL = 'https://esm.sh/@zip.js/zip.js@2.24.0';
 const IMPORT_LABEL = 'Import Google Takeout…';
+const ICLOUD_LABEL = 'Apply iCloud export details…';
 
 let zipPromise = null;
 function loadZip() {
@@ -11466,7 +12498,7 @@ function loadZip() {
 }
 
 let _lib = null, _ui = null;
-function initImport(lib, ui) { _lib = lib; _ui = ui; return { openImportDialog, label: IMPORT_LABEL }; }
+function initImport(lib, ui) { _lib = lib; _ui = ui; return { openImportDialog, openICloudDialog, label: IMPORT_LABEL }; }
 
 // "Takeout/Google Photos/Trip 2024/IMG_1.jpg" -> ['Trip 2024', 'IMG_1.jpg']. The product folder
 // name is localised (Google Fotos, Google Photos), so the segment after "Takeout" is dropped
@@ -11556,7 +12588,8 @@ function openImportDialog() {
         <span class="imp-dest-name">No folder chosen</span></div>
       <div class="imp-progress" hidden><progress class="imp-bar" max="1" value="0"></progress>
         <p class="imp-status" role="status" aria-live="polite"></p></div>
-      <div class="modal-footer"><button type="button" class="btn imp-cancel">Cancel</button>
+      <div class="modal-footer"><button type="button" class="btn imp-icloud">${esc(ICLOUD_LABEL)}</button>
+        <button type="button" class="btn imp-cancel">Cancel</button>
         <button type="button" class="btn btn-primary imp-go" disabled>Import</button></div>
     </div>`;
   document.body.appendChild(dlg);
@@ -11568,6 +12601,7 @@ function openImportDialog() {
   const say = (m, level = 'info') => (_ui?.toast ? _ui.toast(m, level) : console.log(m));
 
   zipsEl.addEventListener('change', ready);
+  $('.imp-icloud').addEventListener('click', () => { if (running) return; dlg.close(); openICloudDialog(); });
   $('.imp-dest').addEventListener('click', async () => {
     try { dest = await window.showDirectoryPicker({ mode: 'readwrite', id: 'slate-takeout' }); }
     catch (e) { if (e?.name !== 'AbortError') say(`Could not open that folder: ${e.message}`, 'error'); return; }
@@ -11629,7 +12663,79 @@ async function addOrRescan(lib, handle) {
   return lib.addRoot({ handle });
 }
 
-return { ZIP_URL, IMPORT_LABEL, initImport, destPath, importTakeoutZips, openImportDialog };
+// ── iCloud export details (I5) ──────────────────────────────────────────────
+// The photos of an iCloud export are added as a library folder first (they scan like any
+// folder); this dialog then applies the export's CSV files to that folder.
+function openICloudDialog() {
+  if (typeof document === 'undefined' || !_lib) return;
+  const roots = [..._lib.roots.values()];
+  const prev = document.activeElement;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'imp-dialog';
+  dlg.setAttribute('aria-labelledby', 'imp-icloud-title');
+  dlg.innerHTML = `<div class="modal-header"><h2 id="imp-icloud-title">${esc('Apply iCloud export details')}</h2></div>
+    <div class="imp-body">
+      <p class="imp-text">Add the folder of iCloud photos to the library first. Then choose its CSV files: Photo Details.csv for favourites, hidden photos and dates, and the files in Albums for albums. Photos are matched by file name. A date from the CSV is used only for a photo with no date of its own.</p>
+      ${roots.length ? '' : '<p class="imp-warn">Add the folder of iCloud photos to the library first.</p>'}
+      <label class="imp-label">Library folder
+        <select class="imp-root"${roots.length ? '' : ' disabled'}>${roots.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>
+      <label class="imp-label">CSV files from the export
+        <input type="file" class="imp-csv" accept=".csv,text/csv" multiple${roots.length ? '' : ' disabled'}></label>
+      <div class="imp-status" role="status" aria-live="polite"></div>
+      <div class="modal-footer"><button type="button" class="btn imp-close">Cancel</button>
+        <button type="button" class="btn imp-check" disabled>Check</button>
+        <button type="button" class="btn btn-primary imp-apply" disabled>Apply</button></div>
+    </div>`;
+  document.body.appendChild(dlg);
+  const $ = s => dlg.querySelector(s);
+  const csvEl = $('.imp-csv'), rootEl = $('.imp-root'), statusEl = $('.imp-status'), applyEl = $('.imp-apply'), checkEl = $('.imp-check');
+  const say = (m, level = 'info') => (_ui?.toast ? _ui.toast(m, level) : console.log(m));
+  const n = (v) => v.toLocaleString('en-GB');
+  let checked = null;
+
+  const read = async () => Promise.all([...csvEl.files].map(async f => ({ name: f.webkitRelativePath || f.name, text: await f.text() })));
+  const describe = (r) => {
+    const lines = [`Matched ${n(r.matched)} photos by name${r.unmatched ? `; ${n(r.unmatched)} names in the CSV are not in this folder` : ''}.`];
+    lines.push(`Favourites: ${n(r.favourites)}. Hidden: ${n(r.hidden)}. Dates filled: ${n(r.dates)}.`);
+    for (const a of r.albums) lines.push(`Album ${a.name}: ${a.created ? 'new, ' : ''}${n(a.added)} photos added.`);
+    if (r.skippedFiles) lines.push(`${n(r.skippedFiles)} CSV files were not recognised and are skipped.`);
+    return lines.map(l => `<p>${esc(l)}</p>`).join('');
+  };
+  const reset = () => { checked = null; applyEl.disabled = true; checkEl.disabled = !csvEl.files.length; statusEl.textContent = ''; };
+  csvEl.addEventListener('change', reset);
+  rootEl.addEventListener('change', reset);
+  checkEl.addEventListener('click', async () => {
+    try {
+      const texts = await read();
+      const r = await applyICloudCsv(_lib, rootEl.value, texts, { dryRun: true });
+      statusEl.innerHTML = describe(r);
+      const any = r.favourites + r.hidden + r.dates + r.albums.length;
+      if (any) { checked = texts; applyEl.disabled = false; applyEl.focus(); }
+      else statusEl.insertAdjacentHTML('beforeend', '<p>There is nothing to change.</p>');
+    } catch (e) { statusEl.textContent = e.message; }
+  });
+  applyEl.addEventListener('click', async () => {
+    if (!checked) return;
+    applyEl.disabled = true; checkEl.disabled = true;
+    try {
+      const r = await applyICloudCsv(_lib, rootEl.value, checked);
+      checked = null;
+      statusEl.innerHTML = `<p>${esc(`Applied ${n(r.changed)} changes.`)}</p>${r.undo ? '<button type="button" class="btn imp-undo">Undo</button>' : ''}`;
+      $('.imp-undo')?.addEventListener('click', async () => {
+        try { await _lib.undo(r.undo); statusEl.textContent = 'Undone.'; } catch (e) { statusEl.textContent = e.message; }
+      });
+      say(`Applied the iCloud export details: ${n(r.changed)} changes`, 'ok');
+      $('.imp-close').textContent = 'Close';
+    } catch (e) { statusEl.textContent = e.message; checkEl.disabled = false; }
+  });
+  $('.imp-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('keydown', e => e.stopPropagation());
+  dlg.addEventListener('close', () => { dlg.remove(); prev?.focus?.(); });
+  dlg.showModal();
+  (roots.length ? rootEl : $('.imp-close')).focus();
+}
+
+return { ZIP_URL, IMPORT_LABEL, ICLOUD_LABEL, initImport, destPath, importTakeoutZips, openImportDialog, openICloudDialog };
 })();
 
 const __m_ui_library_view = (() => {
@@ -11648,6 +12754,8 @@ const esc = __m_core_html.esc;
 const dayLabel = __m_library_schema.dayLabel;
 const monthLabel = __m_library_schema.monthLabel;
 const runCommand = __m_library_commands.runCommand;
+const buildStacks = __m_library_stacks.buildStacks;
+const collapseStacks = __m_ui_library_grid_model.collapseStacks;
 const buildLayout = __m_ui_library_grid_model.buildLayout;
 const visibleRows = __m_ui_library_grid_model.visibleRows;
 const itemRect = __m_ui_library_grid_model.itemRect;
@@ -11670,6 +12778,7 @@ const downloadLibFile = __m_library_persist.downloadLibFile;
 const openImportDialog = __m_ui_library_import.openImportDialog;
 
 const ZOOM_KEY = 'slate.v1.library.zoom';
+const STACKS_KEY = 'slate.v1.library.stacks';
 const PAD = 12;              // grid padding, px
 const STRUCTURAL = new Set(['scan', 'load', 'rebuild', 'remove-root', 'empty-trash']);
 const SLIDESHOW_MAX = 1000;
@@ -11714,6 +12823,7 @@ function initLibraryView(lib) {
           <h2 class="lib-viewname">Timeline</h2>
           <span class="lib-count"></span>
           <span class="lib-month" aria-hidden="true"></span>
+          <label class="lib-check lib-stacks"><input type="checkbox" class="lib-stacks-on"> Stack similar files</label>
         </div>
         <div class="lib-gridwrap">
           <div class="lib-grid library-grid" role="grid" tabindex="0" aria-label="Photos" aria-multiselectable="true">
@@ -11744,6 +12854,7 @@ function initLibraryView(lib) {
   const emptyEl = $('.lib-empty'), countEl = $('.lib-count'), monthEl = $('.lib-month'), viewNameEl = $('.lib-viewname');
   const jobEl = $('.lib-job'), pauseBtn = $('.lib-pause'), storageDlg = $('.lib-storage');
   const panelEl = $('.lib-panel');
+  const stacksBox = $('.lib-stacks-on');
   // Views other modules add to the sidebar (ui.registerView): a view gives `ids()` to show
   // those photos in the grid, or `render(el, ctx)` to draw its own panel (returning a cleanup).
   const extraViews = new Map();
@@ -11759,6 +12870,9 @@ function initLibraryView(lib) {
   let months = [];
   let sel = new Set(), anchor = -1, focusId = null;
   let zoom = 1;
+  // Stacks (row B9): one tile for an edit and its original, RAW plus JPEG, and bursts.
+  let stacking = true, stackMembers = new Map();
+  try { stacking = localStorage.getItem(STACKS_KEY) !== '0'; } catch { /* storage blocked */ }
   try { const z = Number(localStorage.getItem(ZOOM_KEY)); if (z >= 0 && z <= 2) zoom = z; } catch { /* storage blocked */ }
   let dirty = true;                      // list needs a requery
   let savedScroll = 0;
@@ -11789,6 +12903,7 @@ function initLibraryView(lib) {
 
   const viewer = createPhotoViewer(lib, $('.lib-viewer'), {
     getList: () => list,
+    getStack: (id) => stackMembers.get(id) ?? null,
     onShow: (i) => { focusId = ids[i]; },
     onClose: () => { const i = indexOf.get(focusId); if (i != null) setFocus(i); else grid.focus(); },
     onEdit: (id) => openInEditor(id),
@@ -11933,6 +13048,8 @@ function initLibraryView(lib) {
     if (xdef?.render) { list = []; ids = []; indexOf = new Map(); renderHead(); return; }
     list = lib.search(currentOpts());
     if (xdef?.ids) { const want = new Set(xdef.ids()); list = list.filter(r => want.has(r.id)); }
+    stackMembers = new Map();
+    if (stacking && cur.view !== 'trash') ({ items: list, members: stackMembers } = collapseStacks(list, buildStacks(list).stackOf));
     ids = list.map(r => r.id);
     indexOf = new Map(ids.map((id, i) => [id, i]));
     let pruned = false;
@@ -12053,6 +13170,9 @@ function initLibraryView(lib) {
     const label = [rec.name, formatTaken(rec.time)];
     const badges = [];
     if (rec.kind === 'video') { label.push(`video${rec.dur ? ' ' + formatDuration(rec.dur) : ''}`); badges.push(`<span class="lib-b lib-b-dur">${rec.dur ? formatDuration(rec.dur) : 'Video'}</span>`); }
+    const stack = stackMembers.get(rec.id);
+    if (stack) { label.push(`stack of ${stack.length}`); badges.push(`<span class="lib-b lib-b-stack">${stack.length}</span>`); }
+    if (rec.motion || rec.liveVideo) { label.push(rec.motion ? 'motion photo' : 'live photo'); badges.push(`<span class="lib-b lib-b-motion">${rec.motion ? 'Motion' : 'Live'}</span>`); }
     if (c.fav) { label.push('favourite'); badges.push('<span class="lib-b lib-b-fav">&#9829;</span>'); }
     if (rating) { label.push(`${rating} star${rating === 1 ? '' : 's'}`); badges.push(`<span class="lib-b lib-b-star">&#9733;${rating}</span>`); }
     if (c.flag === 'pick') { label.push('picked'); badges.push('<span class="lib-b lib-b-pick">&#10003;</span>'); }
@@ -12733,6 +13853,12 @@ function initLibraryView(lib) {
     if (cur.view === 'folder' && !lib.roots.has(cur.rootId)) cur = { view: 'timeline' };
     renderSidebar(); scheduleRequery(); queueJobs();
   });
+  stacksBox.checked = stacking;
+  stacksBox.addEventListener('change', () => {
+    stacking = stacksBox.checked;
+    try { localStorage.setItem(STACKS_KEY, stacking ? '1' : '0'); } catch { /* storage blocked */ }
+    if (open) requery(); else dirty = true;
+  });
   lib.on('error', (ev) => emit('error', { message: ev?.message ?? 'Library error' }));
 
   renderJobs();
@@ -12839,6 +13965,9 @@ const esc = __m_core_html.esc;
 const exportFiles = __m_library_export.exportFiles;
 const pickExportFolder = __m_library_export.pickExportFolder;
 const albumExportIds = __m_library_export.albumExportIds;
+const splitId = __m_library_schema.splitId;
+const normPath = __m_library_schema.normPath;
+const RENAME_FIELDS = __m_library_move.RENAME_FIELDS;
 
 const TRASH_CAP = 5000;      // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -13141,6 +14270,113 @@ function initOrganise(lib, ui) {
     });
   }
 
+  // ── move and rename (O10) ──────────────────────────────────────────────
+  // Both are destructive (files change place on disk), so each dialog runs a
+  // dry run first, states the count and any conflicts, and only then enables
+  // the button that moves the files. The toast after offers Undo.
+  function oneRoot(ids) {
+    if (!ids.length) { say('Select a photo first', 'warn'); return null; }
+    const roots = new Set(ids.map(id => splitId(id).rootId));
+    if (roots.size > 1) { say('Select photos from one library folder to move or rename them', 'warn'); return null; }
+    const root = lib.roots.get([...roots][0]);
+    if (!root?.handle) { say('This folder is browse-only, so Slate cannot move its files', 'warn'); return null; }
+    return root;
+  }
+
+  // Wires the Check and Run buttons of a move or rename dialog.
+  //   plan() -> [{ id, toPath }] (may throw); verb: 'Move' | 'Rename'
+  function reviewStep(body, close, plan, verb, doneText) {
+    const out = body.querySelector('.org-review'), check = body.querySelector('[data-check]'), go = body.querySelector('[data-go]');
+    let moves = null;
+    const reset = () => { moves = null; go.disabled = true; go.textContent = verb; out.textContent = ''; };
+    body.addEventListener('input', reset);
+    body.addEventListener('change', reset);
+    check.addEventListener('click', async () => {
+      reset();
+      try {
+        const p = plan();
+        const r = await lib.moveFiles(p, { dryRun: true });
+        const same = p.length - r.changed - r.conflicts.length;
+        const lines = [`${verb === 'Move' ? 'Moves' : 'Renames'} ${plural(r.changed, 'file')}, with their XMP sidecars.`];
+        if (same > 0) lines.push(`${plural(same, 'file')} already ${same === 1 ? 'has' : 'have'} that ${verb === 'Move' ? 'place' : 'name'}.`);
+        if (r.conflicts.length) {
+          lines.push(`${plural(r.conflicts.length, 'file')} cannot be ${verb === 'Move' ? 'moved' : 'renamed'}, so nothing will change until you fix ${r.conflicts.length === 1 ? 'it' : 'them'}:`);
+          for (const c of r.conflicts.slice(0, 5)) lines.push(`${lib.get(c.id)?.name ?? c.id} to ${c.to || '(empty)'}: ${c.reason}`);
+          if (r.conflicts.length > 5) lines.push(`and ${r.conflicts.length - 5} more`);
+        }
+        out.innerHTML = lines.map(l => `<p>${esc(l)}</p>`).join('');
+        if (r.changed && !r.conflicts.length) { moves = p; go.disabled = false; go.textContent = `${verb} ${plural(r.changed, 'file')}`; go.focus(); }
+      } catch (e) { out.innerHTML = `<p class="org-error">${esc(e.message)}</p>`; }
+    });
+    go.addEventListener('click', async () => {
+      if (!moves) return;
+      close();
+      try {
+        const r = await lib.moveFiles(moves);
+        const msg = doneText(r.changed);
+        if (r.failed.length) say(`${msg}; ${plural(r.failed.length, 'file')} could not be moved: ${r.failed[0].reason}`, 'warn');
+        done(msg, [r.undo]);
+      } catch (e) { fail(e); }
+    });
+  }
+
+  const reviewHtml = (verb) => `<div class="org-review" role="status" aria-live="polite"></div>
+    <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+    <button type="button" class="btn" data-check>Check</button>
+    <button type="button" class="btn btn-danger" data-go disabled>${verb}</button></div>`;
+
+  function moveDialog(ids) {
+    const root = oneRoot(ids);
+    if (!root) return;
+    const folders = [...(lib.folders().get(root.id)?.keys() ?? [])].sort((a, b) => a.localeCompare(b));
+    if (!folders.includes('')) folders.unshift('');
+    openDialog(`Move ${plural(ids.length, 'photo')} to a folder`, (body, close) => {
+      body.innerHTML = `
+        <p class="org-text">Choose a folder inside ${esc(root.name)}. The files move on disk, with their XMP sidecars, and keep their names, choices and albums.</p>
+        <label class="org-label">Folder
+          <select class="org-input org-folder" autofocus>${folders.map(f => `<option value="${esc(f)}">${esc(f || `Top of ${root.name}`)}</option>`).join('')}</select></label>
+        <label class="org-label">Or a new subfolder path
+          <input type="text" class="org-input org-newfolder" placeholder="e.g. 2024/Goa" maxlength="400" autocomplete="off"></label>
+        ${reviewHtml('Move')}`;
+      body.querySelector('[data-no]').addEventListener('click', close);
+      const target = () => {
+        const typed = body.querySelector('.org-newfolder').value.trim();
+        return normPath(typed || body.querySelector('.org-folder').value).replace(/\/+$/, '');
+      };
+      reviewStep(body, close, () => {
+        const dest = target();
+        return ids.map(id => { const r = lib.get(id); return { id, toPath: dest ? `${dest}/${r.name}` : r.name }; });
+      }, 'Move', (n) => `Moved ${plural(n, 'photo')} to ${target() || `the top of ${root.name}`}`);
+    });
+  }
+
+  function renameDialog(ids) {
+    if (!oneRoot(ids)) return;
+    openDialog(`Rename ${plural(ids.length, 'photo')}`, (body, close) => {
+      body.innerHTML = `
+        <label class="org-label">Name template
+          <input type="text" class="org-input org-template" value="{date}_{n}" maxlength="200" autocomplete="off" autofocus></label>
+        <p class="modal-info">Fields: ${RENAME_FIELDS.map(f => `{${f}}`).join(' ')}. {n} counts in capture order. The extension stays the same, and photos stay in their folders.</p>
+        <ul class="org-preview" aria-label="New names of the first 5 photos"></ul>
+        ${reviewHtml('Rename')}`;
+      body.querySelector('[data-no]').addEventListener('click', close);
+      const tpl = body.querySelector('.org-template'), prev = body.querySelector('.org-preview');
+      const plan = () => lib.renamePlan(ids, tpl.value);
+      function preview() {
+        try {
+          prev.innerHTML = plan().slice(0, 5).map(m => {
+            const to = m.toPath.slice(m.toPath.lastIndexOf('/') + 1);
+            return `<li><span class="org-old">${esc(lib.get(m.id).name)}</span> to <span class="org-new">${esc(to)}</span></li>`;
+          }).join('');
+        } catch (e) { prev.innerHTML = `<li class="org-error">${esc(e.message)}</li>`; }
+      }
+      tpl.addEventListener('input', preview);
+      preview();
+      reviewStep(body, close, plan, 'Rename', (n) => `Renamed ${plural(n, 'photo')}`);
+      setTimeout(() => tpl.select(), 0);
+    });
+  }
+
   // ── menus ──────────────────────────────────────────────────────────────
   let menuEl = null;
   function closeMenu(refocus) {
@@ -13278,6 +14514,8 @@ function initOrganise(lib, ui) {
       ${v.view === 'album' && v.albumId ? `<button type="button" class="btn" data-act="unalbum"${off}>Remove from album</button>` : ''}
       <button type="button" class="btn" data-act="hide" title="Hide (H)"${off}>${allHidden ? 'Unhide' : 'Hide'}</button>
       <button type="button" class="btn" data-act="trash" title="Move to trash (Delete)"${off}>Move to trash</button>
+      <button type="button" class="btn" data-act="move" aria-haspopup="dialog" title="Move the files to another folder"${off}>Move to folder…</button>
+      <button type="button" class="btn" data-act="rename" aria-haspopup="dialog" title="Rename the files from a template"${off}>Rename…</button>
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
@@ -13309,6 +14547,8 @@ function initOrganise(lib, ui) {
       case 'batch': emit('library:batch', { ids }); break;
       case 'gallery': emit('library:gallery', { ids }); break;
       case 'export': exportTo(() => ids, ''); break;
+      case 'move': moveDialog(ids); break;
+      case 'rename': renameDialog(ids); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }
@@ -13745,6 +14985,84 @@ function initDupes(lib, ui) {
 return { formatBytes, initDupes };
 })();
 
+const __m_library_watch = (() => {
+// Watch folders for changes (row L9). Where the browser has FileSystemObserver (experimental,
+// Chrome only today), each fsa root is observed recursively, and a change rescans only that root,
+// after a quiet spell of DEBOUNCE_MS. Where it does not, nothing happens and the rescan on open stays
+// the baseline. Changes inside dot-folders and to dot-files (the library file, .slate-trash) are
+// ignored, so Slate's own writes never trigger a rescan.
+//
+//   initWatch(lib, { Observer, delay }) -> { status() -> 'watching'|'unavailable', stop() }
+
+const isSkippedDir = __m_library_schema.isSkippedDir;
+
+const DEBOUNCE_MS = 1500;
+
+let current = null;
+// The status for the storage panel: 'watching' when at least one folder is observed.
+function status() { return current ? current.status() : 'unavailable'; }
+
+function initWatch(lib, { Observer = globalThis.FileSystemObserver, delay = DEBOUNCE_MS } = {}) {
+  const watched = new Map(); // rootId -> { observer, timer }
+  const api = { status: () => (Observer && watched.size ? 'watching' : 'unavailable'), stop };
+  current = api;
+  if (typeof Observer !== 'function') return api;
+
+  const relevant = (records) => records.some(r => {
+    const parts = r.relativePathComponents || [];
+    return !parts.some(p => isSkippedDir(p));
+  });
+
+  function schedule(rootId) {
+    const w = watched.get(rootId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    w.timer = setTimeout(() => {
+      w.timer = null;
+      if (!lib.roots.has(rootId)) return;
+      Promise.resolve(lib.rescan(rootId)).catch(e => console.warn('[slate library] rescan after a change failed', e));
+    }, delay);
+  }
+
+  async function sync() {
+    for (const [id, w] of watched) {
+      if (lib.roots.get(id)?.handle) continue;
+      clearTimeout(w.timer); w.observer.disconnect(); watched.delete(id);
+    }
+    for (const root of lib.roots.values()) {
+      if (!root.handle || watched.has(root.id)) continue;
+      const observer = new Observer((records) => { if (relevant(records)) schedule(root.id); });
+      watched.set(root.id, { observer, timer: null });
+      try { await observer.observe(root.handle, { recursive: true }); }
+      catch (e) {
+        // No permission yet, or the folder is gone: try again when the roots change.
+        console.warn('[slate library] cannot watch', root.name, e);
+        observer.disconnect(); watched.delete(root.id);
+      }
+    }
+  }
+
+  // A root whose permission came back (Reconnect) is picked up after its next scan.
+  const offs = [
+    lib.on('roots', () => { api.ready = sync(); }),
+    lib.on('records', (e) => {
+      if (e?.reason === 'scan' && [...lib.roots.values()].some(r => r.handle && !watched.has(r.id))) api.ready = sync();
+    }),
+  ];
+  api.ready = sync();
+
+  function stop() {
+    for (const off of offs) off();
+    for (const w of watched.values()) { clearTimeout(w.timer); w.observer.disconnect(); }
+    watched.clear();
+    if (current === api) current = null;
+  }
+  return api;
+}
+
+return { DEBOUNCE_MS, status, initWatch };
+})();
+
 const __m_library_boot = (() => {
 // Boots the photo library inside Slate. Called once from app.js after the editor is up.
 // Wires the core (library.js) to its browser services and its UI, then loads the index.
@@ -13768,9 +15086,12 @@ const initMemories = __m_library_memories.initMemories;
 const initXmpWrite = __m_library_xmpwrite.initXmpWrite;
 const initImport = __m_ui_library_import.initImport;
 const initDupes = __m_ui_library_dupes.initDupes;
+const initWatch = __m_library_watch.initWatch;
 const importTakeoutZips = __m_ui_library_import.importTakeoutZips;
 const ZIP_URL = __m_ui_library_import.ZIP_URL;
 const exportFiles = __m_library_export.exportFiles;
+const applyICloudCsv = __m_library_icloud.applyICloudCsv;
+const buildStacks = __m_library_stacks.buildStacks;
 
 let _lib = null;
 function getLibrary() { return _lib; }
@@ -13797,6 +15118,7 @@ async function initLibrary() {
   initDoor(lib, ui);
 
   await lib.load();
+  lib.services.watch = initWatch(lib);
 
   window.__slateLibrary = {
     lib, ui,
@@ -13804,7 +15126,7 @@ async function initLibrary() {
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
     // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
-    mods: { importTakeoutZips, ZIP_URL, exportFiles },
+    mods: { importTakeoutZips, ZIP_URL, exportFiles, applyICloudCsv, buildStacks },
   };
   return lib;
 }
@@ -18296,6 +19618,7 @@ async function doSave(showDialog = false) {
   const ext = exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format;
   const filename = `${baseName}-${tstamp()}.${ext}`;
 
+  let savedName = null;
   try {
     if (exp.saveMode === 'overwrite' && entry?.handle) {
       // Overwriting reuses the original filename, so the bytes we write must
@@ -18309,16 +19632,19 @@ async function doSave(showDialog = false) {
       const confirmed = await confirmDialog('This replaces the original file. Undo history will be lost on next open.');
       if (!confirmed) return;
       await saveOverwrite(blob);
+      savedName = entry.name;
       emit('toast', { message: 'File overwritten.', level: 'ok' });
     } else if (exp.saveMode === 'sidecar' && session.folderHandle) {
       const saved = await saveSidecar(blob, ext);
+      savedName = saved;
       emit('toast', { message: `Saved as ${saved}`, level: 'ok' });
     } else {
       await saveDownload(blob, filename);
+      savedName = filename;
       emit('toast', { message: `Downloaded ${filename}`, level: 'ok' });
     }
     clearSession();
-    emit('save:complete', null);
+    emit('save:complete', { name: savedName });
   } catch (err) {
     emit('error', { message: `Save failed: ${err.message}` });
   }

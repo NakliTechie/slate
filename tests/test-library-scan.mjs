@@ -6,6 +6,7 @@ import { memoryStore } from '../src/library/store.js';
 import { wallClockToTime, makeId } from '../src/library/schema.js';
 import { readMetadata, parseWallClock } from '../src/library/metadata.js';
 import { scanRoot, BATCH } from '../src/library/scan.js';
+import { initWatch, status as watchStatus } from '../src/library/watch.js';
 import { thumbName, createUrlCache, fitSize, bytesToDataUrl } from '../src/library/thumbs.js';
 
 // ── a minimal JPEG with an EXIF APP1 block ───────────────────────────────────
@@ -217,6 +218,64 @@ const XMP = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.
   assert.deepEqual([fitSize(6000, 4000, 6).w, fitSize(6000, 4000, 6).h], [171, 256], 'orientation 6 is portrait');
   assert.equal(fitSize(160, 120).scale, 1, 'never upscales');
   assert.match(bytesToDataUrl(new Uint8Array([0x52, 0x49, 0x46, 0x46])), /^data:image\/webp;base64,UklGRg==$/);
+}
+
+// ── Live Photos in a scan (row M7) ───────────────────────────────────────────
+{
+  const { lib } = makeLib();
+  const tree = { 'IMG_1.HEIC': file('IMG_1.HEIC', 'h'), 'IMG_1.MOV': file('IMG_1.MOV', 'm'), 'IMG_2.MOV': file('IMG_2.MOV', 'v') };
+  const root = await lib.addRoot({ handle: fakeDir('Live', tree, { state: 'granted', asked: 0 }), name: 'Live' });
+  assert.equal(lib.get(makeId(root.id, 'IMG_1.HEIC')).liveVideo, 'IMG_1.MOV');
+  assert.equal(lib.get(makeId(root.id, 'IMG_1.MOV')), null, 'a paired MOV has no tile');
+  assert.equal(lib.get(makeId(root.id, 'IMG_2.MOV')).kind, 'video', 'an unpaired MOV stays a video');
+  // Removing the MOV re-reads the photo even though the photo itself did not change.
+  delete tree['IMG_1.MOV'];
+  const res = await scanRoot(lib, root, {});
+  assert.equal(res.changed, 1);
+  assert.equal(lib.get(makeId(root.id, 'IMG_1.HEIC')).liveVideo, undefined);
+}
+
+// ── watching folders (row L9) with a fake FileSystemObserver ─────────────────
+{
+  const made = [];
+  class FakeObserver {
+    constructor(cb) { this.cb = cb; this.handles = []; this.off = false; made.push(this); }
+    async observe(h, opts) { if (h.name === 'NoPerm') throw new Error('NotAllowedError'); assert.equal(opts.recursive, true); this.handles.push(h); }
+    disconnect() { this.off = true; }
+    fire(parts, type = 'modified') { this.cb([{ type, relativePathComponents: parts }], this); }
+  }
+  const rescans = [];
+  const listeners = new Map();
+  const lib = {
+    roots: new Map([['a', { id: 'a', name: 'A', handle: { name: 'A' } }], ['b', { id: 'b', name: 'B', handle: { name: 'B' } }], ['f', { id: 'f', name: 'F', handle: null }]]),
+    on(t, fn) { listeners.set(t, fn); return () => listeners.delete(t); },
+    async rescan(id) { rescans.push(id); },
+  };
+  assert.equal(initWatch(lib, { Observer: undefined }).status(), 'unavailable', 'no FileSystemObserver: nothing happens');
+  assert.equal(watchStatus(), 'unavailable');
+
+  const w = initWatch(lib, { Observer: FakeObserver, delay: 20 });
+  await w.ready;
+  assert.equal(made.length, 2, 'one observer per fsa root, none for a browse-only root');
+  assert.equal(w.status(), 'watching');
+  assert.equal(watchStatus(), 'watching');
+  const [oa, ob] = made;
+  oa.fire(['trip', 'IMG_1.jpg']); oa.fire(['IMG_2.jpg']); oa.fire(['IMG_3.jpg']);
+  ob.fire(['.slate-library.json']); ob.fire(['.slate-trash', 'x.jpg']);
+  await new Promise(r => setTimeout(r, 60));
+  assert.deepEqual(rescans, ['a'], 'debounced to one rescan, only of the root that changed; dot-files ignored');
+
+  // A removed root stops being watched; an added one starts, and one without permission is skipped.
+  lib.roots.delete('b');
+  lib.roots.set('c', { id: 'c', name: 'NoPerm', handle: { name: 'NoPerm' } });
+  listeners.get('roots')();
+  await w.ready;
+  assert.equal(ob.off, true);
+  assert.equal(made.length, 3);
+  assert.equal(made[2].off, true, 'a folder that cannot be observed is let go');
+  w.stop();
+  assert.equal(oa.off, true);
+  assert.equal(watchStatus(), 'unavailable');
 }
 
 console.log('test-library-scan: all passed');

@@ -230,3 +230,13 @@
   .lib-side { width: 170px; }
   .lv-info { width: 200px; }
 }
+
+/* Stacks, Motion Photos and Live Photos (rows B9, M6, M7) */
+.lib-stacks { margin-left: auto; font-size: 12px; color: var(--fg-2); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-1, 4px); }
+.lib-b-stack { font-variant-numeric: tabular-nums; }
+.lib-b-stack::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1.5px solid currentColor; border-radius: 1px; box-shadow: 2px -2px 0 -0.5px currentColor; vertical-align: -1px; }
+.lib-b-motion { text-transform: uppercase; letter-spacing: 0.04em; font-size: 9px; }
+.lv-motion, .lv-stack { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--fg-2); white-space: nowrap; }
+.lv-motion[hidden], .lv-stack[hidden] { display: none; }
+.lv-motion-badge { padding: 1px 6px; border-radius: 4px; background: var(--bg-2); color: var(--fg-1, inherit); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+.lv-stackpos { font-variant-numeric: tabular-nums; }

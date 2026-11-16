@@ -24,7 +24,8 @@
 //   'error'    { message }
 
 import { JobQueue } from './jobs.js';
-import { emptyChoice, isEmptyChoice, makeId, splitId, normTag, FLAGS } from './schema.js';
+import { emptyChoice, isEmptyChoice, makeId, splitId, normTag, FLAGS, normPath, kindOf, extOf, folderOf } from './schema.js';
+import { createMove, renderName } from './move.js';
 import { parseLibFile, buildLibFile, rematchMoved, newAlbumId } from './libfile.js';
 import { query, choiceOf, tagCounts, folderCounts, effectiveRating, allTags } from './query.js';
 
@@ -142,6 +143,16 @@ export class Library {
     if (upserts.length) await this.store.putPhotos(upserts);
     let missing = [];
     if (seen) {
+      // A MOV now paired with a Live Photo has no record of its own: drop it rather than mark it missing.
+      const paired = new Set();
+      for (const r of this.records.values()) if (r.rootId === rootId && r.liveVideo) paired.add(makeId(rootId, r.liveVideo));
+      const dropped = [...paired].filter(id => this.records.has(id) && !seen.has(id) && !this.choices.get(id)?.trashed);
+      if (dropped.length) {
+        for (const id of dropped) this.records.delete(id);
+        await this.store.deletePhotos(dropped);
+        await this.services.thumbs?.remove(dropped);
+        missing.push(...dropped.map(id => ({ id })));
+      }
       for (const r of this.records.values()) {
         if (r.rootId !== rootId) continue;
         const gone = !seen.has(r.id) && !this.choices.get(r.id)?.trashed;
@@ -462,6 +473,108 @@ export class Library {
     for (const id of al.items) { const r = this.records.get(id); if (r && !this.choice(id).trashed && (!best || r.time > best.time)) best = r; }
     return best?.id ?? null;
   }
+
+  // ── move and rename (spec row O10) ─────────────────────────────────────
+  // moveFiles([{ id, toPath }]) moves each file inside its own root (toPath is
+  // relative to the root), with its XMP sidecar, and re-keys the record, its
+  // choices, album memberships and album covers to the new id. It never
+  // overwrites: any conflict refuses the whole call before a file moves.
+  // { dryRun: true } returns { changed, dryRun, moves: [{ id, from, to }], conflicts: [{ id, to, reason }] }.
+  // Otherwise { changed, undo, moved: [{ from, to }], failed: [{ id, reason }] }.
+  async moveFiles(moves, { dryRun = false } = {}) {
+    if (!Array.isArray(moves) || !moves.length) throw new Error('give at least one file to move');
+    this.#checkIds(moves.map(m => m?.id));
+    const mover = this.services.move ?? (this._mover ??= createMove());
+    const plan = [], conflicts = [], seenIds = new Set(), targets = new Set();
+    for (const { id, toPath } of moves) {
+      const { rootId, path } = splitId(id);
+      const to = normPath(String(toPath ?? '').trim()).replace(/\/+$/, '');
+      const root = this.roots.get(rootId), rec = this.records.get(id);
+      const no = (reason) => conflicts.push({ id, to, reason });
+      if (seenIds.has(id)) { no('the same file is listed twice'); continue; }
+      seenIds.add(id);
+      const segs = to.split('/');
+      if (!to || segs.some(s => !s || s === '.' || s === '..' || s.startsWith('.') || /[\\:*?"<>|\u0000-\u001f]/.test(s))) { no('not a valid path'); continue; }
+      if (to === path) continue;
+      if (!kindOf(segs[segs.length - 1])) { no('the new name needs a photo or video extension'); continue; }
+      if (!root?.handle) { no('the folder is browse-only'); continue; }
+      if (this.choice(id).trashed) { no('the file is in the trash'); continue; }
+      if (rec.missing) { no('the file is missing from disk'); continue; }
+      const key = to.toLowerCase();
+      if (targets.has(`${rootId}/${key}`)) { no('two files would get the same name'); continue; }
+      targets.add(`${rootId}/${key}`);
+      const caseOnly = key === path.toLowerCase();
+      if (!caseOnly && (this.records.has(makeId(rootId, to)) || await mover.exists(root, to))) { no('a file with that name already exists'); continue; }
+      plan.push({ id, from: path, to, rootId });
+    }
+    if (dryRun) return { changed: plan.length, dryRun: true, moves: plan.map(({ id, from, to }) => ({ id, from, to })), conflicts };
+    if (conflicts.length) {
+      const c = conflicts[0];
+      throw Object.assign(new Error(`${conflicts.length} of ${moves.length} files cannot be moved (${c.to || c.id}: ${c.reason}); nothing was moved`), { conflicts });
+    }
+    const moved = [], failed = [], oldIds = [], newRecs = [], roots = new Set();
+    for (const m of plan) {
+      try {
+        await mover.move(this.roots.get(m.rootId), m.from, m.to);
+      } catch (e) {
+        failed.push({ id: m.id, reason: e.message });
+        this.emit('error', { message: `Could not move ${m.from}: ${e.message}` });
+        continue;
+      }
+      const toId = makeId(m.rootId, m.to);
+      newRecs.push(this.#rekey(m.id, toId, m.to));
+      oldIds.push(m.id);
+      roots.add(m.rootId);
+      moved.push({ from: m.id, to: toId, fromPath: m.from });
+    }
+    if (!moved.length) return { changed: 0, undo: null, moved, failed };
+    await this.store.deletePhotos(oldIds);
+    await this.store.putPhotos(newRecs);
+    await this.services.thumbs?.remove?.(oldIds);
+    this.services.thumbs?.enqueue?.(newRecs);
+    for (const r of roots) this.markDirty(r);
+    this.emit('records', { ids: [...oldIds, ...newRecs.map(r => r.id)], reason: 'move' });
+    this.emit('choices', { ids: newRecs.map(r => r.id), reason: 'move' });
+    this.emit('albums', { albumId: null, reason: 'move' });
+    const undo = this.#remember('move', () => this.moveFiles(moved.map(d => ({ id: d.to, toPath: d.fromPath }))));
+    return { changed: moved.length, undo, moved: moved.map(({ from, to }) => ({ from, to })), failed };
+  }
+
+  // The new names renameFiles would give, without touching anything: [{ id, toPath }].
+  // Files are numbered in capture order (then path) for {n}, from `start`.
+  renamePlan(ids, template, { start = 1 } = {}) {
+    const list = this.#checkIds(ids).map(id => this.records.get(id))
+      .sort((a, b) => (a.time || 0) - (b.time || 0) || a.path.localeCompare(b.path));
+    const width = Math.max(3, String(start + list.length - 1).length);
+    return list.map((r, i) => {
+      const name = renderName(template, r, start + i, width);
+      const folder = folderOf(r.path);
+      return { id: r.id, toPath: folder ? `${folder}/${name}` : name };
+    });
+  }
+
+  // Rename files in place from a template: {name} {date} {time} {n} {camera}.
+  renameFiles(ids, template, { dryRun = false, start = 1 } = {}) {
+    return this.moveFiles(this.renamePlan(ids, template, { start }), { dryRun });
+  }
+
+  #rekey(fromId, toId, toPath) {
+    const rec = this.records.get(fromId);
+    const name = toPath.slice(toPath.lastIndexOf('/') + 1);
+    const next = { ...rec, id: toId, path: toPath, name, ext: extOf(name), thumb: null, indexed: Date.now() };
+    this.records.delete(fromId);
+    this.records.set(toId, next);
+    if (this.choices.has(fromId)) { this.choices.set(toId, this.choices.get(fromId)); this.choices.delete(fromId); }
+    for (const a of this.albums.values()) {
+      if (a.items.delete(fromId)) a.items.add(toId);
+      if (a.cover === fromId) a.cover = toId;
+    }
+    return next;
+  }
+
+  // An undo token for a change made outside these methods (icloud.js), so it
+  // shares the one undo log.
+  rememberUndo(reason, fn) { return this.#remember(reason, fn); }
 
   // ── undo ────────────────────────────────────────────────────────────────
   undo(token) {

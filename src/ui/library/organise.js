@@ -11,6 +11,8 @@ import { runCommand, MAX_WRITE_IDS } from '../../library/commands.js';
 import { emit, on } from '../../core/events.js';
 import { esc } from '../../core/html.js';
 import { exportFiles, pickExportFolder, albumExportIds } from '../../library/export.js';
+import { splitId, normPath } from '../../library/schema.js';
+import { RENAME_FIELDS } from '../../library/move.js';
 
 const TRASH_CAP = 5000;      // photo.trash takes at most this many ids per call
 const UNDO_TOAST_MS = 6000;
@@ -313,6 +315,113 @@ export function initOrganise(lib, ui) {
     });
   }
 
+  // ── move and rename (O10) ──────────────────────────────────────────────
+  // Both are destructive (files change place on disk), so each dialog runs a
+  // dry run first, states the count and any conflicts, and only then enables
+  // the button that moves the files. The toast after offers Undo.
+  function oneRoot(ids) {
+    if (!ids.length) { say('Select a photo first', 'warn'); return null; }
+    const roots = new Set(ids.map(id => splitId(id).rootId));
+    if (roots.size > 1) { say('Select photos from one library folder to move or rename them', 'warn'); return null; }
+    const root = lib.roots.get([...roots][0]);
+    if (!root?.handle) { say('This folder is browse-only, so Slate cannot move its files', 'warn'); return null; }
+    return root;
+  }
+
+  // Wires the Check and Run buttons of a move or rename dialog.
+  //   plan() -> [{ id, toPath }] (may throw); verb: 'Move' | 'Rename'
+  function reviewStep(body, close, plan, verb, doneText) {
+    const out = body.querySelector('.org-review'), check = body.querySelector('[data-check]'), go = body.querySelector('[data-go]');
+    let moves = null;
+    const reset = () => { moves = null; go.disabled = true; go.textContent = verb; out.textContent = ''; };
+    body.addEventListener('input', reset);
+    body.addEventListener('change', reset);
+    check.addEventListener('click', async () => {
+      reset();
+      try {
+        const p = plan();
+        const r = await lib.moveFiles(p, { dryRun: true });
+        const same = p.length - r.changed - r.conflicts.length;
+        const lines = [`${verb === 'Move' ? 'Moves' : 'Renames'} ${plural(r.changed, 'file')}, with their XMP sidecars.`];
+        if (same > 0) lines.push(`${plural(same, 'file')} already ${same === 1 ? 'has' : 'have'} that ${verb === 'Move' ? 'place' : 'name'}.`);
+        if (r.conflicts.length) {
+          lines.push(`${plural(r.conflicts.length, 'file')} cannot be ${verb === 'Move' ? 'moved' : 'renamed'}, so nothing will change until you fix ${r.conflicts.length === 1 ? 'it' : 'them'}:`);
+          for (const c of r.conflicts.slice(0, 5)) lines.push(`${lib.get(c.id)?.name ?? c.id} to ${c.to || '(empty)'}: ${c.reason}`);
+          if (r.conflicts.length > 5) lines.push(`and ${r.conflicts.length - 5} more`);
+        }
+        out.innerHTML = lines.map(l => `<p>${esc(l)}</p>`).join('');
+        if (r.changed && !r.conflicts.length) { moves = p; go.disabled = false; go.textContent = `${verb} ${plural(r.changed, 'file')}`; go.focus(); }
+      } catch (e) { out.innerHTML = `<p class="org-error">${esc(e.message)}</p>`; }
+    });
+    go.addEventListener('click', async () => {
+      if (!moves) return;
+      close();
+      try {
+        const r = await lib.moveFiles(moves);
+        const msg = doneText(r.changed);
+        if (r.failed.length) say(`${msg}; ${plural(r.failed.length, 'file')} could not be moved: ${r.failed[0].reason}`, 'warn');
+        done(msg, [r.undo]);
+      } catch (e) { fail(e); }
+    });
+  }
+
+  const reviewHtml = (verb) => `<div class="org-review" role="status" aria-live="polite"></div>
+    <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+    <button type="button" class="btn" data-check>Check</button>
+    <button type="button" class="btn btn-danger" data-go disabled>${verb}</button></div>`;
+
+  function moveDialog(ids) {
+    const root = oneRoot(ids);
+    if (!root) return;
+    const folders = [...(lib.folders().get(root.id)?.keys() ?? [])].sort((a, b) => a.localeCompare(b));
+    if (!folders.includes('')) folders.unshift('');
+    openDialog(`Move ${plural(ids.length, 'photo')} to a folder`, (body, close) => {
+      body.innerHTML = `
+        <p class="org-text">Choose a folder inside ${esc(root.name)}. The files move on disk, with their XMP sidecars, and keep their names, choices and albums.</p>
+        <label class="org-label">Folder
+          <select class="org-input org-folder" autofocus>${folders.map(f => `<option value="${esc(f)}">${esc(f || `Top of ${root.name}`)}</option>`).join('')}</select></label>
+        <label class="org-label">Or a new subfolder path
+          <input type="text" class="org-input org-newfolder" placeholder="e.g. 2024/Goa" maxlength="400" autocomplete="off"></label>
+        ${reviewHtml('Move')}`;
+      body.querySelector('[data-no]').addEventListener('click', close);
+      const target = () => {
+        const typed = body.querySelector('.org-newfolder').value.trim();
+        return normPath(typed || body.querySelector('.org-folder').value).replace(/\/+$/, '');
+      };
+      reviewStep(body, close, () => {
+        const dest = target();
+        return ids.map(id => { const r = lib.get(id); return { id, toPath: dest ? `${dest}/${r.name}` : r.name }; });
+      }, 'Move', (n) => `Moved ${plural(n, 'photo')} to ${target() || `the top of ${root.name}`}`);
+    });
+  }
+
+  function renameDialog(ids) {
+    if (!oneRoot(ids)) return;
+    openDialog(`Rename ${plural(ids.length, 'photo')}`, (body, close) => {
+      body.innerHTML = `
+        <label class="org-label">Name template
+          <input type="text" class="org-input org-template" value="{date}_{n}" maxlength="200" autocomplete="off" autofocus></label>
+        <p class="modal-info">Fields: ${RENAME_FIELDS.map(f => `{${f}}`).join(' ')}. {n} counts in capture order. The extension stays the same, and photos stay in their folders.</p>
+        <ul class="org-preview" aria-label="New names of the first 5 photos"></ul>
+        ${reviewHtml('Rename')}`;
+      body.querySelector('[data-no]').addEventListener('click', close);
+      const tpl = body.querySelector('.org-template'), prev = body.querySelector('.org-preview');
+      const plan = () => lib.renamePlan(ids, tpl.value);
+      function preview() {
+        try {
+          prev.innerHTML = plan().slice(0, 5).map(m => {
+            const to = m.toPath.slice(m.toPath.lastIndexOf('/') + 1);
+            return `<li><span class="org-old">${esc(lib.get(m.id).name)}</span> to <span class="org-new">${esc(to)}</span></li>`;
+          }).join('');
+        } catch (e) { prev.innerHTML = `<li class="org-error">${esc(e.message)}</li>`; }
+      }
+      tpl.addEventListener('input', preview);
+      preview();
+      reviewStep(body, close, plan, 'Rename', (n) => `Renamed ${plural(n, 'photo')}`);
+      setTimeout(() => tpl.select(), 0);
+    });
+  }
+
   // ── menus ──────────────────────────────────────────────────────────────
   let menuEl = null;
   function closeMenu(refocus) {
@@ -450,6 +559,8 @@ export function initOrganise(lib, ui) {
       ${v.view === 'album' && v.albumId ? `<button type="button" class="btn" data-act="unalbum"${off}>Remove from album</button>` : ''}
       <button type="button" class="btn" data-act="hide" title="Hide (H)"${off}>${allHidden ? 'Unhide' : 'Hide'}</button>
       <button type="button" class="btn" data-act="trash" title="Move to trash (Delete)"${off}>Move to trash</button>
+      <button type="button" class="btn" data-act="move" aria-haspopup="dialog" title="Move the files to another folder"${off}>Move to folder…</button>
+      <button type="button" class="btn" data-act="rename" aria-haspopup="dialog" title="Rename the files from a template"${off}>Rename…</button>
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
@@ -481,6 +592,8 @@ export function initOrganise(lib, ui) {
       case 'batch': emit('library:batch', { ids }); break;
       case 'gallery': emit('library:gallery', { ids }); break;
       case 'export': exportTo(() => ids, ''); break;
+      case 'move': moveDialog(ids); break;
+      case 'rename': renameDialog(ids); break;
       case 'restore': restore(ids); break;
       case 'empty': emptyTrash(); break;
     }

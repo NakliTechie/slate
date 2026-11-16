@@ -5,15 +5,20 @@
 //   initImport(lib, ui)        call once; the view then shows a control that calls openImportDialog()
 //   openImportDialog()         the dialog: zip parts, destination folder, progress, final count
 //   importTakeoutZips(opts)    the work, without DOM; tests drive it with a fake zip module
+//   openICloudDialog()         "Apply iCloud export details…" (spec row I5): pick the CSV files of an
+//                              iCloud Photos export for one library folder; icloud.js matches them by
+//                              file name and sets favourites, hidden, albums and missing dates
 //
 // zip.js loads from esm.sh at a pinned version on first use (SECURITY.md). Memory stays near
 // one entry's size: each entry streams into its file, and nothing is held for the whole zip.
 
 import { kindOf, extOf } from '../../library/schema.js';
 import { esc } from '../../core/html.js';
+import { applyICloudCsv } from '../../library/icloud.js';
 
 export const ZIP_URL = 'https://esm.sh/@zip.js/zip.js@2.24.0';
 export const IMPORT_LABEL = 'Import Google Takeout…';
+export const ICLOUD_LABEL = 'Apply iCloud export details…';
 
 let zipPromise = null;
 function loadZip() {
@@ -23,7 +28,7 @@ function loadZip() {
 }
 
 let _lib = null, _ui = null;
-export function initImport(lib, ui) { _lib = lib; _ui = ui; return { openImportDialog, label: IMPORT_LABEL }; }
+export function initImport(lib, ui) { _lib = lib; _ui = ui; return { openImportDialog, openICloudDialog, label: IMPORT_LABEL }; }
 
 // "Takeout/Google Photos/Trip 2024/IMG_1.jpg" -> ['Trip 2024', 'IMG_1.jpg']. The product folder
 // name is localised (Google Fotos, Google Photos), so the segment after "Takeout" is dropped
@@ -113,7 +118,8 @@ export function openImportDialog() {
         <span class="imp-dest-name">No folder chosen</span></div>
       <div class="imp-progress" hidden><progress class="imp-bar" max="1" value="0"></progress>
         <p class="imp-status" role="status" aria-live="polite"></p></div>
-      <div class="modal-footer"><button type="button" class="btn imp-cancel">Cancel</button>
+      <div class="modal-footer"><button type="button" class="btn imp-icloud">${esc(ICLOUD_LABEL)}</button>
+        <button type="button" class="btn imp-cancel">Cancel</button>
         <button type="button" class="btn btn-primary imp-go" disabled>Import</button></div>
     </div>`;
   document.body.appendChild(dlg);
@@ -125,6 +131,7 @@ export function openImportDialog() {
   const say = (m, level = 'info') => (_ui?.toast ? _ui.toast(m, level) : console.log(m));
 
   zipsEl.addEventListener('change', ready);
+  $('.imp-icloud').addEventListener('click', () => { if (running) return; dlg.close(); openICloudDialog(); });
   $('.imp-dest').addEventListener('click', async () => {
     try { dest = await window.showDirectoryPicker({ mode: 'readwrite', id: 'slate-takeout' }); }
     catch (e) { if (e?.name !== 'AbortError') say(`Could not open that folder: ${e.message}`, 'error'); return; }
@@ -184,4 +191,76 @@ async function addOrRescan(lib, handle) {
     if (r.handle && await r.handle.isSameEntry?.(handle)) return lib.rescan(r.id);
   }
   return lib.addRoot({ handle });
+}
+
+// ── iCloud export details (I5) ──────────────────────────────────────────────
+// The photos of an iCloud export are added as a library folder first (they scan like any
+// folder); this dialog then applies the export's CSV files to that folder.
+export function openICloudDialog() {
+  if (typeof document === 'undefined' || !_lib) return;
+  const roots = [..._lib.roots.values()];
+  const prev = document.activeElement;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'imp-dialog';
+  dlg.setAttribute('aria-labelledby', 'imp-icloud-title');
+  dlg.innerHTML = `<div class="modal-header"><h2 id="imp-icloud-title">${esc('Apply iCloud export details')}</h2></div>
+    <div class="imp-body">
+      <p class="imp-text">Add the folder of iCloud photos to the library first. Then choose its CSV files: Photo Details.csv for favourites, hidden photos and dates, and the files in Albums for albums. Photos are matched by file name. A date from the CSV is used only for a photo with no date of its own.</p>
+      ${roots.length ? '' : '<p class="imp-warn">Add the folder of iCloud photos to the library first.</p>'}
+      <label class="imp-label">Library folder
+        <select class="imp-root"${roots.length ? '' : ' disabled'}>${roots.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>
+      <label class="imp-label">CSV files from the export
+        <input type="file" class="imp-csv" accept=".csv,text/csv" multiple${roots.length ? '' : ' disabled'}></label>
+      <div class="imp-status" role="status" aria-live="polite"></div>
+      <div class="modal-footer"><button type="button" class="btn imp-close">Cancel</button>
+        <button type="button" class="btn imp-check" disabled>Check</button>
+        <button type="button" class="btn btn-primary imp-apply" disabled>Apply</button></div>
+    </div>`;
+  document.body.appendChild(dlg);
+  const $ = s => dlg.querySelector(s);
+  const csvEl = $('.imp-csv'), rootEl = $('.imp-root'), statusEl = $('.imp-status'), applyEl = $('.imp-apply'), checkEl = $('.imp-check');
+  const say = (m, level = 'info') => (_ui?.toast ? _ui.toast(m, level) : console.log(m));
+  const n = (v) => v.toLocaleString('en-GB');
+  let checked = null;
+
+  const read = async () => Promise.all([...csvEl.files].map(async f => ({ name: f.webkitRelativePath || f.name, text: await f.text() })));
+  const describe = (r) => {
+    const lines = [`Matched ${n(r.matched)} photos by name${r.unmatched ? `; ${n(r.unmatched)} names in the CSV are not in this folder` : ''}.`];
+    lines.push(`Favourites: ${n(r.favourites)}. Hidden: ${n(r.hidden)}. Dates filled: ${n(r.dates)}.`);
+    for (const a of r.albums) lines.push(`Album ${a.name}: ${a.created ? 'new, ' : ''}${n(a.added)} photos added.`);
+    if (r.skippedFiles) lines.push(`${n(r.skippedFiles)} CSV files were not recognised and are skipped.`);
+    return lines.map(l => `<p>${esc(l)}</p>`).join('');
+  };
+  const reset = () => { checked = null; applyEl.disabled = true; checkEl.disabled = !csvEl.files.length; statusEl.textContent = ''; };
+  csvEl.addEventListener('change', reset);
+  rootEl.addEventListener('change', reset);
+  checkEl.addEventListener('click', async () => {
+    try {
+      const texts = await read();
+      const r = await applyICloudCsv(_lib, rootEl.value, texts, { dryRun: true });
+      statusEl.innerHTML = describe(r);
+      const any = r.favourites + r.hidden + r.dates + r.albums.length;
+      if (any) { checked = texts; applyEl.disabled = false; applyEl.focus(); }
+      else statusEl.insertAdjacentHTML('beforeend', '<p>There is nothing to change.</p>');
+    } catch (e) { statusEl.textContent = e.message; }
+  });
+  applyEl.addEventListener('click', async () => {
+    if (!checked) return;
+    applyEl.disabled = true; checkEl.disabled = true;
+    try {
+      const r = await applyICloudCsv(_lib, rootEl.value, checked);
+      checked = null;
+      statusEl.innerHTML = `<p>${esc(`Applied ${n(r.changed)} changes.`)}</p>${r.undo ? '<button type="button" class="btn imp-undo">Undo</button>' : ''}`;
+      $('.imp-undo')?.addEventListener('click', async () => {
+        try { await _lib.undo(r.undo); statusEl.textContent = 'Undone.'; } catch (e) { statusEl.textContent = e.message; }
+      });
+      say(`Applied the iCloud export details: ${n(r.changed)} changes`, 'ok');
+      $('.imp-close').textContent = 'Close';
+    } catch (e) { statusEl.textContent = e.message; checkEl.disabled = false; }
+  });
+  $('.imp-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('keydown', e => e.stopPropagation());
+  dlg.addEventListener('close', () => { dlg.remove(); prev?.focus?.(); });
+  dlg.showModal();
+  (roots.length ? rootEl : $('.imp-close')).focus();
 }

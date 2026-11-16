@@ -12,6 +12,10 @@
 // (favourite, hidden, and the reject flag) once: only for a photo new to the index that has no
 // entry in the library file, so a later rescan never overrides what the person chose.
 // When any photo has Takeout JSON, the result also holds takeout: { matched, favourites, hidden, rejected }.
+//
+// Apple Live Photos (row M7): a HEIC or JPEG and a MOV with the same stem in the same folder
+// (IMG_1234.HEIC + IMG_1234.MOV) are one photo. The MOV gets no record of its own; the photo
+// record carries `liveVideo: '<relative path of the MOV>'`. A MOV with no such photo stays a video.
 
 import { isSkippedDir, kindOf, extOf, makeId, newRecord, unchanged, folderOf, SIDECAR_EXT } from './schema.js';
 import { relPathOf } from './library.js';
@@ -44,6 +48,9 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     if (folderOf(path).split('/').some(s => s && isSkippedDir(s))) continue;
     add(path, async () => f);
   }
+
+  const { live, movs } = pairLivePhotos(found.map(e => e.path));
+  if (movs.size) found.splice(0, found.length, ...found.filter(e => !movs.has(e.path)));
 
   const seen = new Set(found.map(e => makeId(root.id, e.path)));
   const takeout = { matched: 0, favourites: 0, hidden: 0, rejected: 0 };
@@ -82,7 +89,8 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     const side = sideOpen ? await sideOpen() : null;
     const tjOpen = takeoutFor.get(entry.path);
     const tj = tjOpen ? await tjOpen() : null;
-    const sideChanged = old && (!!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
+    const liveVideo = live.get(entry.path) ?? null;
+    const sideChanged = old && ((old.liveVideo ?? null) !== liveVideo || !!side !== !!old.sidecar || (side && side.lastModified > old.indexed)
       || !!tj !== !!old.takeout || (tj && tj.lastModified > old.indexed));
     if (!full && old && unchanged(old, file) && !sideChanged) {
       res.unchanged++;
@@ -91,6 +99,7 @@ export async function scanRoot(lib, root, { full = false } = {}) {
     }
     const rec = newRecord(root.id, entry.path, file);
     Object.assign(rec, await readMetadata(file, rec));
+    if (liveVideo) rec.liveVideo = liveVideo;
     if (side) applySidecar(rec, parseXmp(await side.text()));
     if (tj) {
       const t = readTakeoutJson(await tj.text());
@@ -117,6 +126,26 @@ export async function scanRoot(lib, root, { full = false } = {}) {
   await applyTakeoutChoices(lib, fromTakeout, takeout);
   for (const r of lib.records.values()) if (r.rootId === root.id && r.missing) res.missing++;
   return res;
+}
+
+// Live Photo pairs (row M7) among relative paths: photo path -> MOV path, and the set of paired MOVs.
+const LIVE_STILLS = ['heic', 'heif', 'jpg', 'jpeg'];
+export function pairLivePhotos(paths) {
+  const stills = new Map(); // folder/stem (lower case) -> photo path, preferring HEIC over JPEG
+  const stemKey = (p) => { const n = p.slice(p.lastIndexOf('/') + 1); const i = n.lastIndexOf('.'); return `${folderOf(p)}/${(i < 0 ? n : n.slice(0, i)).toLowerCase()}`; };
+  for (const p of paths) {
+    const rank = LIVE_STILLS.indexOf(extOf(p));
+    if (rank < 0) continue;
+    const k = stemKey(p), had = stills.get(k);
+    if (!had || rank < LIVE_STILLS.indexOf(extOf(had))) stills.set(k, p);
+  }
+  const live = new Map(), movs = new Set();
+  for (const p of paths) {
+    if (extOf(p) !== 'mov') continue;
+    const still = stills.get(stemKey(p));
+    if (still && !live.has(still)) { live.set(still, p); movs.add(p); }
+  }
+  return { live, movs };
 }
 
 // The sidecar wins over embedded metadata for tags, rating, time and GPS.

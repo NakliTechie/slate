@@ -1,6 +1,11 @@
 // Reads capture metadata from the head of a photo with exifr. See docs/architecture.md "Scan".
 //
-//   readMetadata(file, record) -> { time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating }
+//   readMetadata(file, record) -> { time, timeSource: 'exif', w, h, orient, camera, lens, lat, lon, xmpTags, xmpRating, motion }
+//
+// `motion` (row M6) marks a Google Motion Photo: { offset, length } in bytes, where the
+// embedded MP4 starts `offset` bytes before the end of the file and runs `length` bytes.
+// motionFromXmp(text) reads it from the XMP packet; readMetadata keeps it only when the
+// bytes at that place start an MP4 ('ftyp' box).
 //
 // Only the fields found are set. It never throws: unreadable metadata gives {}.
 // Capture time is the EXIF wall clock stored as if it were UTC (schema.wallClockToTime),
@@ -14,6 +19,10 @@ const EXIF_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif',
   'dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
 // TIFF-based RAW files keep the preview size in IFD0, so IFD0 width and height are not the photo's.
 const RAW_EXTS = new Set(['dng', 'cr2', 'nef', 'arw', 'orf', 'rw2', 'raf', 'cr3']);
+// Formats a Motion Photo can be (row M6).
+const MOTION_EXTS = new Set(['jpg', 'jpeg', 'heic', 'heif']);
+// The main XMP packet sits in the first APP1 blocks of a JPEG; HEIC keeps it near the head too.
+const XMP_BYTES = 256 * 1024;
 // Bytes read where exifr cannot read a Blob in chunks itself (Node has no FileReader).
 const HEAD_BYTES = 512 * 1024;
 
@@ -31,7 +40,12 @@ export async function readMetadata(file, record) {
     // In the browser exifr reads the File in chunks from its head; elsewhere hand it the head.
     const input = typeof FileReader === 'function' ? file : new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
     const m = await parse(input, OPTIONS);
-    return m ? fieldsFrom(m, RAW_EXTS.has(ext)) : {};
+    const out = m ? fieldsFrom(m, RAW_EXTS.has(ext)) : {};
+    if (MOTION_EXTS.has(ext)) {
+      const motion = await readMotion(file);
+      if (motion) out.motion = motion;
+    }
+    return out;
   } catch {
     return {};
   }
@@ -81,3 +95,66 @@ export function parseWallClock(v) {
 function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.round(n) : 0; }
 function str(v) { return typeof v === 'string' ? v.replace(/\0+$/, '').trim() : ''; }
 function list(v) { return v == null ? [] : Array.isArray(v) ? v : [v]; }
+
+// ── Motion Photos (row M6) ─────────────────────────────────────────────────
+
+async function readMotion(file) {
+  const head = latin1(new Uint8Array(await file.slice(0, XMP_BYTES).arrayBuffer()));
+  const motion = motionFromXmp(head);
+  if (!motion || motion.offset > file.size || motion.length > motion.offset) return null;
+  const at = file.size - motion.offset;
+  const box = latin1(new Uint8Array(await file.slice(at + 4, at + 8).arrayBuffer()));
+  return box === 'ftyp' ? motion : null;
+}
+
+function latin1(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return s;
+}
+
+// A property written as an attribute (ns:Name="v") or as an element (<ns:Name>v</ns:Name>).
+function prop(text, names) {
+  for (const n of names) {
+    const x = new RegExp(`${n}\\s*=\\s*["']([^"']*)["']|<${n}>([^<]*)<`).exec(text);
+    if (x) return (x[1] ?? x[2]).trim();
+  }
+  return null;
+}
+
+/**
+ * The embedded video of a Google Motion Photo, from XMP text (or any text holding the packet).
+ * Reads the Container directory (Container:Item with Item:Length and Item:Padding, or the
+ * older GContainer:Item with GContainer:ItemLength), else the older GCamera:MicroVideoOffset.
+ * @returns {{ offset: number, length: number } | null}  bytes from the end of the file
+ */
+export function motionFromXmp(text) {
+  if (typeof text !== 'string' || !text) return null;
+  const flag = prop(text, ['GCamera:MotionPhoto', 'GCamera:MicroVideo']);
+  if (flag === '0') return null;
+
+  // Container directory: items in file order; the video is the item whose semantic is
+  // MotionPhoto (or whose mime is video/*). Everything from it to the end follows the image.
+  const starts = [...text.matchAll(/<(?:Container|GContainer):Item\b/g)].map(m => m.index);
+  const items = starts.map((s, k) => {
+    const end = k + 1 < starts.length ? starts[k + 1] : text.indexOf('</rdf:Seq>', s) >>> 0;
+    const part = text.slice(s, end);
+    return {
+      semantic: prop(part, ['Item:Semantic', 'GContainer:ItemSemantic']) || '',
+      mime: prop(part, ['Item:Mime', 'GContainer:ItemMime']) || '',
+      length: Number(prop(part, ['Item:Length', 'GContainer:ItemLength']) || 0),
+      padding: Number(prop(part, ['Item:Padding', 'GContainer:ItemPadding']) || 0),
+    };
+  });
+  let k = items.findIndex(i => i.semantic === 'MotionPhoto');
+  if (k < 0) k = items.findIndex(i => i.mime.startsWith('video/'));
+  if (k > 0 && items[k].length > 0) {
+    let offset = 0;
+    for (let j = k; j < items.length; j++) offset += (items[j].length || 0) + (j < items.length - 1 ? items[j].padding || 0 : 0);
+    if (Number.isFinite(offset)) return { offset, length: items[k].length };
+  }
+
+  const micro = Number(prop(text, ['GCamera:MicroVideoOffset']));
+  if (micro > 0 && flag !== '0') return { offset: micro, length: micro };
+  return null;
+}

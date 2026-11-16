@@ -29,6 +29,7 @@ src/ui/library/
   view.js             Library mode: sidebar, search, grid, scrubber, viewer (grid agent)
   library.css         its styles                                           (grid agent)
   organise.js         action bar, culling keys, tag and album dialogs      (organise agent)
+src/editor/commands.js  editor commands (image.*) appended to the library's command list
 src/vendor/exifr.mjs  exifr 7.1.3 full ESM build, MIT                      (scan agent)
 commands.json         written by scripts/gen-commands.mjs from manifest()
 tests/test-*.mjs      Node tests; `npm test` builds and runs them all
@@ -118,7 +119,7 @@ The view owns layout, the sidebar (Timeline, Favourites, Videos, Albums, Folders
 
 ## Agent door (door.js, commands.js)
 
-`commands.js` is the one list. `door.js` registers it with `naklios.experimental_commands.register`. Each entry's handler is `input => runCommand(lib, name, input, { ui })`. Standalone, the SDK no-ops. Rules from the NakliOS rail: names match `/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*){0,3}$/`, scopes are read, write or destructive, at most 64 commands reach chat, and results stay under 256 KB. Write commands take at most 200 ids, `photo.bulk` (destructive) takes more, and `photo.trash`, `trash.empty` and `album.delete` are destructive, so NakliOS stages them for the person.
+`commands.js` is the one list: 26 library commands plus 12 editor commands from `src/editor/commands.js`. `door.js` registers it with `naklios.experimental_commands.register`, and also as WebMCP tools (`slate_<name with underscores>`) when `navigator.modelContext.registerTool` exists; destructive tools ask `confirm()` first. Each entry's handler is `input => runCommand(lib, name, input, { ui })`. Standalone, the SDK no-ops. Rules from the NakliOS rail: names match `/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*){0,3}$/`, scopes are read, write or destructive, at most 64 commands reach chat, and results stay under 256 KB. Write commands take at most 200 ids, `photo.bulk` (destructive) takes more, and `photo.trash`, `trash.empty` and `album.delete` are destructive, so NakliOS stages them for the person.
 
 ## Testing
 

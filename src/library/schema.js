@@ -64,7 +64,7 @@ export function folderOf(path) {
  * @property {number} size      bytes
  * @property {number} mtime     File.lastModified, ms
  * @property {number} time      capture time, ms since epoch (local wall clock read as UTC; see note)
- * @property {'exif'|'xmp'|'takeout'|'file'} timeSource
+ * @property {'exif'|'xmp'|'takeout'|'icloud'|'file'} timeSource
  * @property {number} w         pixel width after orientation (0 when unknown)
  * @property {number} h         pixel height after orientation (0 when unknown)
  * @property {number} orient    EXIF orientation 1..8 (1 when unknown)
@@ -81,6 +81,8 @@ export function folderOf(path) {
  * @property {boolean} [takeout]  the file had a Google Takeout JSON beside it
  * @property {string} [dhash]    64-bit perceptual hash as 16 hex characters, from the thumbnail (duplicates)
  * @property {string} [sha256]   content hash, computed only for files whose size another file shares
+ * @property {{offset:number,length:number}} [motion] a Google Motion Photo's embedded MP4, as bytes from the end of the file
+ * @property {string} [liveVideo] path of the paired Apple Live Photo MOV in the same folder (that MOV has no record of its own)
  * @property {boolean} missing  last rescan did not find the file
  * @property {number} indexed   ms when this row was written
  *

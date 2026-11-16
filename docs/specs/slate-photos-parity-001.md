@@ -56,7 +56,7 @@ Read from `src/` on 2026-11-16:
 | L6 | Rebuild index: delete the index and thumbnails by name and rescan | R | v1 | Built. Checked: live check (`scripts/live-check.mjs`, Chrome over CDP, 2026-11-16, 44 of 44 at 10,000 and at 300 photos): Rebuild keeps every choice and album (v1 check 3) |
 | L7 | Storage panel: index size, thumbnail size, `navigator.storage.persist()` request | R | v1 | Built (storage.js). Checked: live check: the panel shows sizes and Rebuild index |
 | L8 | Browse-only mode on Firefox and Safari over a `webkitdirectory` pick | R | v1 | Built (webkitdirectory pick, library file kept in IndexedDB, Download library file). Checked: tests/test-library-organise.mjs kv fallback. Not driven in Firefox or Safari |
-| L9 | Watch for changes with `FileSystemObserver` where available | R | v1.x | Experimental and Chrome-only today |
+| L9 | Watch for changes with `FileSystemObserver` where available | R | v1.x | Built 2026-11-17 (watch.js: FileSystemObserver per root, rescan of that root after 1.5 s; the storage panel says whether watching is on). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): a file added to a watched OPFS folder appears without a rescan |
 | L10 | Copy-in mode: import files into OPFS for browsers with no folder access | R | Waived | Duplicates the user's photos into browser storage that Safari may delete |
 
 ## 2. Metadata and formats
@@ -68,8 +68,8 @@ Read from `src/` on 2026-11-16:
 | M3 | Videos (MP4, MOV, WebM) in the timeline with a poster frame and duration; play in a viewer | B | v1 | Built (poster, duration, viewer playback). Checked: live check: two WebM clips get posters and durations. MP4 and MOV not driven |
 | M4 | Read XMP sidecars: `dc:subject`, `xmp:Rating`, `xmp:Label`, date, GPS; both `photo.jpg.xmp` and `photo.xmp` | D R | v1 | Built (xmp.js). Checked: live check: a sidecar's tags and rating applied; tests/test-library-organise.mjs Lightroom, digiKam and darktable samples |
 | M5 | Write XMP sidecars for rating, label and keywords, as `photo.ext.xmp`, behind a setting | D L R | v1.x | Built 2026-11-17 (xmpwrite.js, setting in the storage panel, off by default; reject writes Rating -1; existing sidecar properties kept). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-xmpwrite.mjs. Known limit: a tag Slate wrote comes back as a file tag on rescan, so Slate cannot remove it |
-| M6 | Google Motion Photos: play the MP4 embedded at the end of the JPEG | G R | v1.x | Located through the Container XMP item lengths |
-| M7 | Apple Live Photos: pair a HEIC and MOV by name and play the movie | A R | v1.x | Pairing by content identifier unverified in the research |
+| M6 | Google Motion Photos: play the MP4 embedded at the end of the JPEG | G R | v1.x | Built 2026-11-17 (metadata.js reads the Container, GContainer and MicroVideoOffset forms and checks for an MP4 header; the viewer plays the clip by slicing the file). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): a Motion Photo built from an MP4 recorded in Chrome is found and plays; tests/test-library-motion.mjs |
+| M7 | Apple Live Photos: pair a HEIC and MOV by name and play the movie | A R | v1.x | Built 2026-11-17 (scan.js pairs a HEIC or JPEG with a same-name MOV; the MOV gets no tile; the viewer plays it). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17); tests/test-library-scan.mjs |
 | M8 | Ultra HDR gain maps shown as HDR | G | Waived | Tiles and viewer show the SDR base image, which every reader supports (R) |
 | M9 | Full RAW develop | L | Waived | Belongs to Atelier; the library uses the embedded preview |
 
@@ -85,7 +85,7 @@ Read from `src/` on 2026-11-16:
 | B6 | Multi-select with click, Shift-range, Ctrl, drag-lasso and select-all-in-day | B | v1 | Built. Checked: live check: click, Shift-click range (4), Cmd-click (5), Escape; tests/test-library-view.mjs lasso and day selection. Lasso and select-a-day not driven live |
 | B7 | Sort and filter bar: date range, file type, folder, camera, rating, flag, tag, favourite | L P | v1 | Built (filter bar). Checked: tests/test-library-core.mjs filters; the filter bar controls are not driven live |
 | B8 | Slideshow of any selection or album | B | v1 | Built (selection or view into the editor slideshow, at most 1,000 photos). Not driven live |
-| B9 | Stacks: group an edited version, bursts and RAW plus JPEG pairs under one tile | L I | v1.x | |
+| B9 | Stacks: group an edited version, bursts and RAW plus JPEG pairs under one tile | L I | v1.x | Built 2026-11-17 (stacks.js: Slate edits with their original, RAW plus JPEG, bursts of 3 or more within 1 s; "Stack similar files" toggle, on by default). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): 7 files show as 4 tiles; tests/test-library-stacks.mjs. RAW plus JPEG pairs checked in Node only |
 | B10 | Memories: "On this day" and year-ago groups | G A I P | v1.x | Built 2026-11-17 (memories.js: On this day, nearest day within 7 days when today has none, 29 February on 28 February). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-memories.mjs |
 
 ## 4. Organising and culling
@@ -101,7 +101,7 @@ Read from `src/` on 2026-11-16:
 | O7 | Edit from the library: open in the editor, save as a new version beside the original | S R | v1 | Built. Checked: live check: E opens the photo in the editor; Escape returns to the Library. Saving beside the original not driven live |
 | O8 | Batch from a selection: Slate's batch tools, contact sheet and gallery export run on the selected photos | S | v1 | Built (batch.js, gallery.js take a selection). Not driven live |
 | O9 | Locked folder: hidden photos behind a passphrase, encrypted at rest | G I | v1.x | Needs an encryption design; hide (O5) covers the common case |
-| O10 | Bulk rename and move between folders | D | v1.x | Destructive; through review |
+| O10 | Bulk rename and move between folders | D | v1.x | Built 2026-11-17 (move.js; Library.moveFiles and renameFiles re-key choices and albums; commands photo.move and photo.rename, destructive; dialogs require a dry run first). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): move keeps the favourite and undoes; rename from a template and undo; tests/test-library-move.mjs |
 
 ## 5. Search
 
@@ -147,7 +147,7 @@ Read from `src/` on 2026-11-16:
 | I2 | Google Takeout, extracted: match each JSON to its photo (47-character title truncation, `(N)` counters, `-edited` copies, fuzzy fallback); take the photo-taken time, description and GPS | G R | v1.x | Built 2026-11-17 (takeout.js: 47-character titles, (N) counters, -edited, supplemental-metadata, fuzzy match; scan applies time, GPS, caption, people, favourite, archived as hidden, trashed as reject). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-takeout.mjs 31 checks. The JSON is re-read on each rescan rather than written once to the library file |
 | I3 | Google Takeout zips read in place with zip.js, one part at a time | G R | v1.x | Built 2026-11-17 (import.js; zip.js 2.24.0 from esm.sh; album folders kept; existing files skipped). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): a synthetic zip imports, its dates apply, and a second import skips all 4 files. The dialog's pickers are not driven |
 | I4 | Export an album or selection as a folder of originals, or as a zip | B | v1.x | Built 2026-11-17 as a folder of originals (export.js; action bar and album menu). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17). Zip export not built |
-| I5 | iCloud takeout CSV for dates and albums | A | v1.x | As immich-go's `from-icloud` |
+| I5 | iCloud takeout CSV for dates and albums | A | v1.x | Built 2026-11-17 (icloud.js: Photo Details CSV favourite, hidden and dates; album CSVs become albums). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17); tests/test-library-icloud.mjs. Dates from the CSV are lost on a full rescan |
 
 ## 10. AI (removable: the library works fully without a model)
 
@@ -165,8 +165,8 @@ Read from `src/` on 2026-11-16:
 | N2 | Registered with `naklios.experimental_commands.register`; scopes read, write and destructive; more than 200 ids or any trash is destructive and goes through host review | R | v1 | Built (door.js). Checked: tests/test-library-door.mjs re-runs the rail's checks. Registration inside NakliOS is the NakliOS session's check |
 | N3 | `dryRun` on every write, and an undo token for each write | R | v1 | Built. Checked: tests/test-library-core.mjs dry runs and undo; live check: every change shows Undo |
 | N4 | Runs in the existing same-origin mirror at `naklios.dev/apps/slate/`, follows the host theme, signals `naklios.ready()` | R | v1 | Built (follows the host theme in door.js). Checked: live check: the Library restyles for light and dark. Running in the mirror is the NakliOS session's check |
-| N5 | Editor commands (crop, rotate, adjust, export) in the same manifest | S | v1.x | Extends the agent face to the existing editor |
-| N6 | Publish the same commands as WebMCP tools | R | v1.x | WebMCP is an experimental proposal |
+| N5 | Editor commands (crop, rotate, adjust, export) in the same manifest | S | v1.x | Built 2026-11-17 (src/editor/commands.js: 12 image.* commands through the editor's own op events; 40 commands in all). Checked: `scripts/live-check-v1x2.mjs` 10/10, twice (Chrome over CDP, 2026-11-17): open, rotate, adjust, undo and snapshot on the real editor; tests/test-editor-commands.mjs |
+| N6 | Publish the same commands as WebMCP tools | R | v1.x | Built 2026-11-17 (door.js registers every command as a WebMCP tool, slate_<name>, when navigator.modelContext exists; destructive tools ask first). Checked: tests/test-editor-commands.mjs with a fake navigator.modelContext. This Chrome has no navigator.modelContext, so it is not driven live |
 
 ## 12. Sharing and sync
 

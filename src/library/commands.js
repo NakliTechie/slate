@@ -12,6 +12,10 @@
 // Slate's own rules:
 //   - write commands take at most MAX_WRITE_IDS ids; `photo.bulk` (destructive) takes more;
 //   - every write takes `dryRun` and returns an `undo` token where the change can be undone.
+// The editor's commands (src/editor/commands.js, row N5) join the end of the list; they act on
+// the image open in the editor and are undone with image.undo.
+
+import { EDITOR_COMMANDS } from '../editor/commands.js';
 
 export const MAX_WRITE_IDS = 200;
 export const MAX_RESULTS = 500;
@@ -155,6 +159,12 @@ export const COMMANDS = [
         default: throw new Error(`unknown op: ${a.op}`);
       }
     } },
+  { name: 'photo.move', label: 'Move to folder', description: 'Move photos to another folder inside the same library folder; XMP sidecars move with them. NakliOS asks the person first, because files on disk change. Refuses to overwrite.', scope: 'destructive',
+    input: obj({ moves: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, toPath: { type: 'string', description: 'new path inside the same root, e.g. "2024/Goa/IMG_1.jpg"' } }, required: ['id', 'toPath'] }, minItems: 1, maxItems: 5000 }, dryRun }, ['moves']),
+    run: (lib, a) => lib.moveFiles(a.moves, a) },
+  { name: 'photo.rename', label: 'Rename', description: 'Rename photos in place from a template with {name}, {date}, {time}, {n} and {camera}. NakliOS asks the person first, because files on disk change. Refuses to overwrite.', scope: 'destructive',
+    input: obj({ ids: ids(5000), template: { type: 'string', description: 'e.g. "{date} Goa {n}"; the extension is kept' }, dryRun }, ['ids', 'template']),
+    run: (lib, a) => lib.renameFiles(capIds(a.ids, 5000), a.template, a) },
   { name: 'trash.empty', label: 'Empty trash', description: 'Permanently delete the files in the trash (all of them, or the given ids). This cannot be undone.', scope: 'destructive', input: obj({ ids: ids(100000), dryRun }),
     run: (lib, a) => lib.emptyTrash({ ids: a.ids ?? null, dryRun: a.dryRun }) },
 
@@ -173,6 +183,9 @@ export const COMMANDS = [
     run: (lib, a) => lib.albumSetCover(a.album, a.id, a) },
   { name: 'album.delete', label: 'Delete album', description: 'Delete an album. Its photos stay in the library.', scope: 'destructive', input: obj({ album: { type: 'string' }, dryRun }, ['album']),
     run: (lib, a) => lib.albumDelete(a.album, a) },
+
+  // ── the editor (row N5) ──────────────────────────────────────────────────
+  ...EDITOR_COMMANDS,
 ];
 
 const BY_NAME = new Map(COMMANDS.map(c => [c.name, c]));

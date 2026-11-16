@@ -400,6 +400,7 @@ async function doSave(showDialog = false) {
   const ext = exp.format === 'jpeg' ? 'jpg' : exp.format === 'tiff' ? 'tif' : exp.format;
   const filename = `${baseName}-${tstamp()}.${ext}`;
 
+  let savedName = null;
   try {
     if (exp.saveMode === 'overwrite' && entry?.handle) {
       // Overwriting reuses the original filename, so the bytes we write must
@@ -413,16 +414,19 @@ async function doSave(showDialog = false) {
       const confirmed = await confirmDialog('This replaces the original file. Undo history will be lost on next open.');
       if (!confirmed) return;
       await saveOverwrite(blob);
+      savedName = entry.name;
       emit('toast', { message: 'File overwritten.', level: 'ok' });
     } else if (exp.saveMode === 'sidecar' && session.folderHandle) {
       const saved = await saveSidecar(blob, ext);
+      savedName = saved;
       emit('toast', { message: `Saved as ${saved}`, level: 'ok' });
     } else {
       await saveDownload(blob, filename);
+      savedName = filename;
       emit('toast', { message: `Downloaded ${filename}`, level: 'ok' });
     }
     clearSession();
-    emit('save:complete', null);
+    emit('save:complete', { name: savedName });
   } catch (err) {
     emit('error', { message: `Save failed: ${err.message}` });
   }
