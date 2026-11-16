@@ -27,7 +27,7 @@ import { initFaces } from './faces.js';
 import { createClip } from './clip.js';
 import { initPeople } from '../ui/library/people.js';
 import { importTakeoutZips, ZIP_URL } from '../ui/library/import.js';
-import { exportFiles } from './export.js';
+import { exportFiles, exportZip } from './export.js';
 import { applyICloudCsv } from './icloud.js';
 import { buildStacks } from './stacks.js';
 
@@ -70,7 +70,7 @@ export async function initLibrary() {
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
     // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
-    mods: { importTakeoutZips, ZIP_URL, exportFiles, applyICloudCsv, buildStacks },
+    mods: { importTakeoutZips, ZIP_URL, exportFiles, exportZip, applyICloudCsv, buildStacks },
   };
   return lib;
 }

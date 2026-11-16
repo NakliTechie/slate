@@ -14,12 +14,14 @@ import * as adjustOp     from '../ops/adjust.js';
 import * as sharpenOp    from '../ops/sharpen.js';
 import * as straightenOp from '../ops/straighten.js';
 import * as lutOp        from '../ops/lut.js';
+import * as lensblurOp   from '../ops/lensblur.js';
 import { applyText, applyArrow } from '../ops/annotate.js';
 
 const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
   redact: redactOp, blur: blurOp, pixelate: pixelateOp, resize: resizeOp,
   adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp, lut: lutOp,
+  lensblur: lensblurOp,
 };
 
 export function initOpRunner() {
@@ -77,17 +79,23 @@ export function initOpRunner() {
     if (!state.image.working || !recipe?.ops?.length) return;
     let done = 0, skipped = 0;
     for (const { op, params } of recipe.ops) {
-      if (!OPS[op] || (op === 'lut' && !params?.data)) { skipped++; continue; }
+      if (!OPS[op] || (op === 'lut' && !params?.data) || (op === 'lensblur' && !params?.depth?.data)) { skipped++; continue; }
       await runOp(op, params);
       done++;
     }
     emit('fit:window', null);
-    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows or a LUT not stored in the file)` : ''}.`, level: 'ok' });
+    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows, or a LUT or depth map not stored in the file)` : ''}.`, level: 'ok' });
   });
 
   on('op:lut', async (params) => {
     if (!state.image.working) return;
     await runOp('lut', params);
+  });
+
+  // Background blur: params carry the depth map, so replay never needs the depth model.
+  on('op:lensblur', async (params) => {
+    if (!state.image.working || !params?.depth) return;
+    await runOp('lensblur', params);
   });
 
   on('op:sharpen', async (params) => {

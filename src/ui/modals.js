@@ -1,5 +1,7 @@
 import { parseCube } from '../ops/lut.js';
 import { extractText } from '../ops/ocr.js';
+import { estimateDepth, depthDownloadMB } from '../ops/depth.js';
+import { renderLensBlur } from '../ops/lensblur.js';
 import { canDescribe, destination, describeImage } from '../ops/describe.js';
 import { state, savePrefs } from '../core/state.js';
 import { on, emit } from '../core/events.js';
@@ -10,6 +12,7 @@ export function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
   on('modal:ocr',       showOcr);
+  on('modal:lensblur',  showLensBlur);
   on('modal:describe',  showDescribe);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
@@ -219,6 +222,79 @@ async function showOcr() {
     a.download = `${name}.txt`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
+}
+
+// ── Background blur ───────────────────────────────────────────────────────────
+
+const LB_PREVIEW_W = 560, LB_PREVIEW_H = 400;
+
+async function showLensBlur() {
+  if (!state.image.working) return;
+  const src = state.image.working;
+  const dlg = getOrCreate('modal-lensblur');
+  dlg.setAttribute('aria-label', 'Background blur');
+  const k = Math.min(1, LB_PREVIEW_W / src.width, LB_PREVIEW_H / src.height);
+  const pw = Math.max(1, Math.round(src.width * k)), ph = Math.max(1, Math.round(src.height * k));
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Background blur</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="lb-status" role="status">Finding depth in this image…</p>
+      <div style="position:relative;width:${pw}px;height:${ph}px;margin:0 auto">
+        <canvas id="lb-preview" width="${pw}" height="${ph}" style="display:block;width:${pw}px;height:${ph}px;cursor:crosshair" aria-label="Preview. Click to set the focus point."></canvas>
+        <div id="lb-marker" aria-hidden="true" style="position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;left:50%;top:50%"></div>
+      </div>
+      <p class="help-p" style="margin:4px 0 0">Click the preview to choose what stays sharp. Areas nearer or farther than that point get more blur.</p>
+      ${slider('lb-strength', 'Strength', 0, 100, 1, 50)}
+      <p class="modal-info" style="font-size:11px;color:var(--fg-2)">Depth is estimated on this device. The depth model (about ${depthDownloadMB()} MB) downloads the first time and is then cached.</p>
+    </div>
+    ${modalFooter()}`;
+  const status = dlg.querySelector('#lb-status'), cv = dlg.querySelector('#lb-preview'), marker = dlg.querySelector('#lb-marker');
+  const strength = dlg.querySelector('#lb-strength'), applyBtn = dlg.querySelector('[data-apply]');
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(src, 0, 0, pw, ph);
+  const base = ctx.getImageData(0, 0, pw, ph);
+  const focus = { x: 0.5, y: 0.5 };
+  let depth = null, queued = false;
+  applyBtn.disabled = true;
+
+  const render = () => {
+    queued = false;
+    if (!depth || !dlg.open) return;
+    const px = renderLensBlur(base.data, pw, ph, { focus, strength: +strength.value, depth });
+    ctx.putImageData(new ImageData(px, pw, ph), 0, 0);
+  };
+  const update = () => { if (!queued) { queued = true; requestAnimationFrame(render); } };
+
+  bindSlider(dlg, 'lb-strength', '', update);
+  cv.addEventListener('click', (e) => {
+    const r = cv.getBoundingClientRect();
+    focus.x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    focus.y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    marker.style.left = `${focus.x * 100}%`;
+    marker.style.top = `${focus.y * 100}%`;
+    update();
+  });
+  bindFooter(dlg, () => {
+    if (!depth) return;
+    emit('toast', { message: 'Applying background blur…', level: 'ok', duration: 1500 });
+    emit('op:lensblur', { focus: { ...focus }, strength: +strength.value, depth });
+  });
+
+  dlg.showModal();
+  try {
+    depth = await estimateDepth(src, {
+      onProgress: (p) => {
+        if (!dlg.open || p?.status !== 'progress' || !p.total) return;
+        status.textContent = `Downloading the depth model (${Math.round(p.loaded / 1e6)} of ${Math.round(p.total / 1e6)} MB)…`;
+      },
+    });
+    if (!dlg.open) return;
+    status.textContent = 'Click the preview to set the focus point.';
+    applyBtn.disabled = false;
+    render();
+  } catch (err) {
+    status.textContent = `Could not estimate depth: ${err.message}. The depth model needs a connection the first time.`;
+  }
 }
 
 // ── Describe (NakliOS host model) ─────────────────────────────────────────────

@@ -1,7 +1,7 @@
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
 // the Trash view actions, and Export (copy the originals of the selection or an
-// album into a folder), Read text for the selection (row X3, textindex.js) and
+// album into a folder, or into one .zip file), Read text for the selection (row X3, textindex.js) and
 // the lock on hidden photos in the Hidden view (row O9, locked.js). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
@@ -11,7 +11,8 @@
 import { runCommand, MAX_WRITE_IDS } from '../../library/commands.js';
 import { emit, on } from '../../core/events.js';
 import { esc } from '../../core/html.js';
-import { exportFiles, pickExportFolder, albumExportIds } from '../../library/export.js';
+import { exportFiles, pickExportFolder, albumExportIds, exportZip, pickZipSave, zipFileName, BLOB_WARN_BYTES } from '../../library/export.js';
+import { ZIP_URL } from './import.js';
 import { splitId, normPath } from '../../library/schema.js';
 import { RENAME_FIELDS } from '../../library/move.js';
 
@@ -484,7 +485,7 @@ export function initOrganise(lib, ui) {
         if (!id) { say('Focus a photo in this album first', 'warn'); return; }
         try { const r = await run('album.cover', { album: albumId, id }); done(`Set the cover of ${al.name}`, [r.undo]); } catch (e) { fail(e); }
       } },
-      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`) },
+      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`, al.name) },
       { label: 'Delete album', danger: true, run: async () => {
         try { const r = await run('album.delete', { album: albumId }); done(`Deleted the album ${al.name}; its photos stay in the library`, [r.undo]); } catch (e) { fail(e); }
       } },
@@ -492,19 +493,77 @@ export function initOrganise(lib, ui) {
   };
 
   // ── export ─────────────────────────────────────────────────────────────
-  // The folder picker opens first, inside the click, as the browser requires.
-  async function exportTo(getIds, what) {
+  // The dialog asks for a folder of originals or one .zip file. The folder or save
+  // picker then opens first inside the Export click, as the browser requires.
+  let zipPromise = null;
+  const loadZip = () => (zipPromise ??= import(ZIP_URL)
+    .then((z) => { z.configure?.({ useWebWorkers: false }); return z; })
+    .catch((e) => { zipPromise = null; throw new Error(`Could not load zip.js from esm.sh: ${e.message}`); }));
+
+  function exportTo(getIds, what, label) {
+    let ids;
+    try { ids = getIds(); } catch (e) { fail(e); return; }
+    if (!ids.length) { say('There is nothing to export', 'warn'); return; }
+    const bytes = ids.reduce((n, id) => n + (lib.get(id)?.size || 0), 0);
+    const inMemory = typeof window.showSaveFilePicker !== 'function' && bytes > BLOB_WARN_BYTES;
+    openDialog(`Export ${plural(ids.length, 'file')}`, (body, close) => {
+      body.innerHTML = `<p class="org-text">Slate copies the original files byte for byte. Nothing is re-encoded.</p>
+        <fieldset class="org-choice"><legend class="org-label">Export as</legend>
+          <label class="org-radio"><input type="radio" name="org-export" value="folder" checked autofocus> Folder of originals</label>
+          <label class="org-radio"><input type="radio" name="org-export" value="zip"> One .zip file</label>
+        </fieldset>
+        ${inMemory ? `<p class="modal-info org-warn" style="display:none">This browser cannot write the zip to disk as it goes, so it holds all ${(bytes / 1024 ** 3).toFixed(1)} GB in memory before the download. Use Chrome or Edge, or export a folder.</p>` : ''}
+        <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+        <button type="button" class="btn btn-primary" data-go>Export</button></div>`;
+      const mode = () => body.querySelector('input[name="org-export"]:checked').value;
+      const warn = body.querySelector('.org-warn');
+      body.querySelector('.org-choice').addEventListener('change', () => { if (warn) warn.style.display = mode() === 'zip' ? '' : 'none'; });
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('[data-go]').addEventListener('click', () => {
+        const m = mode();
+        close();
+        if (m === 'zip') exportToZip(ids, what, label); else exportToFolder(ids, what);
+      });
+    });
+  }
+
+  async function exportToFolder(ids, what) {
     let dest;
     try { dest = await pickExportFolder(); } catch (e) { fail(e); return; }
     if (!dest) return;
     try {
-      const ids = getIds();
-      if (!ids.length) { say('There is nothing to export', 'warn'); return; }
       say(`Exporting ${plural(ids.length, 'file')} to ${dest.name}`);
       const r = await exportFiles(lib, ids, dest);
       const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}`;
       say(r.failed ? `${msg}; ${r.failed} could not be copied` : msg, r.failed ? 'warn' : 'ok');
     } catch (e) { fail(e); }
+  }
+
+  async function exportToZip(ids, what, label) {
+    const fileName = zipFileName(label);
+    let writer;
+    try { writer = await pickZipSave(fileName); } catch (e) { fail(e); return; }
+    if (writer === null) return;
+    const download = writer === undefined; // no save picker: build the zip in memory, then download it
+    try {
+      const zipLib = await loadZip();
+      if (download) writer = new zipLib.BlobWriter('application/zip');
+      say(`Exporting ${plural(ids.length, 'file')} to ${fileName}`);
+      const r = await exportZip(lib, ids, { zipLib, writer });
+      if (download) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(r.result);
+        a.download = fileName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      }
+      let msg = `Exported ${plural(r.copied, 'file')}${what} to ${fileName}`;
+      if (r.cancelled) msg = `Export cancelled; ${fileName} holds ${plural(r.copied, 'file')}`;
+      say(r.failed ? `${msg}; ${r.failed} could not be read` : msg, r.failed || r.cancelled ? 'warn' : 'ok');
+    } catch (e) {
+      if (!download) await writer.abort?.().catch(() => {});
+      fail(e);
+    }
   }
 
   // ── trash view ─────────────────────────────────────────────────────────
@@ -639,7 +698,7 @@ export function initOrganise(lib, ui) {
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
-      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder or one .zip file"${off}>Export…</button>
       ${lib.services.textIndex ? `<button type="button" class="btn" data-act="read-text" title="Find the words in these photos so search matches them"${off}>Read text</button>` : ''}${lockBtns}`;
   }
 

@@ -52,6 +52,7 @@ export function initToolbar() {
       ${btn('tb-sharpen', 'sharpen', 'Sharpen')}
       ${btn('tb-resize', 'resize', 'Resize image')}
       ${btn('tb-ocr', 'scan-text', 'Extract text')}
+      ${btn('tb-lensblur', 'lens-blur', 'Background blur')}
     </div>
     <div class="toolbar-group" aria-label="View">
       ${btn('tb-zoom-in', 'zoom-in', 'Zoom in (Ctrl++)')}
@@ -93,6 +94,7 @@ export function initToolbar() {
   bindButton('tb-straighten', () => emit('modal:straighten', null));
   bindButton('tb-adjust', () => emit('modal:adjust', null));
   bindButton('tb-ocr', () => emit('modal:ocr', null));
+  bindButton('tb-lensblur', () => emit('modal:lensblur', null));
   bindButton('tb-sharpen', () => emit('modal:sharpen', null));
   bindButton('tb-resize', () => emit('modal:resize', null));
 
@@ -161,7 +163,7 @@ function bindButton(id, handler) {
 function setToolsEnabled(enabled) {
   const ids = ['tb-save','tb-crop','tb-redact','tb-blur','tb-pixelate','tb-rotate-cw','tb-rotate-ccw',
     'tb-flip-h','tb-flip-v','tb-straighten','tb-adjust','tb-sharpen','tb-text','tb-arrow','tb-pencil',
-    'tb-shape','tb-eyedropper','tb-resize','tb-ocr','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
+    'tb-shape','tb-eyedropper','tb-resize','tb-ocr','tb-lensblur','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el) el.disabled = !enabled;

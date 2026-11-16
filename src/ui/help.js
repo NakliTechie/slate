@@ -193,6 +193,7 @@ function adjustments() {
       ${row('Saturation', 'Scales colour in Oklab, so hue and lightness hold')}
       ${row('Look (LUT)', 'Load a .cube file in Adjust and set its strength')}
       ${row('Sharpen', 'Unsharp-mask sharpening (0.1×–5×)')}
+      ${row('Background blur', 'Click what stays sharp; areas nearer or farther get more blur, set by Strength. A depth model runs on this device and downloads once (about 27 to 50 MB).')}
     `)}
     ${section('Geometry', `
       ${row('Resize', 'Set exact output dimensions; aspect lock keeps proportions')}

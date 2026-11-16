@@ -1106,6 +1106,48 @@
       }
     },
     {
+      "name": "image.extract_text",
+      "label": "Extract text",
+      "description": "Read printed English text from the open image on this device (Tesseract.js; downloads about 5 MB the first time). Returns the text and a confidence from 0 to 100.",
+      "scope": "read",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "image.lens_blur",
+      "label": "Background blur",
+      "description": "Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. The depth model (about 27 to 50 MB) downloads the first time. Undo with image.undo.",
+      "scope": "write",
+      "input": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "strength": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "default 50"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ]
+      }
+    },
+    {
       "name": "image.snapshot",
       "label": "Snapshot",
       "description": "A small JPEG data URL of the open image as it looks now (at most 512 px on the long edge), for looking at it.",

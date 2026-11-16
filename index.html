@@ -3009,6 +3009,11 @@ kbd {
 .org-error { color: var(--danger); }
 .org-dialog input[type="password"] { font: inherit; }
 
+.org-choice { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.org-choice legend { padding: 0; margin-bottom: var(--space-1); }
+.org-radio { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-0); }
+.org-warn { color: var(--warn, var(--fg-1)); }
+
 
 /* ui/library/people.css */
 /* ── Library People view (ui/library/people.js) ──────────────────────────── */
@@ -3514,6 +3519,10 @@ kbd {
     <!-- scan text (extract text) -->
     <symbol id="icon-scan-text" viewBox="0 0 24 24">
       <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="17" y2="13"/><line x1="7" y1="17" x2="13" y2="17"/>
+    </symbol>
+    <!-- lens-blur (background blur): a sharp subject circle over soft rings -->
+    <symbol id="icon-lens-blur" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="6.5" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="10" stroke-dasharray="1 3"/>
     </symbol>
     <!-- sliders (batch) -->
     <symbol id="icon-batch" viewBox="0 0 24 24">
@@ -4796,6 +4805,8 @@ function buildRecipe(ops, { w, h } = {}) {
   if (!ops?.length) return null;
   const list = ops.map(({ op, params }) => {
     if (op === 'lut') { const { data, ...rest } = params || {}; return { op, params: { ...rest, dataOmitted: true } }; }
+    // A depth map is about 200 KB, too large for a COM segment; the blur is recorded without it.
+    if (op === 'lensblur') { const { depth, ...rest } = params || {}; return { op, params: { ...rest, depthOmitted: true } }; }
     return { op, params };
   });
   const json = asciiJson({ app: 'slate', v: 1, w, h, ops: list });
@@ -6574,7 +6585,8 @@ const __m_library_licences = (() => {
 // fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
 // carry their own licence in what esm.sh serves. `jsdelivr` packages load the same way from
 // cdn.jsdelivr.net, and `huggingface` entries are model weights downloaded from huggingface.co;
-// both only after the person turns on Search by meaning (src/library/clip.js).
+// both only after the person turns on Search by meaning (src/library/clip.js) or first opens
+// Background blur (src/ops/depth.js).
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
 const LICENCES = [
@@ -6650,7 +6662,7 @@ SOFTWARE.` },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
   { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
-  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning: runs the CLIP model in a worker, only after you turn it on', source: 'https://github.com/huggingface/transformers.js' },
+  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning and Background blur: runs the CLIP and depth models in a worker, only after you turn on or first open them', source: 'https://github.com/huggingface/transformers.js' },
   { name: 'onnxruntime-web', version: '1.31.0-dev.20260914-8d85527a0', licence: 'MIT', loaded: 'jsdelivr', use: 'Fetched with @huggingface/transformers, with onnxruntime-common and its WebAssembly files', source: 'https://github.com/microsoft/onnxruntime' },
   { name: 'onnxruntime-web (faces)', version: '1.29.0', licence: 'MIT', loaded: 'jsdelivr', use: 'Runs the face models, only after you turn on People', source: 'https://github.com/microsoft/onnxruntime' },
   { name: 'YuNet face detector', version: '2023mar', licence: 'MIT', loaded: 'huggingface', use: 'Finds faces (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_detection_yunet' },
@@ -6660,6 +6672,7 @@ SOFTWARE.` },
   { name: 'maplibre-gl', version: '6.16.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Draws a map from your own .pmtiles file in Places, only when you choose one', source: 'https://github.com/maplibre/maplibre-gl-js' },
   { name: 'pmtiles', version: '4.5.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Reads your .pmtiles map file, with maplibre-gl', source: 'https://github.com/protomaps/PMTiles' },
   { name: 'Xenova/clip-vit-base-patch32', version: 'revision 6b7c523', licence: 'MIT', loaded: 'huggingface', use: 'OpenAI CLIP ViT-B/32 weights (ONNX) for Search by meaning, downloaded once after you turn it on', source: 'https://huggingface.co/Xenova/clip-vit-base-patch32' },
+  { name: 'onnx-community/depth-anything-v2-small', version: 'revision 4472b73', licence: 'Apache-2.0', loaded: 'huggingface', use: 'Depth Anything V2 Small weights (ONNX) for Background blur, about 50 MB (WebGPU) or 27 MB (WebAssembly), downloaded once the first time you open it; runs with @huggingface/transformers', source: 'https://huggingface.co/onnx-community/depth-anything-v2-small' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];
 
@@ -6865,6 +6878,7 @@ function adjustments() {
       ${row('Saturation', 'Scales colour in Oklab, so hue and lightness hold')}
       ${row('Look (LUT)', 'Load a .cube file in Adjust and set its strength')}
       ${row('Sharpen', 'Unsharp-mask sharpening (0.1×–5×)')}
+      ${row('Background blur', 'Click what stays sharp; areas nearer or farther get more blur, set by Strength. A depth model runs on this device and downloads once (about 27 to 50 MB).')}
     `)}
     ${section('Geometry', `
       ${row('Resize', 'Set exact output dimensions; aspect lock keeps proportions')}
@@ -7157,6 +7171,7 @@ function initToolbar() {
       ${btn('tb-sharpen', 'sharpen', 'Sharpen')}
       ${btn('tb-resize', 'resize', 'Resize image')}
       ${btn('tb-ocr', 'scan-text', 'Extract text')}
+      ${btn('tb-lensblur', 'lens-blur', 'Background blur')}
     </div>
     <div class="toolbar-group" aria-label="View">
       ${btn('tb-zoom-in', 'zoom-in', 'Zoom in (Ctrl++)')}
@@ -7198,6 +7213,7 @@ function initToolbar() {
   bindButton('tb-straighten', () => emit('modal:straighten', null));
   bindButton('tb-adjust', () => emit('modal:adjust', null));
   bindButton('tb-ocr', () => emit('modal:ocr', null));
+  bindButton('tb-lensblur', () => emit('modal:lensblur', null));
   bindButton('tb-sharpen', () => emit('modal:sharpen', null));
   bindButton('tb-resize', () => emit('modal:resize', null));
 
@@ -7266,7 +7282,7 @@ function bindButton(id, handler) {
 function setToolsEnabled(enabled) {
   const ids = ['tb-save','tb-crop','tb-redact','tb-blur','tb-pixelate','tb-rotate-cw','tb-rotate-ccw',
     'tb-flip-h','tb-flip-v','tb-straighten','tb-adjust','tb-sharpen','tb-text','tb-arrow','tb-pencil',
-    'tb-shape','tb-eyedropper','tb-resize','tb-ocr','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
+    'tb-shape','tb-eyedropper','tb-resize','tb-ocr','tb-lensblur','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el) el.disabled = !enabled;
@@ -9640,6 +9656,1136 @@ async function idbStore(name = DB_NAME) {
 return { DB_NAME, keepKv, DB_VERSION, memoryStore, idbStore };
 })();
 
+const __m_ops_ocr = (() => {
+// Extract text from the open image (plan/pending.md, 2026-10-14) with Tesseract.js (Apache-2.0).
+// Indra OCR was the first candidate, but its weights carry a modified OpenRAIL-M licence
+// ("cannot compete with our API"), so Slate does not ship it.
+//
+// Like the rare-format decoders, the library loads on first use from esm.sh at an exact
+// version. Its worker, core and English data then download from jsdelivr (about 5 MB, cached
+// by the browser). The image itself never leaves the page: recognition runs in a local worker.
+//
+// The photo library (src/library/textindex.js, row X3) uses the same worker: it passes a Blob
+// from ocrImage(file), a version of the photo at most 1600 px on the long edge.
+
+const TESSERACT_URL = 'https://esm.sh/tesseract.js@7.0.0';
+const OCR_MAX_EDGE = 1600;
+let workerPromise = null;
+
+async function getWorker(lang, onProgress) {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const mod = await import(/* @vite-ignore */ TESSERACT_URL);
+      const createWorker = mod.createWorker ?? mod.default?.createWorker;
+      if (!createWorker) throw new Error('the text recogniser did not load');
+      return createWorker(lang, 1, { logger: (m) => onProgressRef.fn?.(m) });
+    })().catch((err) => { workerPromise = null; throw err; });
+  }
+  onProgressRef.fn = onProgress;
+  return workerPromise;
+}
+const onProgressRef = { fn: null };
+
+// A PNG or the Blob itself, from a Blob, an ImageBitmap, an OffscreenCanvas or an HTMLCanvasElement.
+async function toBlob(source) {
+  if (typeof Blob !== 'undefined' && source instanceof Blob) return source;
+  let canvas = source;
+  if (!source.convertToBlob && !source.toBlob) {
+    canvas = new OffscreenCanvas(source.width, source.height);
+    canvas.getContext('2d').drawImage(source, 0, 0);
+  }
+  return canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/png' }) : new Promise(r => canvas.toBlob(r, 'image/png'));
+}
+
+// Returns { text, confidence }. `source` is a Blob, an ImageBitmap or a canvas.
+async function extractText(source, { lang = 'eng', onProgress } = {}) {
+  const worker = await getWorker(lang, onProgress);
+  const { data } = await worker.recognize(await toBlob(source));
+  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
+}
+
+// A version of a photo file for recognition: a PNG Blob at most `max` px on the long edge.
+// The browser applies the EXIF orientation while it decodes.
+async function ocrImage(file, max = OCR_MAX_EDGE) {
+  const full = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, max / Math.max(full.width, full.height));
+    const w = Math.max(1, Math.round(full.width * scale)), h = Math.max(1, Math.round(full.height * scale));
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext('2d').drawImage(full, 0, 0, w, h);
+    return await canvas.convertToBlob({ type: 'image/png' });
+  } finally { full.close?.(); }
+}
+
+// Trim trailing spaces on each line and collapse runs of three or more blank lines.
+function cleanText(text) {
+  return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+return { TESSERACT_URL, OCR_MAX_EDGE, extractText, ocrImage, cleanText };
+})();
+
+const __m_library_dupes = (() => {
+// Duplicates: exact copies (same size, same SHA-256) and near copies (64-bit
+// dHash within a Hamming distance). Pure, so Node runs every part of it.
+//
+//   dhashRGBA(data, w, h)            -> 16 hex chars; data is RGBA bytes of a w x h picture
+//   hamming(a, b)                    -> bits that differ between two 16-hex hashes
+//   sizeCollisions(records, opts)    -> records whose size another record shares
+//   exactGroups(records, hashOf, opts)        -> Promise<Group[]>
+//   nearGroups(records, opts)                 -> Group[]
+//   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
+//   rankKeeper(records, opts)        -> records sorted best keeper first
+//   clipGroups(records, vectorOf, opts) / clipGroupsAsync  -> Group[] of kind 'clip' (row D4, at the end)
+//
+// Group = { kind: 'exact'|'near'|'clip', key, ids, keeper }; ids are best keeper first.
+// opts.isTrashed(record) excludes a record (default: record.trashed);
+// opts.choiceOf(id) -> { fav, rating } feeds the keeper ranking.
+//
+// Near grouping splits the 64 bits into 4 blocks of 16. Two hashes within
+// distance d agree to within floor(d / 4) bits in at least one block, so each
+// hash looks up only the bucket values that close to its own blocks. With
+// d <= 11 that is at most 4 x 299 bucket probes per hash, never all pairs.
+// Matches are joined into groups (union-find), so a burst chains together.
+
+const DEFAULT_MAX_DISTANCE = 6;
+const MAX_DISTANCE_LIMIT = 11;
+
+// dHash: average the picture down to 9 x 8 grey cells (area average, so the
+// result does not depend on how the browser scales), then set one bit per
+// cell pair where the left cell is brighter than its right neighbour.
+// Self-contained: thumbs.js copies its source into the thumbnail worker.
+function dhashRGBA(data, w, h) {
+  const GW = 9, GH = 8;
+  const grey = new Float64Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++) {
+    const y0 = Math.floor(gy * h / GH), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * h / GH));
+    for (let gx = 0; gx < GW; gx++) {
+      const x0 = Math.floor(gx * w / GW), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * w / GW));
+      let sum = 0, n = 0;
+      for (let y = y0; y < y1 && y < h; y++) {
+        for (let x = x0; x < x1 && x < w; x++) {
+          const i = (y * w + x) * 4;
+          sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          n++;
+        }
+      }
+      grey[gy * GW + gx] = n ? sum / n : 0;
+    }
+  }
+  let hex = '';
+  for (let gy = 0; gy < GH; gy++) {
+    let byte = 0;
+    for (let gx = 0; gx < 8; gx++) byte = (byte << 1) | (grey[gy * GW + gx] > grey[gy * GW + gx + 1] ? 1 : 0);
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+const pop32 = (x) => {
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return (Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24);
+};
+
+function hamming(a, b) {
+  return pop32((parseInt(a.slice(0, 8), 16) ^ parseInt(b.slice(0, 8), 16)) >>> 0)
+    + pop32((parseInt(a.slice(8, 16), 16) ^ parseInt(b.slice(8, 16), 16)) >>> 0);
+}
+
+const defaultTrashed = (r) => !!r.trashed;
+const live = (records, opts = {}) => {
+  const isTrashed = opts.isTrashed ?? defaultTrashed;
+  const out = [];
+  for (const r of records) if (r && !r.missing && !isTrashed(r)) out.push(r);
+  return out;
+};
+
+// Best keeper first: most pixels, then favourite, then higher rating, then the
+// oldest file (lowest mtime), then id so the order is stable.
+function rankKeeper(records, opts = {}) {
+  const choiceOf = opts.choiceOf ?? (() => ({}));
+  const score = new Map(records.map(r => {
+    const c = choiceOf(r.id) ?? {};
+    return [r.id, { px: (r.w || 0) * (r.h || 0), fav: c.fav ? 1 : 0, rating: c.rating || 0 }];
+  }));
+  return [...records].sort((a, b) => {
+    const sa = score.get(a.id), sb = score.get(b.id);
+    return (sb.px - sa.px) || (sb.fav - sa.fav) || (sb.rating - sa.rating)
+      || ((a.mtime || 0) - (b.mtime || 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+}
+
+function toGroup(kind, key, members, opts) {
+  const ranked = rankKeeper(members, opts);
+  return { kind, key, ids: ranked.map(r => r.id), keeper: ranked[0].id };
+}
+
+// Records that share their byte size with another live record: the only ones
+// whose content hash is worth computing.
+function sizeCollisions(records, opts = {}) {
+  const bySize = new Map();
+  for (const r of live(records, opts)) {
+    if (!(r.size > 0)) continue;
+    const list = bySize.get(r.size);
+    if (list) list.push(r); else bySize.set(r.size, [r]);
+  }
+  const out = [];
+  for (const list of bySize.values()) if (list.length > 1) out.push(...list);
+  return out;
+}
+
+// hashOf(record) -> content hash (or a Promise of one); null or a throw leaves the record out.
+async function exactGroups(records, hashOf, opts = {}) {
+  const groups = new Map();
+  for (const r of sizeCollisions(records, opts)) {
+    let h = null;
+    try { h = await hashOf(r); } catch { h = null; }
+    if (!h) continue;
+    const key = `${r.size}:${h}`;
+    const list = groups.get(key);
+    if (list) list.push(r); else groups.set(key, [r]);
+  }
+  const out = [];
+  for (const [key, list] of groups) if (list.length > 1) out.push(toGroup('exact', key, list, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+// SHA-256 of a File, Blob or ArrayBuffer, as hex (browser and Node 20+).
+async function sha256Hex(data) {
+  const buf = data instanceof ArrayBuffer || ArrayBuffer.isView(data) ? data : await data.arrayBuffer();
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+  let hex = '';
+  for (const b of d) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
+
+// ── near grouping ─────────────────────────────────────────────────────────
+
+// Every 16-bit value within `r` bits of v.
+function neighbours(v, r) {
+  const out = [v];
+  if (r >= 1) for (let i = 0; i < 16; i++) out.push(v ^ (1 << i));
+  if (r >= 2) for (let i = 0; i < 16; i++) for (let j = i + 1; j < 16; j++) out.push(v ^ (1 << i) ^ (1 << j));
+  return out;
+}
+
+function* nearSteps(records, opts = {}) {
+  const d = Math.max(0, Math.min(MAX_DISTANCE_LIMIT, Math.floor(opts.maxDistance ?? DEFAULT_MAX_DISTANCE)));
+  const list = live(records, opts).filter(r => typeof r.dhash === 'string' && /^[0-9a-f]{16}$/.test(r.dhash));
+  const n = list.length;
+  const hi = new Uint32Array(n), lo = new Uint32Array(n);
+  for (let i = 0; i < n; i++) { hi[i] = parseInt(list[i].dhash.slice(0, 8), 16); lo[i] = parseInt(list[i].dhash.slice(8), 16); }
+  const block = (i, b) => b === 0 ? hi[i] >>> 16 : b === 1 ? hi[i] & 0xffff : b === 2 ? lo[i] >>> 16 : lo[i] & 0xffff;
+
+  // 4 bucket tables: block value -> indices.
+  const tables = [0, 1, 2, 3].map(() => new Map());
+  for (let i = 0; i < n; i++) {
+    for (let b = 0; b < 4; b++) {
+      const t = tables[b], v = block(i, b), s = t.get(v);
+      if (s) s.push(i); else t.set(v, [i]);
+    }
+  }
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const r = Math.floor(d / 4);
+  const STEP = 2000;
+  for (let i = 0; i < n; i++) {
+    for (let b = 0; b < 4; b++) {
+      for (const v of neighbours(block(i, b), r)) {
+        const s = tables[b].get(v);
+        if (!s) continue;
+        for (const j of s) {
+          if (j <= i) continue;
+          if (pop32((hi[i] ^ hi[j]) >>> 0) + pop32((lo[i] ^ lo[j]) >>> 0) > d) continue;
+          const a = find(i), c = find(j);
+          if (a !== c) parent[a] = c;
+        }
+      }
+    }
+    if ((i + 1) % STEP === 0) yield { done: i + 1, total: n };
+  }
+
+  const comps = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i), c = comps.get(root);
+    if (c) c.push(list[i]); else comps.set(root, [list[i]]);
+  }
+  const out = [];
+  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('near', members.map(m => m.id).sort()[0], members, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+function nearGroups(records, opts = {}) {
+  const it = nearSteps(records, opts);
+  for (;;) { const s = it.next(); if (s.done) return s.value; }
+}
+
+// The same result, handing the page back every 2,000 hashes. opts.onProgress({ done, total }),
+// opts.signal (AbortSignal) stops it with an AbortError.
+async function nearGroupsAsync(records, opts = {}) {
+  const it = nearSteps(records, opts);
+  for (;;) {
+    const s = it.next();
+    if (s.done) return s.value;
+    opts.onProgress?.(s.value);
+    await new Promise(res => setTimeout(res, 0));
+    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  }
+}
+
+// Near groups that only repeat an exact group add nothing; drop them.
+function dropCoveredNear(near, exact) {
+  const groupOf = new Map();
+  exact.forEach((g, i) => { for (const id of g.ids) groupOf.set(id, i); });
+  return near.filter(g => {
+    const first = groupOf.get(g.ids[0]);
+    return first === undefined || !g.ids.every(id => groupOf.get(id) === first);
+  });
+}
+
+// Run items on a JobQueue (lib.jobs) and resolve when every item of this call
+// has finished or the kind is cancelled. fn(item, signal) as for JobQueue.add.
+function runOnJobs(jobs, kind, items, fn) {
+  if (!items.length) return Promise.resolve();
+  return new Promise((resolve) => {
+    let left = items.length, off = null, ended = false;
+    const finish = () => { if (ended) return; ended = true; off?.(); resolve(); };
+    // cancel() drops pending items without calling fn, so also finish when the
+    // queue's count for this kind says nothing of it is left.
+    off = jobs.onProgress?.((p) => {
+      const c = p.kinds?.[kind];
+      if (c && c.done + c.failed >= c.total) finish();
+    }) ?? null;
+    jobs.add(kind, items, async (item, signal) => {
+      try { return await fn(item, signal); }
+      finally { if (--left === 0) finish(); }
+    });
+  });
+}
+
+// ── similar by meaning (row D4) ───────────────────────────────────────────
+//
+//   clipGroupsAsync(records, vectorOf, opts) -> Promise<Group[]> of kind 'clip'
+//
+// vectorOf(id) -> { q: Int8Array, inv } (clip.js VectorSet.view) or null.
+// Two photos join when their cosine is at least opts.minCosine (default 0.95).
+// opts.exclude: groups already found (exact and dHash near); a pair whose two
+// photos share one of those groups is skipped, so this pass adds only what the
+// fingerprints missed. opts.onProgress({ done, total }), opts.signal as above.
+//
+// Comparing every pair is too slow past a few thousand photos, so candidate
+// pairs come from random-hyperplane hashes (SimHash): CLIP_TABLES tables of 64
+// bits each, over vectors centred on the library's mean (CLIP vectors sit in a
+// narrow cone, and without centring most bits are the same for every photo).
+// Two hashes within CLIP_MAX_BITS bits in any table make a candidate, and every
+// candidate is checked with the exact cosine, so a group never holds a false
+// pair. A true pair can be missed: on the test's fake vectors the result equals
+// an all-pairs reference at 0.95 and 0.98 and misses 3 of about 700 pairs at
+// 0.92 (tests/test-library-dupes.mjs). Node takes about 4 s for 20,000 vectors
+// and 38 s for 100,000, most of it hashing.
+
+const CLIP_DEFAULT_MIN = 0.95;
+const CLIP_MIN_LIMIT = 0.92;
+const CLIP_MAX_LIMIT = 0.99;
+const CLIP_TABLES = 4;
+const CLIP_MAX_BITS = 11;
+const CLIP_SEED = 0x5eed1234;
+
+// Seeded Gaussian planes (Box-Muller over a linear congruential generator).
+function gaussianPlanes(count, dim, seed) {
+  let s = seed >>> 0;
+  const u = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 1) / 4294967297; };
+  const out = new Float32Array(count * dim);
+  for (let i = 0; i < out.length; i += 2) {
+    const r = Math.sqrt(-2 * Math.log(u())), t = 2 * Math.PI * u();
+    out[i] = r * Math.cos(t);
+    if (i + 1 < out.length) out[i + 1] = r * Math.sin(t);
+  }
+  return out;
+}
+
+function clipCosine(a, b) {
+  const q1 = a.q, q2 = b.q;
+  let dot = 0;
+  for (let j = 0; j < q1.length; j++) dot += q1[j] * q2[j];
+  return dot * a.inv * b.inv;
+}
+
+function* clipSteps(records, vectorOf, opts = {}) {
+  const min = Math.max(CLIP_MIN_LIMIT, Math.min(CLIP_MAX_LIMIT, Number(opts.minCosine ?? CLIP_DEFAULT_MIN)));
+  const list = [], vecs = [];
+  for (const r of live(records, opts)) { const v = vectorOf(r.id); if (v && v.inv) { list.push(r); vecs.push(v); } }
+  const n = list.length;
+  if (n < 2) return [];
+  const dim = vecs[0].q.length;
+  const STEP = 1000;
+  const total = n * 2;
+
+  // Centre, then hash: bit p of table t is sign(plane · (v - mean)).
+  const mean = new Float64Array(dim);
+  for (const v of vecs) for (let j = 0; j < dim; j++) mean[j] += v.q[j] * v.inv;
+  for (let j = 0; j < dim; j++) mean[j] /= n;
+  const P = CLIP_TABLES * 64;
+  const planes = gaussianPlanes(P, dim, CLIP_SEED);
+  const pm = new Float64Array(P);
+  for (let p = 0; p < P; p++) { let s = 0; const o = p * dim; for (let j = 0; j < dim; j++) s += planes[o + j] * mean[j]; pm[p] = s; }
+  const hi = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  const lo = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
+  for (let i = 0; i < n; i++) {
+    const { q, inv } = vecs[i];
+    for (let p = 0; p < P; p++) {
+      let s = 0;
+      const o = p * dim;
+      for (let j = 0; j < dim; j++) s += planes[o + j] * q[j];
+      if (s * inv > pm[p]) {
+        const t = (p / 64) | 0, b = p % 64;
+        if (b < 32) hi[t][i] |= (1 << b); else lo[t][i] |= (1 << (b - 32));
+      }
+    }
+    if ((i + 1) % STEP === 0) yield { done: i + 1, total };
+  }
+
+  const groupOf = new Int32Array(n).fill(-1);
+  const gid = new Map();
+  (opts.exclude ?? []).forEach((g, k) => { for (const id of g.ids) gid.set(id, k); });
+  for (let i = 0; i < n; i++) { const k = gid.get(list[i].id); if (k !== undefined) groupOf[i] = k; }
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const r = Math.floor(CLIP_MAX_BITS / 4);
+  for (let t = 0; t < CLIP_TABLES; t++) {
+    const H = hi[t], L = lo[t];
+    const block = (i, b) => b === 0 ? H[i] >>> 16 : b === 1 ? H[i] & 0xffff : b === 2 ? L[i] >>> 16 : L[i] & 0xffff;
+    const tables = [0, 1, 2, 3].map(() => new Map());
+    for (let i = 0; i < n; i++) for (let b = 0; b < 4; b++) { const m = tables[b], v = block(i, b), s = m.get(v); if (s) s.push(i); else m.set(v, [i]); }
+    for (let i = 0; i < n; i++) {
+      for (let b = 0; b < 4; b++) {
+        for (const v of neighbours(block(i, b), r)) {
+          const s = tables[b].get(v);
+          if (!s) continue;
+          for (const j of s) {
+            if (j <= i) continue;
+            if (groupOf[i] >= 0 && groupOf[i] === groupOf[j]) continue;
+            if (pop32((H[i] ^ H[j]) >>> 0) + pop32((L[i] ^ L[j]) >>> 0) > CLIP_MAX_BITS) continue;
+            const a = find(i), c = find(j);
+            if (a === c) continue;
+            if (clipCosine(vecs[i], vecs[j]) >= min) parent[a] = c;
+          }
+        }
+      }
+      if ((i + 1) % STEP === 0) yield { done: n + Math.round((t * n + i + 1) / CLIP_TABLES), total };
+    }
+  }
+
+  const comps = new Map();
+  for (let i = 0; i < n; i++) { const root = find(i), c = comps.get(root); if (c) c.push(list[i]); else comps.set(root, [list[i]]); }
+  const out = [];
+  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('clip', 'c:' + members.map(m => m.id).sort()[0], members, opts));
+  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
+}
+
+function clipGroups(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) { const s = it.next(); if (s.done) return s.value; }
+}
+
+async function clipGroupsAsync(records, vectorOf, opts = {}) {
+  const it = clipSteps(records, vectorOf, opts);
+  for (;;) {
+    const s = it.next();
+    if (s.done) return s.value;
+    opts.onProgress?.(s.value);
+    await new Promise(res => setTimeout(res, 0));
+    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  }
+}
+
+return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT, clipCosine, clipGroups, clipGroupsAsync };
+})();
+
+const __m_library_clip = (() => {
+// Search by meaning (rows Q2, Q3, D4): CLIP image and text embeddings, kept on
+// this device. Opt-in: nothing downloads until the person turns on "Search by
+// meaning", which stores { on, dtype } in lib.store kv under SETTING_KEY.
+//
+// The model is Xenova/clip-vit-base-patch32 (OpenAI CLIP ViT-B/32, MIT) through
+// Transformers.js (Apache-2.0), both pinned, in a blob-URL module worker: fp16
+// weights on WebGPU, q8 weights on WASM. Image vectors come from the stored
+// 256 px thumbnails (thumbs.js), never the originals, and run on lib.jobs as
+// kind 'clip', so they pause with the queue.
+//
+// Vectors are unit length, quantised to Int8 with a per-vector inverse norm, and
+// stored one packed blob per root in lib.store kv (`clip:vectors:<rootId>`),
+// with the id list and the model key in its header. A different model key
+// discards the blob. Search is brute-force cosine over every vector with a
+// typed-array loop on the main thread (51 million multiply-adds at 100,000
+// photos; tests/test-library-clip.mjs prints the time).
+//
+//   createClip(lib, { embedder?, readThumb? }) -> service (see the return value)
+//   VectorSet, packVectors, unpackVectors, topK, quantise   pure, for the tests
+
+const runOnJobs = __m_library_dupes.runOnJobs;
+
+const MODEL_ID = 'Xenova/clip-vit-base-patch32';
+const MODEL_REVISION = '6b7c523703ae26e39be4b03774966f8571c7f523';
+const TJS_VERSION = '4.3.2';
+const TJS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TJS_VERSION}/+esm`;
+const DIM = 512;
+const SETTING_KEY = 'clip:setting';
+const VECTORS_PREFIX = 'clip:vectors:';
+const SEARCH_TOP = 200;
+const SEARCH_MIN = 0.2;     // text to image cosine; CLIP ViT-B/32 matches sit near 0.25 to 0.35
+const SIMILAR_TOP = 100;
+const SIMILAR_MIN = 0.5;    // image to image cosine
+const TOKENIZER_BYTES = 3_620_000; // tokenizer.json, vocab.json, merges.txt and configs at MODEL_REVISION
+// Download size per weight type, from the model repository's file list at MODEL_REVISION.
+const WEIGHTS = {
+  fp16: { device: 'webgpu', bytes: 176_080_659 + 127_339_794 + TOKENIZER_BYTES },
+  q8: { device: 'wasm', bytes: 89_117_001 + 64_504_507 + TOKENIZER_BYTES },
+};
+const modelKey = (dtype) => `${MODEL_ID}@${MODEL_REVISION.slice(0, 7)}:${dtype}`;
+
+const SAVE_DELAY_MS = 15000;
+const ENQUEUE_DELAY_MS = 1500;
+const MAGIC = 0x56434c53; // 'SLCV' little-endian
+
+// ── pure parts ────────────────────────────────────────────────────────────
+
+// Quantise `vec` into out[offset .. offset + dim) as Int8 scaled so the largest
+// component is 127. Returns 1 / |q|, so cosine against the stored Int8 values is
+// exact for the quantised vector: cos = inv * dot(query_unit, q).
+function quantise(vec, out, offset = 0) {
+  const dim = vec.length;
+  let max = 0;
+  for (let i = 0; i < dim; i++) { const a = Math.abs(vec[i]); if (a > max) max = a; }
+  if (!(max > 0)) { out.fill(0, offset, offset + dim); return 0; }
+  const s = 127 / max;
+  let sq = 0;
+  for (let i = 0; i < dim; i++) { const q = Math.round(vec[i] * s); out[offset + i] = q; sq += q * q; }
+  return 1 / Math.sqrt(sq);
+}
+
+function normalise(vec) {
+  let sq = 0;
+  for (let i = 0; i < vec.length; i++) sq += vec[i] * vec[i];
+  const out = new Float32Array(vec.length);
+  if (!(sq > 0)) return out;
+  const k = 1 / Math.sqrt(sq);
+  for (let i = 0; i < vec.length; i++) out[i] = vec[i] * k;
+  return out;
+}
+
+// One root's vectors: Int8 rows in one buffer, a Float32 inverse norm per row.
+class VectorSet {
+  constructor(dim = DIM, capacity = 64) {
+    this.dim = dim;
+    this.ids = [];                 // slot -> id, or null for a freed slot
+    this.slot = new Map();         // id -> slot
+    this.free = [];
+    this.data = new Int8Array(dim * capacity);
+    this.inv = new Float32Array(capacity);
+  }
+  get size() { return this.slot.size; }
+  has(id) { return this.slot.has(id); }
+  set(id, vec) {
+    if (vec.length !== this.dim) throw new Error(`a vector has ${vec.length} values, expected ${this.dim}`);
+    let s = this.slot.get(id);
+    if (s == null) {
+      s = this.free.length ? this.free.pop() : this.ids.length;
+      if (s >= this.inv.length) this._grow(Math.max(64, this.inv.length * 2));
+      this.ids[s] = id;
+      this.slot.set(id, s);
+    }
+    this.inv[s] = quantise(vec, this.data, s * this.dim);
+  }
+  delete(id) {
+    const s = this.slot.get(id);
+    if (s == null) return false;
+    this.slot.delete(id);
+    this.ids[s] = null;
+    this.inv[s] = 0;
+    this.free.push(s);
+    return true;
+  }
+  // { q: Int8Array view, inv } for one id, or null.
+  view(id) {
+    const s = this.slot.get(id);
+    return s == null ? null : { q: this.data.subarray(s * this.dim, (s + 1) * this.dim), inv: this.inv[s] };
+  }
+  // The stored vector as unit Float32, for a "find similar" query.
+  vector(id) {
+    const v = this.view(id);
+    if (!v) return null;
+    const out = new Float32Array(this.dim);
+    for (let i = 0; i < this.dim; i++) out[i] = v.q[i] * v.inv;
+    return out;
+  }
+  _grow(cap) {
+    const d = new Int8Array(this.dim * cap); d.set(this.data); this.data = d;
+    const n = new Float32Array(cap); n.set(this.inv); this.inv = n;
+  }
+}
+
+// Layout: u32 MAGIC, u32 header length, header JSON { v, model, dim, count, ids },
+// zero padding to a multiple of 4, Float32 inv[count], Int8 data[count * dim].
+function packVectors(set, model) {
+  const ids = [], slots = [];
+  set.ids.forEach((id, s) => { if (id != null) { ids.push(id); slots.push(s); } });
+  const head = new TextEncoder().encode(JSON.stringify({ v: 1, model, dim: set.dim, count: ids.length, ids }));
+  const headEnd = 8 + head.length + ((4 - (head.length % 4)) % 4);
+  const out = new Uint8Array(headEnd + ids.length * 4 + ids.length * set.dim);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, MAGIC, true);
+  dv.setUint32(4, head.length, true);
+  out.set(head, 8);
+  const inv = new Float32Array(out.buffer, headEnd, ids.length);
+  const data = new Int8Array(out.buffer, headEnd + ids.length * 4, ids.length * set.dim);
+  slots.forEach((s, i) => {
+    inv[i] = set.inv[s];
+    data.set(set.data.subarray(s * set.dim, (s + 1) * set.dim), i * set.dim);
+  });
+  return out;
+}
+
+// A VectorSet from packed bytes, or null when the bytes are not a vector blob
+// or were made by another model (`model` must equal the stored key).
+function unpackVectors(bytes, model) {
+  if (!bytes) return null;
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u8.length < 8) return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (dv.getUint32(0, true) !== MAGIC) return null;
+  const hl = dv.getUint32(4, true);
+  let head;
+  try { head = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + hl))); } catch { return null; }
+  if (head?.v !== 1 || head.model !== model || !Array.isArray(head.ids) || head.ids.length !== head.count) return null;
+  const headEnd = 8 + hl + ((4 - (hl % 4)) % 4);
+  const n = head.count, dim = head.dim;
+  if (u8.length < headEnd + n * 4 + n * dim) return null;
+  const copy = u8.slice(headEnd, headEnd + n * 4 + n * dim); // aligned copy
+  const set = new VectorSet(dim, Math.max(64, n));
+  set.inv.set(new Float32Array(copy.buffer, 0, n));
+  set.data.set(new Int8Array(copy.buffer, n * 4, n * dim));
+  head.ids.forEach((id, s) => { set.ids[s] = id; set.slot.set(id, s); });
+  return set;
+}
+
+// Brute-force cosine of `query` (any length-dim Float32Array) against every
+// vector in `sets`. Returns up to k { id, score } at or above `min`, best first.
+// opts.skip: a Set of ids to leave out; opts.keep(id) -> false leaves one out.
+function topK(sets, query, { k = SEARCH_TOP, min = -1, skip = null, keep = null } = {}) {
+  const q = normalise(query);
+  const dim = q.length;
+  const hits = [];
+  for (const set of sets) {
+    if (set.dim !== dim) continue;
+    const { data, inv, ids } = set;
+    const n = ids.length;
+    for (let s = 0; s < n; s++) {
+      const iv = inv[s];
+      if (!iv) continue;
+      let dot = 0;
+      const o = s * dim;
+      for (let j = 0; j < dim; j++) dot += q[j] * data[o + j];
+      const score = dot * iv;
+      if (score < min) continue;
+      const id = ids[s];
+      if (id == null || (skip && skip.has(id)) || (keep && !keep(id))) continue;
+      hits.push({ id, score });
+    }
+  }
+  hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+  return hits.length > k ? hits.slice(0, k) : hits;
+}
+
+// ── the browser service ───────────────────────────────────────────────────
+
+const cloneBytes = (b) => (b instanceof Uint8Array ? b : b ? new Uint8Array(b) : null);
+
+async function pickWeights() {
+  try { if (typeof navigator !== 'undefined' && navigator.gpu && await navigator.gpu.requestAdapter()) return 'fp16'; }
+  catch { /* no usable adapter */ }
+  return 'q8';
+}
+
+function createClip(lib, { embedder = null, readThumb = null } = {}) {
+  const sets = new Map();          // rootId -> VectorSet
+  const dirty = new Set();         // rootIds to save
+  const queued = new Set();        // ids waiting or running
+  const listeners = new Set();
+  const savedBytes = new Map();    // rootId -> bytes of the last save
+  let setting = null;              // { on: true, dtype } when turned on
+  let model = null;                // 'idle' | 'loading' | 'ready' | 'error'
+  let modelError = '', progress = null, device = null;
+  let loaded = false, loading = null;
+  let saveTimer = null, saving = Promise.resolve();
+  let enqueueTimer = null, pendingIds = null;
+  let emb = embedder;
+
+  const key = () => modelKey(setting?.dtype ?? 'q8');
+  const emit = () => { for (const fn of listeners) { try { fn(status()); } catch { /* a listener never stops the service */ } } };
+  const thumbBlob = readThumb ?? (async (id) => {
+    const u = await lib.services.thumbs?.url?.(id);
+    return u ? (await fetch(u)).blob() : null;
+  });
+
+  function status() {
+    let count = 0;
+    for (const s of sets.values()) count += s.size;
+    return {
+      on: !!setting?.on, dtype: setting?.dtype ?? null, device, model, error: modelError, progress,
+      count, indexable: indexable().length + count, pending: queued.size, bytes: sizeBytes(),
+    };
+  }
+
+  function sizeBytes() {
+    let b = 0;
+    for (const [rid, s] of sets) b += savedBytes.get(rid) ?? s.size * (s.dim + 4);
+    return b;
+  }
+
+  const wanted = (r) => r && !r.missing && r.thumb === 'ok';
+  function indexable() {
+    const out = [];
+    for (const r of lib.records.values()) if (wanted(r) && !sets.get(r.rootId)?.has(r.id)) out.push(r);
+    return out;
+  }
+
+  async function ensureModel() {
+    if (model === 'ready') return emb;
+    if (!emb) emb = workerEmbedder();
+    model = 'loading'; modelError = ''; emit();
+    try {
+      const files = new Map();
+      device = await emb.init(setting.dtype, (p) => {
+        if (!p?.file || !(p.total > 0)) return;
+        files.set(p.file, { loaded: p.loaded, total: p.total });
+        let loaded = 0, total = 0;
+        for (const f of files.values()) { loaded += f.loaded; total += f.total; }
+        progress = { loaded, total };
+        emit();
+      });
+      model = 'ready'; progress = null; emit();
+      return emb;
+    } catch (e) {
+      model = 'error'; modelError = e?.message ?? String(e); emit();
+      throw e;
+    }
+  }
+
+  // Read the setting and the stored vectors. Blobs from another model are deleted.
+  async function load() {
+    if (loading) return loading;
+    loading = (async () => {
+      setting = (await lib.store.getKv(SETTING_KEY)) ?? null;
+      if (!setting?.on) { loaded = true; emit(); return; }
+      for (const rid of lib.roots.keys()) {
+        if (sets.has(rid)) continue;
+        const raw = cloneBytes(await lib.store.getKv(VECTORS_PREFIX + rid));
+        const set = unpackVectors(raw, key());
+        if (set) { sets.set(rid, set); savedBytes.set(rid, raw.length); }
+        else if (raw) await lib.store.deleteKv(VECTORS_PREFIX + rid);
+      }
+      loaded = true;
+      emit();
+      index();
+    })().finally(() => { loading = null; });
+    return loading;
+  }
+
+  // Queue every record with a thumbnail and no vector (or only `ids`).
+  function index(ids = null) {
+    if (!setting?.on) return Promise.resolve();
+    const list = (ids ? ids.map(id => lib.get(id)).filter(r => wanted(r) && !sets.get(r.rootId)?.has(r.id)) : indexable())
+      .filter(r => !queued.has(r.id));
+    if (!list.length) return Promise.resolve();
+    for (const r of list) queued.add(r.id);
+    emit();
+    return runOnJobs(lib.jobs, 'clip', list, embedOne).then(() => { emit(); return flush(); });
+  }
+
+  async function embedOne(rec, signal) {
+    try {
+      if (signal.aborted || !setting?.on) return;
+      const e = await ensureModel();
+      const blob = await thumbBlob(rec.id);
+      if (!blob) throw new Error('no thumbnail');
+      if (signal.aborted) return;
+      const vec = await e.image(blob);
+      if (signal.aborted || !setting?.on) return;
+      let set = sets.get(rec.rootId);
+      if (!set) { set = new VectorSet(vec.length); sets.set(rec.rootId, set); }
+      set.set(rec.id, vec);
+      dirty.add(rec.rootId);
+      scheduleSave();
+    } finally {
+      queued.delete(rec.id);
+    }
+  }
+
+  function scheduleSave() {
+    if (!saveTimer && dirty.size) saveTimer = setTimeout(() => { saveTimer = null; save(); }, SAVE_DELAY_MS);
+  }
+  function flush() { clearTimeout(saveTimer); saveTimer = null; return save(); }
+
+  // Write each dirty root's blob, dropping ids whose record is gone.
+  function save() {
+    saving = saving.then(async () => {
+      if (!setting?.on) return;
+      for (const rid of [...dirty]) {
+        dirty.delete(rid);
+        const set = sets.get(rid);
+        if (!set) continue;
+        for (const id of [...set.slot.keys()]) if (!lib.get(id)) set.delete(id);
+        const bytes = packVectors(set, key());
+        await lib.store.setKv(VECTORS_PREFIX + rid, bytes);
+        savedBytes.set(rid, bytes.length);
+      }
+      emit();
+    }).catch(e => console.warn('[slate library] meaning vectors not saved', e));
+    return saving;
+  }
+
+  // Library events: new thumbnails get vectors; removed roots lose theirs; a
+  // rebuild clears kv, so write the setting and the vectors again.
+  lib.on('records', (ev) => {
+    if (ev?.reason === 'load') { load(); return; }
+    if (!setting?.on || !loaded) return;
+    if (ev?.reason === 'rebuild') {
+      lib.store.setKv(SETTING_KEY, setting).catch(() => {});
+      for (const rid of sets.keys()) dirty.add(rid);
+      flush();
+      return;
+    }
+    if (ev?.ids) {
+      // Records that are gone (emptied trash, moved files) lose their vectors now.
+      for (const id of ev.ids) {
+        if (lib.get(id)) continue;
+        for (const [rid, set] of sets) if (set.delete(id)) { dirty.add(rid); scheduleSave(); }
+      }
+      pendingIds ??= new Set();
+      for (const id of ev.ids) pendingIds.add(id);
+    } else pendingIds = null;
+    clearTimeout(enqueueTimer);
+    enqueueTimer = setTimeout(() => { const p = pendingIds; pendingIds = null; index(p ? [...p] : null); }, ENQUEUE_DELAY_MS);
+  });
+  lib.on('roots', () => {
+    for (const rid of [...sets.keys()]) {
+      if (lib.roots.has(rid)) continue;
+      sets.delete(rid); savedBytes.delete(rid); dirty.delete(rid);
+      lib.store.deleteKv(VECTORS_PREFIX + rid).catch(() => {});
+    }
+    if (setting?.on && loaded) load();
+  });
+
+  const allSets = () => [...sets.values()];
+  const vectorOfId = (id) => { const r = lib.get(id); return r ? sets.get(r.rootId)?.view(id) ?? null : null; };
+
+  return {
+    status,
+    onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    load,
+    index,
+    enabled: () => !!setting?.on,
+    count: () => status().count,
+    has: (id) => !!vectorOfId(id),
+    vectorOf: vectorOfId,
+    sizeBytes,
+
+    // Turn on with the given weights ('fp16' for WebGPU, 'q8' for WASM) and start indexing.
+    async enable(dtype) {
+      if (!WEIGHTS[dtype]) throw new Error(`unknown weights: ${dtype}`);
+      if (setting?.on && setting.dtype !== dtype) await this.disable();
+      setting = { on: true, dtype };
+      await lib.store.setKv(SETTING_KEY, setting);
+      loaded = false;
+      emit();
+      await load();
+      ensureModel().catch(() => {});
+    },
+
+    // Turn off: stop the jobs, drop the model, delete every stored vector and the setting.
+    async disable() {
+      lib.jobs.cancel('clip');
+      queued.clear();
+      clearTimeout(saveTimer); saveTimer = null;
+      clearTimeout(enqueueTimer); pendingIds = null;
+      await saving;
+      const rids = new Set([...sets.keys(), ...lib.roots.keys()]);
+      setting = null; sets.clear(); dirty.clear(); savedBytes.clear();
+      for (const rid of rids) await lib.store.deleteKv(VECTORS_PREFIX + rid);
+      await lib.store.deleteKv(SETTING_KEY);
+      emb?.dispose?.(); if (!embedder) emb = null;
+      model = null; progress = null; modelError = ''; device = null;
+      emit();
+    },
+
+    // Load the model again after a failure; the stored vectors stay.
+    async retry() {
+      emb?.dispose?.(); if (!embedder) emb = null;
+      model = null;
+      await ensureModel();
+      index();
+    },
+
+    // Text query -> [{ id, score }], best first: top SEARCH_TOP at or above SEARCH_MIN.
+    async searchText(text, { k = SEARCH_TOP, min = SEARCH_MIN } = {}) {
+      if (!setting?.on) throw new Error('Search by meaning is off');
+      const e = await ensureModel();
+      const v = await e.text(String(text));
+      return topK(allSets(), v, { k, min });
+    },
+
+    // The nearest photos to one photo by image vector, the photo itself left out.
+    similar(id, { k = SIMILAR_TOP, min = SIMILAR_MIN } = {}) {
+      const r = lib.get(id);
+      const v = r && sets.get(r.rootId)?.vector(id);
+      if (!v) return [];
+      return topK(allSets(), v, { k, min, skip: new Set([id]) });
+    },
+
+    // Write pending vectors now.
+    flush,
+  };
+}
+
+// ── the worker ────────────────────────────────────────────────────────────
+
+// The default embedder: one blob-URL module worker holding both CLIP encoders.
+function workerEmbedder() {
+  let w = null, ready = null, onProgress = null;
+  const pending = new Map();
+  let seq = 0;
+  const call = (msg) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, ...msg });
+  });
+  const failAll = (err) => { for (const p of pending.values()) p.reject(err); pending.clear(); };
+  function start() {
+    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
+    w = new Worker(url, { type: 'module' });
+    w.addEventListener('error', (e) => {
+      console.error('[slate library] meaning worker error:', e.message);
+      failAll(new Error(e.message || 'the meaning model worker failed'));
+      ready = null;
+    });
+    w.addEventListener('message', (e) => {
+      const d = e.data;
+      if (d.type === 'progress') { onProgress?.(d.data); return; }
+      const p = pending.get(d.id);
+      if (!p) return;
+      pending.delete(d.id);
+      if (d.error) p.reject(new Error(d.error)); else p.resolve(d.result);
+    });
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  return {
+    init(dtype, progress) {
+      onProgress = progress;
+      if (!w) start();
+      ready ??= call({ op: 'init', dtype, device: WEIGHTS[dtype].device });
+      return ready;
+    },
+    image: (blob) => call({ op: 'image', blob }),
+    text: (text) => call({ op: 'text', text }),
+    dispose() { failAll(new Error('stopped')); w?.terminate(); w = null; ready = null; },
+  };
+}
+
+// Loads the pinned Transformers.js and both encoders, then embeds thumbnails
+// (Blob) or text. Replies { id, result } with a unit Float32Array, or { id, error }.
+const WORKER_SRC = `
+const URL_TJS = ${JSON.stringify(TJS_URL)};
+const MODEL = ${JSON.stringify(MODEL_ID)};
+const REVISION = ${JSON.stringify(MODEL_REVISION)};
+let T, tok, proc, vision, text, device;
+const f32 = (t) => (t.type === 'float32' ? t.data : t.to('float32').data);
+function unit(v) {
+  let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+  const k = s > 0 ? 1 / Math.sqrt(s) : 0, out = new Float32Array(v.length);
+  for (let i = 0; i < v.length; i++) out[i] = v[i] * k;
+  return out;
+}
+async function init(dtype, want) {
+  T = await import(URL_TJS);
+  T.env.allowLocalModels = true;
+  T.env.localModelPath = '/models/';
+  T.env.allowRemoteModels = true;
+  const progress_callback = (p) => self.postMessage({ type: 'progress', data: { status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 } });
+  const base = { revision: REVISION, progress_callback };
+  tok = await T.AutoTokenizer.from_pretrained(MODEL, base);
+  proc = await T.AutoProcessor.from_pretrained(MODEL, base);
+  const load = (d) => Promise.all([
+    T.CLIPVisionModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
+    T.CLIPTextModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
+  ]);
+  try { [vision, text] = await load(want); device = want; }
+  catch (e) { if (want === 'wasm') throw e; [vision, text] = await load('wasm'); device = 'wasm'; }
+  return device;
+}
+self.onmessage = async (e) => {
+  const { id, op } = e.data;
+  try {
+    let result;
+    if (op === 'init') result = await init(e.data.dtype, e.data.device);
+    else if (op === 'image') {
+      const img = await T.RawImage.fromBlob(e.data.blob);
+      const out = await vision(await proc(img));
+      result = unit(f32(out.image_embeds));
+    } else if (op === 'text') {
+      const inp = tok([e.data.text], { padding: true, truncation: true });
+      const out = await text(inp);
+      result = unit(f32(out.text_embeds));
+    } else throw new Error('unknown op ' + op);
+    self.postMessage({ id, result });
+  } catch (err) {
+    self.postMessage({ id, error: (err && err.message) || String(err) });
+  }
+};
+`;
+
+return { MODEL_ID, MODEL_REVISION, TJS_VERSION, TJS_URL, DIM, SETTING_KEY, VECTORS_PREFIX, SEARCH_TOP, SEARCH_MIN, SIMILAR_TOP, SIMILAR_MIN, WEIGHTS, modelKey, quantise, normalise, VectorSet, packVectors, unpackVectors, topK, pickWeights, createClip };
+})();
+
+const __m_ops_depth = (() => {
+// Depth map for Background blur (src/ops/lensblur.js). Depth Anything V2 Small (Apache-2.0;
+// the larger V2 models are not) through Transformers.js, both pinned, in a blob-URL module
+// worker. Nothing downloads until the person first opens Background blur. fp16 weights run on
+// WebGPU; q8 weights on WebAssembly when WebGPU is missing or fails.
+//
+//   estimateDepth(canvas, { onProgress }) -> { w, h, data: Uint8Array }
+// The map is relative inverse depth (near is high), min-max normalised to 0..255, at about
+// DEPTH_EDGE px on the long side. It is cached per canvas, so moving the focus point or the
+// Strength slider never runs the model again.
+
+const TJS_URL = __m_library_clip.TJS_URL;
+
+const DEPTH_MODEL = 'onnx-community/depth-anything-v2-small';
+const DEPTH_REVISION = '4472b7362082ad9968fee890ca0f1e5aca36b93d';
+const DEPTH_EDGE = 512;
+// Download size per weight type, from the model repository's file list at DEPTH_REVISION.
+const DEPTH_WEIGHTS = {
+  fp16: { device: 'webgpu', bytes: 49_642_442 },
+  q8: { device: 'wasm', bytes: 27_258_801 },
+};
+const depthDtype = () => (typeof navigator !== 'undefined' && navigator.gpu ? 'fp16' : 'q8');
+const depthDownloadMB = (dtype = depthDtype()) => Math.round(DEPTH_WEIGHTS[dtype].bytes / 1e6);
+
+// Min-max normalise one channel of float or byte values to bytes.
+function normaliseDepth(values, channels = 1) {
+  const n = Math.floor(values.length / channels);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) { const v = values[i * channels]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  const out = new Uint8Array(n), k = hi > lo ? 255 / (hi - lo) : 0;
+  for (let i = 0; i < n; i++) out[i] = Math.round((values[i * channels] - lo) * k);
+  return out;
+}
+
+const cache = new WeakMap();
+
+async function estimateDepth(canvas, { onProgress } = {}) {
+  if (cache.has(canvas)) return cache.get(canvas);
+  const scale = Math.min(1, DEPTH_EDGE / Math.max(canvas.width, canvas.height));
+  const w = Math.max(1, Math.round(canvas.width * scale)), h = Math.max(1, Math.round(canvas.height * scale));
+  const small = new OffscreenCanvas(w, h);
+  small.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  const blob = await small.convertToBlob({ type: 'image/png' });
+  const worker = getWorker();
+  await worker.init(depthDtype(), onProgress);
+  const res = await worker.call({ op: 'depth', blob });
+  const map = { w: res.w, h: res.h, data: normaliseDepth(res.data, res.channels) };
+  cache.set(canvas, map);
+  return map;
+}
+
+let worker = null;
+function getWorker() {
+  if (worker) return worker;
+  let w, ready = null, onProgress = null, seq = 0;
+  const pending = new Map();
+  const failAll = (err) => { for (const p of pending.values()) p.reject(err); pending.clear(); };
+  const call = (msg) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, ...msg });
+  });
+  const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
+  w = new Worker(url, { type: 'module' });
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  w.addEventListener('error', (e) => {
+    console.error('[slate] depth worker error:', e.message);
+    failAll(new Error(e.message || 'the depth model worker failed'));
+    w.terminate();
+    worker = null;
+  });
+  w.addEventListener('message', (e) => {
+    const d = e.data;
+    if (d.type === 'progress') { onProgress?.(d.data); return; }
+    const p = pending.get(d.id);
+    if (!p) return;
+    pending.delete(d.id);
+    if (d.error) p.reject(new Error(d.error)); else p.resolve(d.result);
+  });
+  worker = {
+    init(dtype, progress) {
+      onProgress = progress;
+      ready ??= call({ op: 'init', dtype, device: DEPTH_WEIGHTS[dtype].device }).catch((err) => { ready = null; throw err; });
+      return ready;
+    },
+    call,
+  };
+  return worker;
+}
+
+// Loads the pinned Transformers.js and the depth model, then estimates depth for a PNG Blob.
+// Replies { id, result: { w, h, channels, data } } at the input's size, or { id, error }.
+const WORKER_SRC = `
+const URL_TJS = ${JSON.stringify(TJS_URL)};
+const MODEL = ${JSON.stringify(DEPTH_MODEL)};
+const REVISION = ${JSON.stringify(DEPTH_REVISION)};
+let T, pipe;
+async function init(dtype, want) {
+  T = await import(URL_TJS);
+  T.env.allowLocalModels = true;
+  T.env.localModelPath = '/models/';
+  T.env.allowRemoteModels = true;
+  const progress_callback = (p) => self.postMessage({ type: 'progress', data: { status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 } });
+  const load = (device, dt) => T.pipeline('depth-estimation', MODEL, { revision: REVISION, device, dtype: dt, progress_callback });
+  try { pipe = await load(want, dtype); }
+  catch (e) { if (want === 'wasm') throw e; pipe = await load('wasm', 'q8'); }
+  return true;
+}
+self.onmessage = async (e) => {
+  const { id, op } = e.data;
+  try {
+    let result;
+    if (op === 'init') result = await init(e.data.dtype, e.data.device);
+    else if (op === 'depth') {
+      const img = await T.RawImage.fromBlob(e.data.blob);
+      let out = await pipe(img);
+      if (Array.isArray(out)) out = out[0];
+      const d = out.depth;
+      if (d && d.data && d.width) result = { w: d.width, h: d.height, channels: d.channels || 1, data: d.data };
+      else {
+        const t = out.predicted_depth, dims = t.dims;
+        result = { w: dims[dims.length - 1], h: dims[dims.length - 2], channels: 1, data: t.data };
+      }
+    } else throw new Error('unknown op ' + op);
+    self.postMessage({ id, result });
+  } catch (err) {
+    self.postMessage({ id, error: (err && err.message) || String(err) });
+  }
+};
+`;
+
+return { DEPTH_MODEL, DEPTH_REVISION, DEPTH_EDGE, DEPTH_WEIGHTS, depthDtype, depthDownloadMB, normaliseDepth, estimateDepth };
+})();
+
 const __m_editor_commands = (() => {
 // The editor's commands (row N5). They join the library's list in src/library/commands.js,
 // so they reach NakliOS and WebMCP through the same door. Each edit emits the same op event
@@ -9655,6 +10801,8 @@ const emit = __m_core_events.emit;
 const on = __m_core_events.on;
 const off = __m_core_events.off;
 const flattenLayers = __m_core_layers.flattenLayers;
+const extractText = __m_ops_ocr.extractText;
+const estimateDepth = __m_ops_depth.estimateDepth;
 
 const OP_TIMEOUT_MS = 20000;
 const SAVE_TIMEOUT_MS = 60000;
@@ -9800,6 +10948,18 @@ const EDITOR_COMMANDS = [
       const to = exp.saveMode === 'sidecar' ? 'folder' : 'download';
       try { return { saved: true, name: await saved(e), to, format }; }
       finally { Object.assign(exp, prev); }
+    } },
+  { name: 'image.extract_text', label: 'Extract text', description: 'Read printed English text from the open image on this device (Tesseract.js; downloads about 5 MB the first time). Returns the text and a confidence from 0 to 100.', scope: 'read', input: obj(),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      return extractText(e.flatten(e.state.image.working));
+    } },
+  { name: 'image.lens_blur', label: 'Background blur', description: 'Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. The depth model (about 27 to 50 MB) downloads the first time. Undo with image.undo.', scope: 'write',
+    input: obj({ x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, strength: { type: 'integer', minimum: 1, maximum: 100, description: 'default 50' } }, ['x', 'y']),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const depth = await estimateDepth(e.state.image.working);
+      return applied(e, 'op:lensblur', { focus: { x: inRange('x', a.x, 0, 1), y: inRange('y', a.y, 0, 1) }, strength: Math.round(inRange('strength', a.strength ?? 50, 1, 100)), depth }, 'the background blur');
     } },
   { name: 'image.snapshot', label: 'Snapshot', description: `A small JPEG data URL of the open image as it looks now (at most ${SNAPSHOT_MAX_PX} px on the long edge), for looking at it.`, scope: 'read', input: obj(),
     run: async (lib, a, ctx) => {
@@ -10689,388 +11849,6 @@ function runJobs(jobs, kind, items, fn) {
 }
 
 return { BATCH, scanRoot, pairLivePhotos, applySidecar, applyTakeout };
-})();
-
-const __m_library_dupes = (() => {
-// Duplicates: exact copies (same size, same SHA-256) and near copies (64-bit
-// dHash within a Hamming distance). Pure, so Node runs every part of it.
-//
-//   dhashRGBA(data, w, h)            -> 16 hex chars; data is RGBA bytes of a w x h picture
-//   hamming(a, b)                    -> bits that differ between two 16-hex hashes
-//   sizeCollisions(records, opts)    -> records whose size another record shares
-//   exactGroups(records, hashOf, opts)        -> Promise<Group[]>
-//   nearGroups(records, opts)                 -> Group[]
-//   nearGroupsAsync(records, opts)            -> Promise<Group[]>, yields to the page as it goes
-//   rankKeeper(records, opts)        -> records sorted best keeper first
-//   clipGroups(records, vectorOf, opts) / clipGroupsAsync  -> Group[] of kind 'clip' (row D4, at the end)
-//
-// Group = { kind: 'exact'|'near'|'clip', key, ids, keeper }; ids are best keeper first.
-// opts.isTrashed(record) excludes a record (default: record.trashed);
-// opts.choiceOf(id) -> { fav, rating } feeds the keeper ranking.
-//
-// Near grouping splits the 64 bits into 4 blocks of 16. Two hashes within
-// distance d agree to within floor(d / 4) bits in at least one block, so each
-// hash looks up only the bucket values that close to its own blocks. With
-// d <= 11 that is at most 4 x 299 bucket probes per hash, never all pairs.
-// Matches are joined into groups (union-find), so a burst chains together.
-
-const DEFAULT_MAX_DISTANCE = 6;
-const MAX_DISTANCE_LIMIT = 11;
-
-// dHash: average the picture down to 9 x 8 grey cells (area average, so the
-// result does not depend on how the browser scales), then set one bit per
-// cell pair where the left cell is brighter than its right neighbour.
-// Self-contained: thumbs.js copies its source into the thumbnail worker.
-function dhashRGBA(data, w, h) {
-  const GW = 9, GH = 8;
-  const grey = new Float64Array(GW * GH);
-  for (let gy = 0; gy < GH; gy++) {
-    const y0 = Math.floor(gy * h / GH), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * h / GH));
-    for (let gx = 0; gx < GW; gx++) {
-      const x0 = Math.floor(gx * w / GW), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * w / GW));
-      let sum = 0, n = 0;
-      for (let y = y0; y < y1 && y < h; y++) {
-        for (let x = x0; x < x1 && x < w; x++) {
-          const i = (y * w + x) * 4;
-          sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          n++;
-        }
-      }
-      grey[gy * GW + gx] = n ? sum / n : 0;
-    }
-  }
-  let hex = '';
-  for (let gy = 0; gy < GH; gy++) {
-    let byte = 0;
-    for (let gx = 0; gx < 8; gx++) byte = (byte << 1) | (grey[gy * GW + gx] > grey[gy * GW + gx + 1] ? 1 : 0);
-    hex += byte.toString(16).padStart(2, '0');
-  }
-  return hex;
-}
-
-const pop32 = (x) => {
-  x -= (x >>> 1) & 0x55555555;
-  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
-  return (Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24);
-};
-
-function hamming(a, b) {
-  return pop32((parseInt(a.slice(0, 8), 16) ^ parseInt(b.slice(0, 8), 16)) >>> 0)
-    + pop32((parseInt(a.slice(8, 16), 16) ^ parseInt(b.slice(8, 16), 16)) >>> 0);
-}
-
-const defaultTrashed = (r) => !!r.trashed;
-const live = (records, opts = {}) => {
-  const isTrashed = opts.isTrashed ?? defaultTrashed;
-  const out = [];
-  for (const r of records) if (r && !r.missing && !isTrashed(r)) out.push(r);
-  return out;
-};
-
-// Best keeper first: most pixels, then favourite, then higher rating, then the
-// oldest file (lowest mtime), then id so the order is stable.
-function rankKeeper(records, opts = {}) {
-  const choiceOf = opts.choiceOf ?? (() => ({}));
-  const score = new Map(records.map(r => {
-    const c = choiceOf(r.id) ?? {};
-    return [r.id, { px: (r.w || 0) * (r.h || 0), fav: c.fav ? 1 : 0, rating: c.rating || 0 }];
-  }));
-  return [...records].sort((a, b) => {
-    const sa = score.get(a.id), sb = score.get(b.id);
-    return (sb.px - sa.px) || (sb.fav - sa.fav) || (sb.rating - sa.rating)
-      || ((a.mtime || 0) - (b.mtime || 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  });
-}
-
-function toGroup(kind, key, members, opts) {
-  const ranked = rankKeeper(members, opts);
-  return { kind, key, ids: ranked.map(r => r.id), keeper: ranked[0].id };
-}
-
-// Records that share their byte size with another live record: the only ones
-// whose content hash is worth computing.
-function sizeCollisions(records, opts = {}) {
-  const bySize = new Map();
-  for (const r of live(records, opts)) {
-    if (!(r.size > 0)) continue;
-    const list = bySize.get(r.size);
-    if (list) list.push(r); else bySize.set(r.size, [r]);
-  }
-  const out = [];
-  for (const list of bySize.values()) if (list.length > 1) out.push(...list);
-  return out;
-}
-
-// hashOf(record) -> content hash (or a Promise of one); null or a throw leaves the record out.
-async function exactGroups(records, hashOf, opts = {}) {
-  const groups = new Map();
-  for (const r of sizeCollisions(records, opts)) {
-    let h = null;
-    try { h = await hashOf(r); } catch { h = null; }
-    if (!h) continue;
-    const key = `${r.size}:${h}`;
-    const list = groups.get(key);
-    if (list) list.push(r); else groups.set(key, [r]);
-  }
-  const out = [];
-  for (const [key, list] of groups) if (list.length > 1) out.push(toGroup('exact', key, list, opts));
-  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
-}
-
-// SHA-256 of a File, Blob or ArrayBuffer, as hex (browser and Node 20+).
-async function sha256Hex(data) {
-  const buf = data instanceof ArrayBuffer || ArrayBuffer.isView(data) ? data : await data.arrayBuffer();
-  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
-  let hex = '';
-  for (const b of d) hex += b.toString(16).padStart(2, '0');
-  return hex;
-}
-
-// ── near grouping ─────────────────────────────────────────────────────────
-
-// Every 16-bit value within `r` bits of v.
-function neighbours(v, r) {
-  const out = [v];
-  if (r >= 1) for (let i = 0; i < 16; i++) out.push(v ^ (1 << i));
-  if (r >= 2) for (let i = 0; i < 16; i++) for (let j = i + 1; j < 16; j++) out.push(v ^ (1 << i) ^ (1 << j));
-  return out;
-}
-
-function* nearSteps(records, opts = {}) {
-  const d = Math.max(0, Math.min(MAX_DISTANCE_LIMIT, Math.floor(opts.maxDistance ?? DEFAULT_MAX_DISTANCE)));
-  const list = live(records, opts).filter(r => typeof r.dhash === 'string' && /^[0-9a-f]{16}$/.test(r.dhash));
-  const n = list.length;
-  const hi = new Uint32Array(n), lo = new Uint32Array(n);
-  for (let i = 0; i < n; i++) { hi[i] = parseInt(list[i].dhash.slice(0, 8), 16); lo[i] = parseInt(list[i].dhash.slice(8), 16); }
-  const block = (i, b) => b === 0 ? hi[i] >>> 16 : b === 1 ? hi[i] & 0xffff : b === 2 ? lo[i] >>> 16 : lo[i] & 0xffff;
-
-  // 4 bucket tables: block value -> indices.
-  const tables = [0, 1, 2, 3].map(() => new Map());
-  for (let i = 0; i < n; i++) {
-    for (let b = 0; b < 4; b++) {
-      const t = tables[b], v = block(i, b), s = t.get(v);
-      if (s) s.push(i); else t.set(v, [i]);
-    }
-  }
-
-  const parent = new Int32Array(n);
-  for (let i = 0; i < n; i++) parent[i] = i;
-  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-  const r = Math.floor(d / 4);
-  const STEP = 2000;
-  for (let i = 0; i < n; i++) {
-    for (let b = 0; b < 4; b++) {
-      for (const v of neighbours(block(i, b), r)) {
-        const s = tables[b].get(v);
-        if (!s) continue;
-        for (const j of s) {
-          if (j <= i) continue;
-          if (pop32((hi[i] ^ hi[j]) >>> 0) + pop32((lo[i] ^ lo[j]) >>> 0) > d) continue;
-          const a = find(i), c = find(j);
-          if (a !== c) parent[a] = c;
-        }
-      }
-    }
-    if ((i + 1) % STEP === 0) yield { done: i + 1, total: n };
-  }
-
-  const comps = new Map();
-  for (let i = 0; i < n; i++) {
-    const root = find(i), c = comps.get(root);
-    if (c) c.push(list[i]); else comps.set(root, [list[i]]);
-  }
-  const out = [];
-  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('near', members.map(m => m.id).sort()[0], members, opts));
-  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
-}
-
-function nearGroups(records, opts = {}) {
-  const it = nearSteps(records, opts);
-  for (;;) { const s = it.next(); if (s.done) return s.value; }
-}
-
-// The same result, handing the page back every 2,000 hashes. opts.onProgress({ done, total }),
-// opts.signal (AbortSignal) stops it with an AbortError.
-async function nearGroupsAsync(records, opts = {}) {
-  const it = nearSteps(records, opts);
-  for (;;) {
-    const s = it.next();
-    if (s.done) return s.value;
-    opts.onProgress?.(s.value);
-    await new Promise(res => setTimeout(res, 0));
-    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
-  }
-}
-
-// Near groups that only repeat an exact group add nothing; drop them.
-function dropCoveredNear(near, exact) {
-  const groupOf = new Map();
-  exact.forEach((g, i) => { for (const id of g.ids) groupOf.set(id, i); });
-  return near.filter(g => {
-    const first = groupOf.get(g.ids[0]);
-    return first === undefined || !g.ids.every(id => groupOf.get(id) === first);
-  });
-}
-
-// Run items on a JobQueue (lib.jobs) and resolve when every item of this call
-// has finished or the kind is cancelled. fn(item, signal) as for JobQueue.add.
-function runOnJobs(jobs, kind, items, fn) {
-  if (!items.length) return Promise.resolve();
-  return new Promise((resolve) => {
-    let left = items.length, off = null, ended = false;
-    const finish = () => { if (ended) return; ended = true; off?.(); resolve(); };
-    // cancel() drops pending items without calling fn, so also finish when the
-    // queue's count for this kind says nothing of it is left.
-    off = jobs.onProgress?.((p) => {
-      const c = p.kinds?.[kind];
-      if (c && c.done + c.failed >= c.total) finish();
-    }) ?? null;
-    jobs.add(kind, items, async (item, signal) => {
-      try { return await fn(item, signal); }
-      finally { if (--left === 0) finish(); }
-    });
-  });
-}
-
-// ── similar by meaning (row D4) ───────────────────────────────────────────
-//
-//   clipGroupsAsync(records, vectorOf, opts) -> Promise<Group[]> of kind 'clip'
-//
-// vectorOf(id) -> { q: Int8Array, inv } (clip.js VectorSet.view) or null.
-// Two photos join when their cosine is at least opts.minCosine (default 0.95).
-// opts.exclude: groups already found (exact and dHash near); a pair whose two
-// photos share one of those groups is skipped, so this pass adds only what the
-// fingerprints missed. opts.onProgress({ done, total }), opts.signal as above.
-//
-// Comparing every pair is too slow past a few thousand photos, so candidate
-// pairs come from random-hyperplane hashes (SimHash): CLIP_TABLES tables of 64
-// bits each, over vectors centred on the library's mean (CLIP vectors sit in a
-// narrow cone, and without centring most bits are the same for every photo).
-// Two hashes within CLIP_MAX_BITS bits in any table make a candidate, and every
-// candidate is checked with the exact cosine, so a group never holds a false
-// pair. A true pair can be missed: on the test's fake vectors the result equals
-// an all-pairs reference at 0.95 and 0.98 and misses 3 of about 700 pairs at
-// 0.92 (tests/test-library-dupes.mjs). Node takes about 4 s for 20,000 vectors
-// and 38 s for 100,000, most of it hashing.
-
-const CLIP_DEFAULT_MIN = 0.95;
-const CLIP_MIN_LIMIT = 0.92;
-const CLIP_MAX_LIMIT = 0.99;
-const CLIP_TABLES = 4;
-const CLIP_MAX_BITS = 11;
-const CLIP_SEED = 0x5eed1234;
-
-// Seeded Gaussian planes (Box-Muller over a linear congruential generator).
-function gaussianPlanes(count, dim, seed) {
-  let s = seed >>> 0;
-  const u = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 1) / 4294967297; };
-  const out = new Float32Array(count * dim);
-  for (let i = 0; i < out.length; i += 2) {
-    const r = Math.sqrt(-2 * Math.log(u())), t = 2 * Math.PI * u();
-    out[i] = r * Math.cos(t);
-    if (i + 1 < out.length) out[i + 1] = r * Math.sin(t);
-  }
-  return out;
-}
-
-function clipCosine(a, b) {
-  const q1 = a.q, q2 = b.q;
-  let dot = 0;
-  for (let j = 0; j < q1.length; j++) dot += q1[j] * q2[j];
-  return dot * a.inv * b.inv;
-}
-
-function* clipSteps(records, vectorOf, opts = {}) {
-  const min = Math.max(CLIP_MIN_LIMIT, Math.min(CLIP_MAX_LIMIT, Number(opts.minCosine ?? CLIP_DEFAULT_MIN)));
-  const list = [], vecs = [];
-  for (const r of live(records, opts)) { const v = vectorOf(r.id); if (v && v.inv) { list.push(r); vecs.push(v); } }
-  const n = list.length;
-  if (n < 2) return [];
-  const dim = vecs[0].q.length;
-  const STEP = 1000;
-  const total = n * 2;
-
-  // Centre, then hash: bit p of table t is sign(plane · (v - mean)).
-  const mean = new Float64Array(dim);
-  for (const v of vecs) for (let j = 0; j < dim; j++) mean[j] += v.q[j] * v.inv;
-  for (let j = 0; j < dim; j++) mean[j] /= n;
-  const P = CLIP_TABLES * 64;
-  const planes = gaussianPlanes(P, dim, CLIP_SEED);
-  const pm = new Float64Array(P);
-  for (let p = 0; p < P; p++) { let s = 0; const o = p * dim; for (let j = 0; j < dim; j++) s += planes[o + j] * mean[j]; pm[p] = s; }
-  const hi = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
-  const lo = Array.from({ length: CLIP_TABLES }, () => new Uint32Array(n));
-  for (let i = 0; i < n; i++) {
-    const { q, inv } = vecs[i];
-    for (let p = 0; p < P; p++) {
-      let s = 0;
-      const o = p * dim;
-      for (let j = 0; j < dim; j++) s += planes[o + j] * q[j];
-      if (s * inv > pm[p]) {
-        const t = (p / 64) | 0, b = p % 64;
-        if (b < 32) hi[t][i] |= (1 << b); else lo[t][i] |= (1 << (b - 32));
-      }
-    }
-    if ((i + 1) % STEP === 0) yield { done: i + 1, total };
-  }
-
-  const groupOf = new Int32Array(n).fill(-1);
-  const gid = new Map();
-  (opts.exclude ?? []).forEach((g, k) => { for (const id of g.ids) gid.set(id, k); });
-  for (let i = 0; i < n; i++) { const k = gid.get(list[i].id); if (k !== undefined) groupOf[i] = k; }
-
-  const parent = new Int32Array(n);
-  for (let i = 0; i < n; i++) parent[i] = i;
-  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-  const r = Math.floor(CLIP_MAX_BITS / 4);
-  for (let t = 0; t < CLIP_TABLES; t++) {
-    const H = hi[t], L = lo[t];
-    const block = (i, b) => b === 0 ? H[i] >>> 16 : b === 1 ? H[i] & 0xffff : b === 2 ? L[i] >>> 16 : L[i] & 0xffff;
-    const tables = [0, 1, 2, 3].map(() => new Map());
-    for (let i = 0; i < n; i++) for (let b = 0; b < 4; b++) { const m = tables[b], v = block(i, b), s = m.get(v); if (s) s.push(i); else m.set(v, [i]); }
-    for (let i = 0; i < n; i++) {
-      for (let b = 0; b < 4; b++) {
-        for (const v of neighbours(block(i, b), r)) {
-          const s = tables[b].get(v);
-          if (!s) continue;
-          for (const j of s) {
-            if (j <= i) continue;
-            if (groupOf[i] >= 0 && groupOf[i] === groupOf[j]) continue;
-            if (pop32((H[i] ^ H[j]) >>> 0) + pop32((L[i] ^ L[j]) >>> 0) > CLIP_MAX_BITS) continue;
-            const a = find(i), c = find(j);
-            if (a === c) continue;
-            if (clipCosine(vecs[i], vecs[j]) >= min) parent[a] = c;
-          }
-        }
-      }
-      if ((i + 1) % STEP === 0) yield { done: n + Math.round((t * n + i + 1) / CLIP_TABLES), total };
-    }
-  }
-
-  const comps = new Map();
-  for (let i = 0; i < n; i++) { const root = find(i), c = comps.get(root); if (c) c.push(list[i]); else comps.set(root, [list[i]]); }
-  const out = [];
-  for (const members of comps.values()) if (members.length > 1) out.push(toGroup('clip', 'c:' + members.map(m => m.id).sort()[0], members, opts));
-  return out.sort((a, b) => b.ids.length - a.ids.length || (a.key < b.key ? -1 : 1));
-}
-
-function clipGroups(records, vectorOf, opts = {}) {
-  const it = clipSteps(records, vectorOf, opts);
-  for (;;) { const s = it.next(); if (s.done) return s.value; }
-}
-
-async function clipGroupsAsync(records, vectorOf, opts = {}) {
-  const it = clipSteps(records, vectorOf, opts);
-  for (;;) {
-    const s = it.next();
-    if (s.done) return s.value;
-    opts.onProgress?.(s.value);
-    await new Promise(res => setTimeout(res, 0));
-    if (opts.signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
-  }
-}
-
-return { DEFAULT_MAX_DISTANCE, MAX_DISTANCE_LIMIT, dhashRGBA, hamming, rankKeeper, sizeCollisions, exactGroups, sha256Hex, nearGroups, nearGroupsAsync, dropCoveredNear, runOnJobs, CLIP_DEFAULT_MIN, CLIP_MIN_LIMIT, CLIP_MAX_LIMIT, clipCosine, clipGroups, clipGroupsAsync };
 })();
 
 const __m_library_thumbs = (() => {
@@ -13117,551 +13895,6 @@ function openICloudDialog() {
 return { ZIP_URL, IMPORT_LABEL, ICLOUD_LABEL, initImport, destPath, importTakeoutZips, openImportDialog, openICloudDialog };
 })();
 
-const __m_library_clip = (() => {
-// Search by meaning (rows Q2, Q3, D4): CLIP image and text embeddings, kept on
-// this device. Opt-in: nothing downloads until the person turns on "Search by
-// meaning", which stores { on, dtype } in lib.store kv under SETTING_KEY.
-//
-// The model is Xenova/clip-vit-base-patch32 (OpenAI CLIP ViT-B/32, MIT) through
-// Transformers.js (Apache-2.0), both pinned, in a blob-URL module worker: fp16
-// weights on WebGPU, q8 weights on WASM. Image vectors come from the stored
-// 256 px thumbnails (thumbs.js), never the originals, and run on lib.jobs as
-// kind 'clip', so they pause with the queue.
-//
-// Vectors are unit length, quantised to Int8 with a per-vector inverse norm, and
-// stored one packed blob per root in lib.store kv (`clip:vectors:<rootId>`),
-// with the id list and the model key in its header. A different model key
-// discards the blob. Search is brute-force cosine over every vector with a
-// typed-array loop on the main thread (51 million multiply-adds at 100,000
-// photos; tests/test-library-clip.mjs prints the time).
-//
-//   createClip(lib, { embedder?, readThumb? }) -> service (see the return value)
-//   VectorSet, packVectors, unpackVectors, topK, quantise   pure, for the tests
-
-const runOnJobs = __m_library_dupes.runOnJobs;
-
-const MODEL_ID = 'Xenova/clip-vit-base-patch32';
-const MODEL_REVISION = '6b7c523703ae26e39be4b03774966f8571c7f523';
-const TJS_VERSION = '4.3.2';
-const TJS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TJS_VERSION}/+esm`;
-const DIM = 512;
-const SETTING_KEY = 'clip:setting';
-const VECTORS_PREFIX = 'clip:vectors:';
-const SEARCH_TOP = 200;
-const SEARCH_MIN = 0.2;     // text to image cosine; CLIP ViT-B/32 matches sit near 0.25 to 0.35
-const SIMILAR_TOP = 100;
-const SIMILAR_MIN = 0.5;    // image to image cosine
-const TOKENIZER_BYTES = 3_620_000; // tokenizer.json, vocab.json, merges.txt and configs at MODEL_REVISION
-// Download size per weight type, from the model repository's file list at MODEL_REVISION.
-const WEIGHTS = {
-  fp16: { device: 'webgpu', bytes: 176_080_659 + 127_339_794 + TOKENIZER_BYTES },
-  q8: { device: 'wasm', bytes: 89_117_001 + 64_504_507 + TOKENIZER_BYTES },
-};
-const modelKey = (dtype) => `${MODEL_ID}@${MODEL_REVISION.slice(0, 7)}:${dtype}`;
-
-const SAVE_DELAY_MS = 15000;
-const ENQUEUE_DELAY_MS = 1500;
-const MAGIC = 0x56434c53; // 'SLCV' little-endian
-
-// ── pure parts ────────────────────────────────────────────────────────────
-
-// Quantise `vec` into out[offset .. offset + dim) as Int8 scaled so the largest
-// component is 127. Returns 1 / |q|, so cosine against the stored Int8 values is
-// exact for the quantised vector: cos = inv * dot(query_unit, q).
-function quantise(vec, out, offset = 0) {
-  const dim = vec.length;
-  let max = 0;
-  for (let i = 0; i < dim; i++) { const a = Math.abs(vec[i]); if (a > max) max = a; }
-  if (!(max > 0)) { out.fill(0, offset, offset + dim); return 0; }
-  const s = 127 / max;
-  let sq = 0;
-  for (let i = 0; i < dim; i++) { const q = Math.round(vec[i] * s); out[offset + i] = q; sq += q * q; }
-  return 1 / Math.sqrt(sq);
-}
-
-function normalise(vec) {
-  let sq = 0;
-  for (let i = 0; i < vec.length; i++) sq += vec[i] * vec[i];
-  const out = new Float32Array(vec.length);
-  if (!(sq > 0)) return out;
-  const k = 1 / Math.sqrt(sq);
-  for (let i = 0; i < vec.length; i++) out[i] = vec[i] * k;
-  return out;
-}
-
-// One root's vectors: Int8 rows in one buffer, a Float32 inverse norm per row.
-class VectorSet {
-  constructor(dim = DIM, capacity = 64) {
-    this.dim = dim;
-    this.ids = [];                 // slot -> id, or null for a freed slot
-    this.slot = new Map();         // id -> slot
-    this.free = [];
-    this.data = new Int8Array(dim * capacity);
-    this.inv = new Float32Array(capacity);
-  }
-  get size() { return this.slot.size; }
-  has(id) { return this.slot.has(id); }
-  set(id, vec) {
-    if (vec.length !== this.dim) throw new Error(`a vector has ${vec.length} values, expected ${this.dim}`);
-    let s = this.slot.get(id);
-    if (s == null) {
-      s = this.free.length ? this.free.pop() : this.ids.length;
-      if (s >= this.inv.length) this._grow(Math.max(64, this.inv.length * 2));
-      this.ids[s] = id;
-      this.slot.set(id, s);
-    }
-    this.inv[s] = quantise(vec, this.data, s * this.dim);
-  }
-  delete(id) {
-    const s = this.slot.get(id);
-    if (s == null) return false;
-    this.slot.delete(id);
-    this.ids[s] = null;
-    this.inv[s] = 0;
-    this.free.push(s);
-    return true;
-  }
-  // { q: Int8Array view, inv } for one id, or null.
-  view(id) {
-    const s = this.slot.get(id);
-    return s == null ? null : { q: this.data.subarray(s * this.dim, (s + 1) * this.dim), inv: this.inv[s] };
-  }
-  // The stored vector as unit Float32, for a "find similar" query.
-  vector(id) {
-    const v = this.view(id);
-    if (!v) return null;
-    const out = new Float32Array(this.dim);
-    for (let i = 0; i < this.dim; i++) out[i] = v.q[i] * v.inv;
-    return out;
-  }
-  _grow(cap) {
-    const d = new Int8Array(this.dim * cap); d.set(this.data); this.data = d;
-    const n = new Float32Array(cap); n.set(this.inv); this.inv = n;
-  }
-}
-
-// Layout: u32 MAGIC, u32 header length, header JSON { v, model, dim, count, ids },
-// zero padding to a multiple of 4, Float32 inv[count], Int8 data[count * dim].
-function packVectors(set, model) {
-  const ids = [], slots = [];
-  set.ids.forEach((id, s) => { if (id != null) { ids.push(id); slots.push(s); } });
-  const head = new TextEncoder().encode(JSON.stringify({ v: 1, model, dim: set.dim, count: ids.length, ids }));
-  const headEnd = 8 + head.length + ((4 - (head.length % 4)) % 4);
-  const out = new Uint8Array(headEnd + ids.length * 4 + ids.length * set.dim);
-  const dv = new DataView(out.buffer);
-  dv.setUint32(0, MAGIC, true);
-  dv.setUint32(4, head.length, true);
-  out.set(head, 8);
-  const inv = new Float32Array(out.buffer, headEnd, ids.length);
-  const data = new Int8Array(out.buffer, headEnd + ids.length * 4, ids.length * set.dim);
-  slots.forEach((s, i) => {
-    inv[i] = set.inv[s];
-    data.set(set.data.subarray(s * set.dim, (s + 1) * set.dim), i * set.dim);
-  });
-  return out;
-}
-
-// A VectorSet from packed bytes, or null when the bytes are not a vector blob
-// or were made by another model (`model` must equal the stored key).
-function unpackVectors(bytes, model) {
-  if (!bytes) return null;
-  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  if (u8.length < 8) return null;
-  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-  if (dv.getUint32(0, true) !== MAGIC) return null;
-  const hl = dv.getUint32(4, true);
-  let head;
-  try { head = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + hl))); } catch { return null; }
-  if (head?.v !== 1 || head.model !== model || !Array.isArray(head.ids) || head.ids.length !== head.count) return null;
-  const headEnd = 8 + hl + ((4 - (hl % 4)) % 4);
-  const n = head.count, dim = head.dim;
-  if (u8.length < headEnd + n * 4 + n * dim) return null;
-  const copy = u8.slice(headEnd, headEnd + n * 4 + n * dim); // aligned copy
-  const set = new VectorSet(dim, Math.max(64, n));
-  set.inv.set(new Float32Array(copy.buffer, 0, n));
-  set.data.set(new Int8Array(copy.buffer, n * 4, n * dim));
-  head.ids.forEach((id, s) => { set.ids[s] = id; set.slot.set(id, s); });
-  return set;
-}
-
-// Brute-force cosine of `query` (any length-dim Float32Array) against every
-// vector in `sets`. Returns up to k { id, score } at or above `min`, best first.
-// opts.skip: a Set of ids to leave out; opts.keep(id) -> false leaves one out.
-function topK(sets, query, { k = SEARCH_TOP, min = -1, skip = null, keep = null } = {}) {
-  const q = normalise(query);
-  const dim = q.length;
-  const hits = [];
-  for (const set of sets) {
-    if (set.dim !== dim) continue;
-    const { data, inv, ids } = set;
-    const n = ids.length;
-    for (let s = 0; s < n; s++) {
-      const iv = inv[s];
-      if (!iv) continue;
-      let dot = 0;
-      const o = s * dim;
-      for (let j = 0; j < dim; j++) dot += q[j] * data[o + j];
-      const score = dot * iv;
-      if (score < min) continue;
-      const id = ids[s];
-      if (id == null || (skip && skip.has(id)) || (keep && !keep(id))) continue;
-      hits.push({ id, score });
-    }
-  }
-  hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
-  return hits.length > k ? hits.slice(0, k) : hits;
-}
-
-// ── the browser service ───────────────────────────────────────────────────
-
-const cloneBytes = (b) => (b instanceof Uint8Array ? b : b ? new Uint8Array(b) : null);
-
-async function pickWeights() {
-  try { if (typeof navigator !== 'undefined' && navigator.gpu && await navigator.gpu.requestAdapter()) return 'fp16'; }
-  catch { /* no usable adapter */ }
-  return 'q8';
-}
-
-function createClip(lib, { embedder = null, readThumb = null } = {}) {
-  const sets = new Map();          // rootId -> VectorSet
-  const dirty = new Set();         // rootIds to save
-  const queued = new Set();        // ids waiting or running
-  const listeners = new Set();
-  const savedBytes = new Map();    // rootId -> bytes of the last save
-  let setting = null;              // { on: true, dtype } when turned on
-  let model = null;                // 'idle' | 'loading' | 'ready' | 'error'
-  let modelError = '', progress = null, device = null;
-  let loaded = false, loading = null;
-  let saveTimer = null, saving = Promise.resolve();
-  let enqueueTimer = null, pendingIds = null;
-  let emb = embedder;
-
-  const key = () => modelKey(setting?.dtype ?? 'q8');
-  const emit = () => { for (const fn of listeners) { try { fn(status()); } catch { /* a listener never stops the service */ } } };
-  const thumbBlob = readThumb ?? (async (id) => {
-    const u = await lib.services.thumbs?.url?.(id);
-    return u ? (await fetch(u)).blob() : null;
-  });
-
-  function status() {
-    let count = 0;
-    for (const s of sets.values()) count += s.size;
-    return {
-      on: !!setting?.on, dtype: setting?.dtype ?? null, device, model, error: modelError, progress,
-      count, indexable: indexable().length + count, pending: queued.size, bytes: sizeBytes(),
-    };
-  }
-
-  function sizeBytes() {
-    let b = 0;
-    for (const [rid, s] of sets) b += savedBytes.get(rid) ?? s.size * (s.dim + 4);
-    return b;
-  }
-
-  const wanted = (r) => r && !r.missing && r.thumb === 'ok';
-  function indexable() {
-    const out = [];
-    for (const r of lib.records.values()) if (wanted(r) && !sets.get(r.rootId)?.has(r.id)) out.push(r);
-    return out;
-  }
-
-  async function ensureModel() {
-    if (model === 'ready') return emb;
-    if (!emb) emb = workerEmbedder();
-    model = 'loading'; modelError = ''; emit();
-    try {
-      const files = new Map();
-      device = await emb.init(setting.dtype, (p) => {
-        if (!p?.file || !(p.total > 0)) return;
-        files.set(p.file, { loaded: p.loaded, total: p.total });
-        let loaded = 0, total = 0;
-        for (const f of files.values()) { loaded += f.loaded; total += f.total; }
-        progress = { loaded, total };
-        emit();
-      });
-      model = 'ready'; progress = null; emit();
-      return emb;
-    } catch (e) {
-      model = 'error'; modelError = e?.message ?? String(e); emit();
-      throw e;
-    }
-  }
-
-  // Read the setting and the stored vectors. Blobs from another model are deleted.
-  async function load() {
-    if (loading) return loading;
-    loading = (async () => {
-      setting = (await lib.store.getKv(SETTING_KEY)) ?? null;
-      if (!setting?.on) { loaded = true; emit(); return; }
-      for (const rid of lib.roots.keys()) {
-        if (sets.has(rid)) continue;
-        const raw = cloneBytes(await lib.store.getKv(VECTORS_PREFIX + rid));
-        const set = unpackVectors(raw, key());
-        if (set) { sets.set(rid, set); savedBytes.set(rid, raw.length); }
-        else if (raw) await lib.store.deleteKv(VECTORS_PREFIX + rid);
-      }
-      loaded = true;
-      emit();
-      index();
-    })().finally(() => { loading = null; });
-    return loading;
-  }
-
-  // Queue every record with a thumbnail and no vector (or only `ids`).
-  function index(ids = null) {
-    if (!setting?.on) return Promise.resolve();
-    const list = (ids ? ids.map(id => lib.get(id)).filter(r => wanted(r) && !sets.get(r.rootId)?.has(r.id)) : indexable())
-      .filter(r => !queued.has(r.id));
-    if (!list.length) return Promise.resolve();
-    for (const r of list) queued.add(r.id);
-    emit();
-    return runOnJobs(lib.jobs, 'clip', list, embedOne).then(() => { emit(); return flush(); });
-  }
-
-  async function embedOne(rec, signal) {
-    try {
-      if (signal.aborted || !setting?.on) return;
-      const e = await ensureModel();
-      const blob = await thumbBlob(rec.id);
-      if (!blob) throw new Error('no thumbnail');
-      if (signal.aborted) return;
-      const vec = await e.image(blob);
-      if (signal.aborted || !setting?.on) return;
-      let set = sets.get(rec.rootId);
-      if (!set) { set = new VectorSet(vec.length); sets.set(rec.rootId, set); }
-      set.set(rec.id, vec);
-      dirty.add(rec.rootId);
-      scheduleSave();
-    } finally {
-      queued.delete(rec.id);
-    }
-  }
-
-  function scheduleSave() {
-    if (!saveTimer && dirty.size) saveTimer = setTimeout(() => { saveTimer = null; save(); }, SAVE_DELAY_MS);
-  }
-  function flush() { clearTimeout(saveTimer); saveTimer = null; return save(); }
-
-  // Write each dirty root's blob, dropping ids whose record is gone.
-  function save() {
-    saving = saving.then(async () => {
-      if (!setting?.on) return;
-      for (const rid of [...dirty]) {
-        dirty.delete(rid);
-        const set = sets.get(rid);
-        if (!set) continue;
-        for (const id of [...set.slot.keys()]) if (!lib.get(id)) set.delete(id);
-        const bytes = packVectors(set, key());
-        await lib.store.setKv(VECTORS_PREFIX + rid, bytes);
-        savedBytes.set(rid, bytes.length);
-      }
-      emit();
-    }).catch(e => console.warn('[slate library] meaning vectors not saved', e));
-    return saving;
-  }
-
-  // Library events: new thumbnails get vectors; removed roots lose theirs; a
-  // rebuild clears kv, so write the setting and the vectors again.
-  lib.on('records', (ev) => {
-    if (ev?.reason === 'load') { load(); return; }
-    if (!setting?.on || !loaded) return;
-    if (ev?.reason === 'rebuild') {
-      lib.store.setKv(SETTING_KEY, setting).catch(() => {});
-      for (const rid of sets.keys()) dirty.add(rid);
-      flush();
-      return;
-    }
-    if (ev?.ids) {
-      // Records that are gone (emptied trash, moved files) lose their vectors now.
-      for (const id of ev.ids) {
-        if (lib.get(id)) continue;
-        for (const [rid, set] of sets) if (set.delete(id)) { dirty.add(rid); scheduleSave(); }
-      }
-      pendingIds ??= new Set();
-      for (const id of ev.ids) pendingIds.add(id);
-    } else pendingIds = null;
-    clearTimeout(enqueueTimer);
-    enqueueTimer = setTimeout(() => { const p = pendingIds; pendingIds = null; index(p ? [...p] : null); }, ENQUEUE_DELAY_MS);
-  });
-  lib.on('roots', () => {
-    for (const rid of [...sets.keys()]) {
-      if (lib.roots.has(rid)) continue;
-      sets.delete(rid); savedBytes.delete(rid); dirty.delete(rid);
-      lib.store.deleteKv(VECTORS_PREFIX + rid).catch(() => {});
-    }
-    if (setting?.on && loaded) load();
-  });
-
-  const allSets = () => [...sets.values()];
-  const vectorOfId = (id) => { const r = lib.get(id); return r ? sets.get(r.rootId)?.view(id) ?? null : null; };
-
-  return {
-    status,
-    onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    load,
-    index,
-    enabled: () => !!setting?.on,
-    count: () => status().count,
-    has: (id) => !!vectorOfId(id),
-    vectorOf: vectorOfId,
-    sizeBytes,
-
-    // Turn on with the given weights ('fp16' for WebGPU, 'q8' for WASM) and start indexing.
-    async enable(dtype) {
-      if (!WEIGHTS[dtype]) throw new Error(`unknown weights: ${dtype}`);
-      if (setting?.on && setting.dtype !== dtype) await this.disable();
-      setting = { on: true, dtype };
-      await lib.store.setKv(SETTING_KEY, setting);
-      loaded = false;
-      emit();
-      await load();
-      ensureModel().catch(() => {});
-    },
-
-    // Turn off: stop the jobs, drop the model, delete every stored vector and the setting.
-    async disable() {
-      lib.jobs.cancel('clip');
-      queued.clear();
-      clearTimeout(saveTimer); saveTimer = null;
-      clearTimeout(enqueueTimer); pendingIds = null;
-      await saving;
-      const rids = new Set([...sets.keys(), ...lib.roots.keys()]);
-      setting = null; sets.clear(); dirty.clear(); savedBytes.clear();
-      for (const rid of rids) await lib.store.deleteKv(VECTORS_PREFIX + rid);
-      await lib.store.deleteKv(SETTING_KEY);
-      emb?.dispose?.(); if (!embedder) emb = null;
-      model = null; progress = null; modelError = ''; device = null;
-      emit();
-    },
-
-    // Load the model again after a failure; the stored vectors stay.
-    async retry() {
-      emb?.dispose?.(); if (!embedder) emb = null;
-      model = null;
-      await ensureModel();
-      index();
-    },
-
-    // Text query -> [{ id, score }], best first: top SEARCH_TOP at or above SEARCH_MIN.
-    async searchText(text, { k = SEARCH_TOP, min = SEARCH_MIN } = {}) {
-      if (!setting?.on) throw new Error('Search by meaning is off');
-      const e = await ensureModel();
-      const v = await e.text(String(text));
-      return topK(allSets(), v, { k, min });
-    },
-
-    // The nearest photos to one photo by image vector, the photo itself left out.
-    similar(id, { k = SIMILAR_TOP, min = SIMILAR_MIN } = {}) {
-      const r = lib.get(id);
-      const v = r && sets.get(r.rootId)?.vector(id);
-      if (!v) return [];
-      return topK(allSets(), v, { k, min, skip: new Set([id]) });
-    },
-
-    // Write pending vectors now.
-    flush,
-  };
-}
-
-// ── the worker ────────────────────────────────────────────────────────────
-
-// The default embedder: one blob-URL module worker holding both CLIP encoders.
-function workerEmbedder() {
-  let w = null, ready = null, onProgress = null;
-  const pending = new Map();
-  let seq = 0;
-  const call = (msg) => new Promise((resolve, reject) => {
-    const id = ++seq;
-    pending.set(id, { resolve, reject });
-    w.postMessage({ id, ...msg });
-  });
-  const failAll = (err) => { for (const p of pending.values()) p.reject(err); pending.clear(); };
-  function start() {
-    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
-    w = new Worker(url, { type: 'module' });
-    w.addEventListener('error', (e) => {
-      console.error('[slate library] meaning worker error:', e.message);
-      failAll(new Error(e.message || 'the meaning model worker failed'));
-      ready = null;
-    });
-    w.addEventListener('message', (e) => {
-      const d = e.data;
-      if (d.type === 'progress') { onProgress?.(d.data); return; }
-      const p = pending.get(d.id);
-      if (!p) return;
-      pending.delete(d.id);
-      if (d.error) p.reject(new Error(d.error)); else p.resolve(d.result);
-    });
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
-  return {
-    init(dtype, progress) {
-      onProgress = progress;
-      if (!w) start();
-      ready ??= call({ op: 'init', dtype, device: WEIGHTS[dtype].device });
-      return ready;
-    },
-    image: (blob) => call({ op: 'image', blob }),
-    text: (text) => call({ op: 'text', text }),
-    dispose() { failAll(new Error('stopped')); w?.terminate(); w = null; ready = null; },
-  };
-}
-
-// Loads the pinned Transformers.js and both encoders, then embeds thumbnails
-// (Blob) or text. Replies { id, result } with a unit Float32Array, or { id, error }.
-const WORKER_SRC = `
-const URL_TJS = ${JSON.stringify(TJS_URL)};
-const MODEL = ${JSON.stringify(MODEL_ID)};
-const REVISION = ${JSON.stringify(MODEL_REVISION)};
-let T, tok, proc, vision, text, device;
-const f32 = (t) => (t.type === 'float32' ? t.data : t.to('float32').data);
-function unit(v) {
-  let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
-  const k = s > 0 ? 1 / Math.sqrt(s) : 0, out = new Float32Array(v.length);
-  for (let i = 0; i < v.length; i++) out[i] = v[i] * k;
-  return out;
-}
-async function init(dtype, want) {
-  T = await import(URL_TJS);
-  T.env.allowLocalModels = true;
-  T.env.localModelPath = '/models/';
-  T.env.allowRemoteModels = true;
-  const progress_callback = (p) => self.postMessage({ type: 'progress', data: { status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 } });
-  const base = { revision: REVISION, progress_callback };
-  tok = await T.AutoTokenizer.from_pretrained(MODEL, base);
-  proc = await T.AutoProcessor.from_pretrained(MODEL, base);
-  const load = (d) => Promise.all([
-    T.CLIPVisionModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
-    T.CLIPTextModelWithProjection.from_pretrained(MODEL, { ...base, device: d, dtype }),
-  ]);
-  try { [vision, text] = await load(want); device = want; }
-  catch (e) { if (want === 'wasm') throw e; [vision, text] = await load('wasm'); device = 'wasm'; }
-  return device;
-}
-self.onmessage = async (e) => {
-  const { id, op } = e.data;
-  try {
-    let result;
-    if (op === 'init') result = await init(e.data.dtype, e.data.device);
-    else if (op === 'image') {
-      const img = await T.RawImage.fromBlob(e.data.blob);
-      const out = await vision(await proc(img));
-      result = unit(f32(out.image_embeds));
-    } else if (op === 'text') {
-      const inp = tok([e.data.text], { padding: true, truncation: true });
-      const out = await text(inp);
-      result = unit(f32(out.text_embeds));
-    } else throw new Error('unknown op ' + op);
-    self.postMessage({ id, result });
-  } catch (err) {
-    self.postMessage({ id, error: (err && err.message) || String(err) });
-  }
-};
-`;
-
-return { MODEL_ID, MODEL_REVISION, TJS_VERSION, TJS_URL, DIM, SETTING_KEY, VECTORS_PREFIX, SEARCH_TOP, SEARCH_MIN, SIMILAR_TOP, SIMILAR_MIN, WEIGHTS, modelKey, quantise, normalise, VectorSet, packVectors, unpackVectors, topK, pickWeights, createClip };
-})();
-
 const __m_ui_library_view = (() => {
 // The Library mode: sidebar, search and filters, the virtualised grid with
 // day and month headers, the month scrubber, selection, keyboard, the
@@ -14983,6 +15216,17 @@ const __m_library_export = (() => {
 // albumExportIds(lib, albumId) -> ids of the album's photos that are not trashed or missing
 // pickExportFolder() -> FileSystemDirectoryHandle, or null when cancelled
 //   Call it straight from a click: the browser needs the user gesture.
+//
+// The .zip path (the other half of I4) writes the same originals into one zip file:
+// exportZip(lib, ids, { zipLib, writer }) -> Promise<{ copied, failed, total, cancelled, result }>
+//   zipLib is the zip.js module (@zip.js/zip.js, loaded by the caller); writer is a
+//   WritableStream (from pickZipSave, so a multi-gigabyte export never sits in memory)
+//   or a zip.js Writer such as BlobWriter (the download fallback). result is what
+//   ZipWriter.close() returns: the Blob for a BlobWriter.
+// zipLevelFor(name) -> 0 for formats that are already compressed, undefined for zip.js's default
+// zipFileName(label, date) -> "<label> YYYY-MM-DD.zip", with characters files cannot hold removed
+// pickZipSave(suggestedName) -> WritableStream, or null when cancelled; undefined when the
+//   browser has no showSaveFilePicker. Call it straight from a click.
 
 function uniqueName(name, taken) {
   const lower = (s) => s.toLowerCase();
@@ -15048,14 +15292,88 @@ async function exportFiles(lib, ids, destDir) {
   });
 }
 
-return { uniqueName, pickExportFolder, albumExportIds, exportFiles };
+// ── one .zip file ───────────────────────────────────────────────────────────
+const STORED = new Set(['jpg', 'jpeg', 'jpe', 'heic', 'heif', 'png', 'mp4', 'm4v', 'mov', 'webp', 'avif', 'gif']);
+const BLOB_WARN_BYTES = 2 * 1024 ** 3;   // the download fallback holds the zip in memory
+const ZIP64_BYTES = 0xFFFFFFFF - 64 * 1024 ** 2; // past 4 GB (or 65,535 entries) the zip needs Zip64
+
+function zipLevelFor(name) {
+  const i = name.lastIndexOf('.');
+  return i > 0 && STORED.has(name.slice(i + 1).toLowerCase()) ? 0 : undefined;
+}
+
+function zipFileName(label, date = new Date()) {
+  const clean = String(label ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Slate export';
+  const d = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return `${clean} ${d}.zip`;
+}
+
+// Unique entry names for the zip, in the order of ids, as the folder export names them.
+function zipEntries(lib, ids) {
+  const taken = new Set();
+  return [...new Set(ids)].filter(id => lib.get(id)).map(id => ({ id, name: uniqueName(lib.get(id).name, taken) }));
+}
+
+async function pickZipSave(suggestedName) {
+  if (typeof window === 'undefined' || !window.showSaveFilePicker) return undefined;
+  try {
+    const fh = await window.showSaveFilePicker({ id: 'slate-export', suggestedName, types: [{ description: 'Zip file', accept: { 'application/zip': ['.zip'] } }] });
+    return await fh.createWritable();
+  } catch (e) { if (e?.name === 'AbortError') return null; throw e; }
+}
+
+async function exportZip(lib, ids, { zipLib, writer } = {}) {
+  const items = zipEntries(lib, ids);
+  const bytes = items.reduce((n, it) => n + (lib.get(it.id).size || 0), 0);
+  const zip = new zipLib.ZipWriter(writer, { zip64: bytes > ZIP64_BYTES || items.length > 0xFFFF });
+  let copied = 0, failed = 0, fatal = null, cancelled = false;
+  // zip.js writes one entry at a time to a stream; the chain keeps the adds in order,
+  // so each original streams straight through and only one is open at once.
+  let chain = Promise.resolve();
+  if (items.length) {
+    await new Promise((resolve) => {
+      let finished = false;
+      const finish = () => { if (!finished) { finished = true; chain.then(resolve); } };
+      lib.jobs.add('export', items, (item, signal) => {
+        const step = chain.then(async () => {
+          if (signal?.aborted || fatal) throw new Error('cancelled');
+          let file;
+          try { file = await lib.getFile(item.id); } catch (e) { failed++; throw e; }
+          try {
+            const level = zipLevelFor(item.name);
+            const opts = {};
+            if (level === 0) opts.level = 0;
+            if (file.lastModified) opts.lastModDate = new Date(file.lastModified);
+            await zip.add(item.name, typeof file.stream === 'function' ? file.stream() : new zipLib.BlobReader(file), opts);
+            copied++;
+          } catch (e) {
+            // A half-written entry leaves the zip unusable, so the export stops here.
+            failed++; fatal = e; lib.jobs.cancel('export'); throw e;
+          }
+        });
+        chain = step.catch(() => {});
+        return step.finally(() => { if (copied + failed === items.length) finish(); });
+      });
+      // Cancelling drops pending items; the entry being written finishes, then the zip closes.
+      lib.jobs.controllers?.get('export')?.signal.addEventListener('abort', () => { cancelled = !fatal; setTimeout(finish, 0); });
+    });
+  }
+  if (fatal) {
+    await writer?.abort?.().catch?.(() => {});
+    throw new Error(`The zip export stopped: ${fatal.message ?? fatal}`);
+  }
+  const result = await zip.close();
+  return { copied, failed, total: items.length, cancelled, result };
+}
+
+return { uniqueName, pickExportFolder, albumExportIds, exportFiles, BLOB_WARN_BYTES, zipLevelFor, zipFileName, zipEntries, pickZipSave, exportZip };
 })();
 
 const __m_ui_library_organise = (() => {
 // Organising the library: the action bar for the selection (or the focused
 // photo), the culling keys, the tag dialog, the album picker, the album menu
 // the Trash view actions, and Export (copy the originals of the selection or an
-// album into a folder), Read text for the selection (row X3, textindex.js) and
+// album into a folder, or into one .zip file), Read text for the selection (row X3, textindex.js) and
 // the lock on hidden photos in the Hidden view (row O9, locked.js). Every action goes through runCommand(), so the
 // buttons, the keys and the agent face share one path and one undo log.
 //
@@ -15070,6 +15388,11 @@ const esc = __m_core_html.esc;
 const exportFiles = __m_library_export.exportFiles;
 const pickExportFolder = __m_library_export.pickExportFolder;
 const albumExportIds = __m_library_export.albumExportIds;
+const exportZip = __m_library_export.exportZip;
+const pickZipSave = __m_library_export.pickZipSave;
+const zipFileName = __m_library_export.zipFileName;
+const BLOB_WARN_BYTES = __m_library_export.BLOB_WARN_BYTES;
+const ZIP_URL = __m_ui_library_import.ZIP_URL;
 const splitId = __m_library_schema.splitId;
 const normPath = __m_library_schema.normPath;
 const RENAME_FIELDS = __m_library_move.RENAME_FIELDS;
@@ -15543,7 +15866,7 @@ function initOrganise(lib, ui) {
         if (!id) { say('Focus a photo in this album first', 'warn'); return; }
         try { const r = await run('album.cover', { album: albumId, id }); done(`Set the cover of ${al.name}`, [r.undo]); } catch (e) { fail(e); }
       } },
-      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`) },
+      { label: 'Export…', run: () => exportTo(() => albumExportIds(lib, albumId), ` from ${al.name}`, al.name) },
       { label: 'Delete album', danger: true, run: async () => {
         try { const r = await run('album.delete', { album: albumId }); done(`Deleted the album ${al.name}; its photos stay in the library`, [r.undo]); } catch (e) { fail(e); }
       } },
@@ -15551,19 +15874,77 @@ function initOrganise(lib, ui) {
   };
 
   // ── export ─────────────────────────────────────────────────────────────
-  // The folder picker opens first, inside the click, as the browser requires.
-  async function exportTo(getIds, what) {
+  // The dialog asks for a folder of originals or one .zip file. The folder or save
+  // picker then opens first inside the Export click, as the browser requires.
+  let zipPromise = null;
+  const loadZip = () => (zipPromise ??= import(ZIP_URL)
+    .then((z) => { z.configure?.({ useWebWorkers: false }); return z; })
+    .catch((e) => { zipPromise = null; throw new Error(`Could not load zip.js from esm.sh: ${e.message}`); }));
+
+  function exportTo(getIds, what, label) {
+    let ids;
+    try { ids = getIds(); } catch (e) { fail(e); return; }
+    if (!ids.length) { say('There is nothing to export', 'warn'); return; }
+    const bytes = ids.reduce((n, id) => n + (lib.get(id)?.size || 0), 0);
+    const inMemory = typeof window.showSaveFilePicker !== 'function' && bytes > BLOB_WARN_BYTES;
+    openDialog(`Export ${plural(ids.length, 'file')}`, (body, close) => {
+      body.innerHTML = `<p class="org-text">Slate copies the original files byte for byte. Nothing is re-encoded.</p>
+        <fieldset class="org-choice"><legend class="org-label">Export as</legend>
+          <label class="org-radio"><input type="radio" name="org-export" value="folder" checked autofocus> Folder of originals</label>
+          <label class="org-radio"><input type="radio" name="org-export" value="zip"> One .zip file</label>
+        </fieldset>
+        ${inMemory ? `<p class="modal-info org-warn" style="display:none">This browser cannot write the zip to disk as it goes, so it holds all ${(bytes / 1024 ** 3).toFixed(1)} GB in memory before the download. Use Chrome or Edge, or export a folder.</p>` : ''}
+        <div class="modal-footer"><button type="button" class="btn" data-no>Cancel</button>
+        <button type="button" class="btn btn-primary" data-go>Export</button></div>`;
+      const mode = () => body.querySelector('input[name="org-export"]:checked').value;
+      const warn = body.querySelector('.org-warn');
+      body.querySelector('.org-choice').addEventListener('change', () => { if (warn) warn.style.display = mode() === 'zip' ? '' : 'none'; });
+      body.querySelector('[data-no]').addEventListener('click', close);
+      body.querySelector('[data-go]').addEventListener('click', () => {
+        const m = mode();
+        close();
+        if (m === 'zip') exportToZip(ids, what, label); else exportToFolder(ids, what);
+      });
+    });
+  }
+
+  async function exportToFolder(ids, what) {
     let dest;
     try { dest = await pickExportFolder(); } catch (e) { fail(e); return; }
     if (!dest) return;
     try {
-      const ids = getIds();
-      if (!ids.length) { say('There is nothing to export', 'warn'); return; }
       say(`Exporting ${plural(ids.length, 'file')} to ${dest.name}`);
       const r = await exportFiles(lib, ids, dest);
       const msg = `Exported ${plural(r.copied, 'file')}${what} to ${dest.name}`;
       say(r.failed ? `${msg}; ${r.failed} could not be copied` : msg, r.failed ? 'warn' : 'ok');
     } catch (e) { fail(e); }
+  }
+
+  async function exportToZip(ids, what, label) {
+    const fileName = zipFileName(label);
+    let writer;
+    try { writer = await pickZipSave(fileName); } catch (e) { fail(e); return; }
+    if (writer === null) return;
+    const download = writer === undefined; // no save picker: build the zip in memory, then download it
+    try {
+      const zipLib = await loadZip();
+      if (download) writer = new zipLib.BlobWriter('application/zip');
+      say(`Exporting ${plural(ids.length, 'file')} to ${fileName}`);
+      const r = await exportZip(lib, ids, { zipLib, writer });
+      if (download) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(r.result);
+        a.download = fileName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      }
+      let msg = `Exported ${plural(r.copied, 'file')}${what} to ${fileName}`;
+      if (r.cancelled) msg = `Export cancelled; ${fileName} holds ${plural(r.copied, 'file')}`;
+      say(r.failed ? `${msg}; ${r.failed} could not be read` : msg, r.failed || r.cancelled ? 'warn' : 'ok');
+    } catch (e) {
+      if (!download) await writer.abort?.().catch(() => {});
+      fail(e);
+    }
   }
 
   // ── trash view ─────────────────────────────────────────────────────────
@@ -15698,7 +16079,7 @@ function initOrganise(lib, ui) {
       <span class="separator" aria-hidden="true"></span>
       <button type="button" class="btn" data-act="batch"${off}>Batch…</button>
       <button type="button" class="btn" data-act="gallery"${off}>Contact sheet</button>
-      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder"${off}>Export…</button>
+      <button type="button" class="btn" data-act="export" aria-haspopup="dialog" title="Copy the original files into a folder or one .zip file"${off}>Export…</button>
       ${lib.services.textIndex ? `<button type="button" class="btn" data-act="read-text" title="Find the words in these photos so search matches them"${off}>Read text</button>` : ''}${lockBtns}`;
   }
 
@@ -16805,75 +17186,6 @@ async function drawBasemap(body, file, recs, showPhotos, back) {
 return { MAPLIBRE_URL, MAPLIBRE_CSS, PMTILES_URL, initPlaces };
 })();
 
-const __m_ops_ocr = (() => {
-// Extract text from the open image (plan/pending.md, 2026-10-14) with Tesseract.js (Apache-2.0).
-// Indra OCR was the first candidate, but its weights carry a modified OpenRAIL-M licence
-// ("cannot compete with our API"), so Slate does not ship it.
-//
-// Like the rare-format decoders, the library loads on first use from esm.sh at an exact
-// version. Its worker, core and English data then download from jsdelivr (about 5 MB, cached
-// by the browser). The image itself never leaves the page: recognition runs in a local worker.
-//
-// The photo library (src/library/textindex.js, row X3) uses the same worker: it passes a Blob
-// from ocrImage(file), a version of the photo at most 1600 px on the long edge.
-
-const TESSERACT_URL = 'https://esm.sh/tesseract.js@7.0.0';
-const OCR_MAX_EDGE = 1600;
-let workerPromise = null;
-
-async function getWorker(lang, onProgress) {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const mod = await import(/* @vite-ignore */ TESSERACT_URL);
-      const createWorker = mod.createWorker ?? mod.default?.createWorker;
-      if (!createWorker) throw new Error('the text recogniser did not load');
-      return createWorker(lang, 1, { logger: (m) => onProgressRef.fn?.(m) });
-    })().catch((err) => { workerPromise = null; throw err; });
-  }
-  onProgressRef.fn = onProgress;
-  return workerPromise;
-}
-const onProgressRef = { fn: null };
-
-// A PNG or the Blob itself, from a Blob, an ImageBitmap, an OffscreenCanvas or an HTMLCanvasElement.
-async function toBlob(source) {
-  if (typeof Blob !== 'undefined' && source instanceof Blob) return source;
-  let canvas = source;
-  if (!source.convertToBlob && !source.toBlob) {
-    canvas = new OffscreenCanvas(source.width, source.height);
-    canvas.getContext('2d').drawImage(source, 0, 0);
-  }
-  return canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/png' }) : new Promise(r => canvas.toBlob(r, 'image/png'));
-}
-
-// Returns { text, confidence }. `source` is a Blob, an ImageBitmap or a canvas.
-async function extractText(source, { lang = 'eng', onProgress } = {}) {
-  const worker = await getWorker(lang, onProgress);
-  const { data } = await worker.recognize(await toBlob(source));
-  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
-}
-
-// A version of a photo file for recognition: a PNG Blob at most `max` px on the long edge.
-// The browser applies the EXIF orientation while it decodes.
-async function ocrImage(file, max = OCR_MAX_EDGE) {
-  const full = await createImageBitmap(file);
-  try {
-    const scale = Math.min(1, max / Math.max(full.width, full.height));
-    const w = Math.max(1, Math.round(full.width * scale)), h = Math.max(1, Math.round(full.height * scale));
-    const canvas = new OffscreenCanvas(w, h);
-    canvas.getContext('2d').drawImage(full, 0, 0, w, h);
-    return await canvas.convertToBlob({ type: 'image/png' });
-  } finally { full.close?.(); }
-}
-
-// Trim trailing spaces on each line and collapse runs of three or more blank lines.
-function cleanText(text) {
-  return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-return { TESSERACT_URL, OCR_MAX_EDGE, extractText, ocrImage, cleanText };
-})();
-
 const __m_library_textindex = (() => {
 // Read text in photos (spec row X3). When the setting "Read text in photos" is on,
 // Slate runs Tesseract.js (src/ops/ocr.js) over every photo in the library through
@@ -17973,6 +18285,7 @@ const initPeople = __m_ui_library_people.initPeople;
 const importTakeoutZips = __m_ui_library_import.importTakeoutZips;
 const ZIP_URL = __m_ui_library_import.ZIP_URL;
 const exportFiles = __m_library_export.exportFiles;
+const exportZip = __m_library_export.exportZip;
 const applyICloudCsv = __m_library_icloud.applyICloudCsv;
 const buildStacks = __m_library_stacks.buildStacks;
 
@@ -18015,7 +18328,7 @@ async function initLibrary() {
     addRoot: (handle, name) => lib.addRoot({ handle, name }),
     addFiles: (files, name) => lib.addRoot({ handle: null, name, files }),
     // Modules whose own UI needs a folder picker, for live checks that pass OPFS folders instead.
-    mods: { importTakeoutZips, ZIP_URL, exportFiles, applyICloudCsv, buildStacks },
+    mods: { importTakeoutZips, ZIP_URL, exportFiles, exportZip, applyICloudCsv, buildStacks },
   };
   return lib;
 }
@@ -20087,6 +20400,199 @@ async function apply(canvas, params) {
 return { parseCube, lookup, lutPixels, apply };
 })();
 
+const __m_ops_lensblur = (() => {
+// Background blur (plan/pending.md, "Lens blur from a depth map, kept light"). The physics is
+// AnyBokeh's relation, not its model: the blur-disc radius of a pixel grows linearly with how far
+// its depth is from the focus plane, r = maxR * |d - d0|, where maxR comes from Strength.
+//
+// The depth map comes from src/ops/depth.js (a small in-browser model) and is stored in the op's
+// params, so undo, redo and session restore replay this op without the model:
+//   params = { focus: { x, y } (0..1), strength (0..100), depth: { w, h, data: Uint8Array } }
+//
+// Rendering is a gather blur over a weighted pyramid. Level i is the image averaged over
+// 2^i x 2^i blocks, then smoothed and sampled bilinearly, so it reads as a blur of radius about
+// 2^i. Each pixel blends the two levels either side of its own radius, which keeps the result
+// continuous in r and exact (the source pixel) at r = 0. In every level a source pixel counts
+// with weight min(1, r_src / R_level): a sharp, in-focus pixel adds almost nothing to a blurred
+// one, so a sharp foreground edge does not smear into the blurred background around it.
+//
+// Pure maths on typed arrays; tests/test-lensblur.mjs runs it in Node.
+
+const MAX_FRACTION = 0.05; // radius at Strength 100 and full depth distance, as a share of the long side
+const EPS = 1e-3;                 // the least weight a pixel keeps, so an all-sharp block still has a colour
+const STRIDE = 6;                 // per cell: sum r*w, g*w, b*w, w, sum of radius, pixel count
+
+// The depth bytes from params, whether a Uint8Array, a plain array or an object with numeric keys
+// (what JSON makes of a typed array).
+function depthBytes(depth) {
+  const d = depth?.data;
+  if (!d || !(depth.w > 0) || !(depth.h > 0)) throw new Error('the blur has no depth map');
+  const bytes = d instanceof Uint8Array ? d : Uint8Array.from(Array.isArray(d) || ArrayBuffer.isView(d) ? d : Object.values(d));
+  if (bytes.length < depth.w * depth.h) throw new Error('the depth map is shorter than its size');
+  return { w: depth.w, h: depth.h, data: bytes };
+}
+
+// Bilinear resample of a w x h byte depth map to W x H, as 0..1 floats (pixel centres aligned).
+function resampleDepth({ w, h, data }, W, H) {
+  const out = new Float32Array(W * H);
+  const xs0 = new Int32Array(W), xs1 = new Int32Array(W), fx = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    const s = Math.min(w - 1, Math.max(0, (x + 0.5) * w / W - 0.5));
+    xs0[x] = Math.floor(s); xs1[x] = Math.min(w - 1, xs0[x] + 1); fx[x] = s - xs0[x];
+  }
+  for (let y = 0; y < H; y++) {
+    const s = Math.min(h - 1, Math.max(0, (y + 0.5) * h / H - 0.5));
+    const y0 = Math.floor(s), y1 = Math.min(h - 1, y0 + 1), fy = s - y0;
+    const r0 = y0 * w, r1 = y1 * w, o = y * W;
+    for (let x = 0; x < W; x++) {
+      const a = data[r0 + xs0[x]], b = data[r0 + xs1[x]], c = data[r1 + xs0[x]], d = data[r1 + xs1[x]];
+      const top = a + (b - a) * fx[x], bot = c + (d - c) * fx[x];
+      out[o + x] = (top + (bot - top) * fy) / 255;
+    }
+  }
+  return out;
+}
+
+// The depth (0..1) at a normalised point, read bilinearly from the map.
+function depthAt({ w, h, data }, x, y) {
+  const sx = Math.min(w - 1, Math.max(0, x * w - 0.5)), sy = Math.min(h - 1, Math.max(0, y * h - 0.5));
+  const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1);
+  const fx = sx - x0, fy = sy - y0;
+  const top = data[y0 * w + x0] + (data[y0 * w + x1] - data[y0 * w + x0]) * fx;
+  const bot = data[y1 * w + x0] + (data[y1 * w + x1] - data[y1 * w + x0]) * fx;
+  return (top + (bot - top) * fy) / 255;
+}
+
+const maxRadius = (strength, W, H) => Math.max(0, Math.min(100, +strength || 0)) / 100 * MAX_FRACTION * Math.max(W, H);
+
+// Circle-of-confusion radius per pixel: r = maxR * |d - d0|, 0 at the focus plane.
+function radiusMap(d, d0, maxR) {
+  const r = new Float32Array(d.length);
+  for (let i = 0; i < d.length; i++) r[i] = maxR * Math.abs(d[i] - d0);
+  return r;
+}
+
+const weight = (r, R) => Math.max(EPS, Math.min(1, r / R));
+
+// Level 1 from full-resolution pixels: 2 x 2 blocks, each pixel weighted by its radius.
+function firstLevel(px, W, H, r) {
+  const w1 = (W + 1) >> 1, h1 = (H + 1) >> 1, L = new Float32Array(w1 * h1 * STRIDE);
+  for (let y = 0; y < H; y++) {
+    const row = (y >> 1) * w1;
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x, p = i * 4, c = (row + (x >> 1)) * STRIDE, ri = r[i];
+      const wt = weight(ri, 2);
+      L[c] += px[p] * wt; L[c + 1] += px[p + 1] * wt; L[c + 2] += px[p + 2] * wt;
+      L[c + 3] += wt; L[c + 4] += ri; L[c + 5] += 1;
+    }
+  }
+  return { w: w1, h: h1, data: L };
+}
+
+// Level i from level i - 1. Each child block is reweighted from R/2 to R by its mean radius.
+function nextLevel(prev, R) {
+  const { w: pw, h: ph, data: P } = prev;
+  const w = (pw + 1) >> 1, h = (ph + 1) >> 1, L = new Float32Array(w * h * STRIDE);
+  for (let y = 0; y < ph; y++) {
+    const row = (y >> 1) * w;
+    for (let x = 0; x < pw; x++) {
+      const s = (y * pw + x) * STRIDE, c = (row + (x >> 1)) * STRIDE;
+      const n = P[s + 5];
+      if (!n) continue;
+      const mr = P[s + 4] / n, k = weight(mr, R) / weight(mr, R / 2);
+      L[c] += P[s] * k; L[c + 1] += P[s + 1] * k; L[c + 2] += P[s + 2] * k; L[c + 3] += P[s + 3] * k;
+      L[c + 4] += P[s + 4]; L[c + 5] += n;
+    }
+  }
+  return { w, h, data: L };
+}
+
+// The four premultiplied sums of a level, smoothed by a [1 2 1] / 4 tent in x then y.
+function smooth({ w, h, data }) {
+  const a = new Float32Array(w * h * 4), b = new Float32Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) for (let c = 0; c < 4; c++) a[i * 4 + c] = data[i * STRIDE + c];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const l = y * w + Math.max(0, x - 1), m = y * w + x, r = y * w + Math.min(w - 1, x + 1);
+    for (let c = 0; c < 4; c++) b[m * 4 + c] = (a[l * 4 + c] + 2 * a[m * 4 + c] + a[r * 4 + c]) / 4;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const u = Math.max(0, y - 1) * w + x, m = y * w + x, d = Math.min(h - 1, y + 1) * w + x;
+    for (let c = 0; c < 4; c++) a[m * 4 + c] = (b[u * 4 + c] + 2 * b[m * 4 + c] + b[d * 4 + c]) / 4;
+  }
+  return { w, h, data: a };
+}
+
+// Blur levels 1..K as smoothed premultiplied grids; level i has radius about 2^i.
+function buildLevels(px, W, H, r, K) {
+  const raw = [firstLevel(px, W, H, r)];
+  for (let i = 2; i <= K; i++) raw.push(nextLevel(raw[raw.length - 1], 2 ** i));
+  return raw.map(smooth);
+}
+
+// Colour of level `lv` (1-based scale 2^i) at full-resolution pixel (x, y), into out[0..2].
+function sample(lv, scale, x, y, out) {
+  const { w, h, data } = lv;
+  const sx = Math.min(w - 1, Math.max(0, (x + 0.5) / scale - 0.5));
+  const sy = Math.min(h - 1, Math.max(0, (y + 0.5) / scale - 0.5));
+  const x0 = sx | 0, y0 = sy | 0, x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1);
+  const fx = sx - x0, fy = sy - y0;
+  const a = (y0 * w + x0) * 4, b = (y0 * w + x1) * 4, c = (y1 * w + x0) * 4, d = (y1 * w + x1) * 4;
+  const wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy;
+  const sw = data[a + 3] * wa + data[b + 3] * wb + data[c + 3] * wc + data[d + 3] * wd;
+  for (let ch = 0; ch < 3; ch++) {
+    out[ch] = (data[a + ch] * wa + data[b + ch] * wb + data[c + ch] * wc + data[d + ch] * wd) / sw;
+  }
+}
+
+// Render: each pixel blends the two levels either side of its radius (level 0 is the source).
+function lensBlurPixels(px, W, H, r) {
+  let rmax = 0;
+  for (let i = 0; i < r.length; i++) if (r[i] > rmax) rmax = r[i];
+  const out = new Uint8ClampedArray(px);
+  if (rmax <= 0) return out;
+  const K = Math.max(1, Math.ceil(Math.log2(rmax)));
+  const levels = buildLevels(px, W, H, r, K);
+  const lo = [0, 0, 0], hi = [0, 0, 0];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x, ri = r[i];
+      if (ri <= 0) continue;
+      const p = i * 4;
+      let a, iLo;
+      if (ri < 2) { iLo = 0; a = ri / 2; }
+      else {
+        iLo = Math.min(K, Math.floor(Math.log2(ri)));
+        a = iLo >= K ? 0 : (ri - 2 ** iLo) / 2 ** iLo;
+      }
+      if (iLo === 0) { lo[0] = px[p]; lo[1] = px[p + 1]; lo[2] = px[p + 2]; }
+      else sample(levels[iLo - 1], 2 ** iLo, x, y, lo);
+      if (a > 0) sample(levels[iLo], 2 ** (iLo + 1), x, y, hi);
+      for (let c = 0; c < 3; c++) out[p + c] = Math.round(a > 0 ? lo[c] + (hi[c] - lo[c]) * a : lo[c]);
+    }
+  }
+  return out;
+}
+
+// The whole op on RGBA bytes: returns new RGBA bytes.
+function renderLensBlur(px, W, H, { focus, strength, depth }) {
+  const dep = depthBytes(depth);
+  const fx = Math.min(1, Math.max(0, +focus?.x || 0)), fy = Math.min(1, Math.max(0, +focus?.y || 0));
+  const d = resampleDepth(dep, W, H);
+  const r = radiusMap(d, depthAt(dep, fx, fy), maxRadius(strength, W, H));
+  return lensBlurPixels(px, W, H, r);
+}
+
+async function apply(canvas, params) {
+  const W = canvas.width, H = canvas.height;
+  const src = canvas.getContext('2d').getImageData(0, 0, W, H);
+  const out = new OffscreenCanvas(W, H);
+  out.getContext('2d').putImageData(new ImageData(renderLensBlur(src.data, W, H, params), W, H), 0, 0);
+  return out;
+}
+
+return { MAX_FRACTION, depthBytes, resampleDepth, depthAt, maxRadius, radiusMap, buildLevels, lensBlurPixels, renderLensBlur, apply };
+})();
+
 const __m_core_oprunner = (() => {
 const state = __m_core_state.state;
 const commitOp = __m_core_state.commitOp;
@@ -20112,6 +20618,7 @@ const adjustOp = __m_ops_adjust;
 const sharpenOp = __m_ops_sharpen;
 const straightenOp = __m_ops_straighten;
 const lutOp = __m_ops_lut;
+const lensblurOp = __m_ops_lensblur;
 const applyText = __m_ops_annotate.applyText;
 const applyArrow = __m_ops_annotate.applyArrow;
 
@@ -20119,6 +20626,7 @@ const OPS = {
   crop: cropOp, rotate: rotateOp, flip: flipOp,
   redact: redactOp, blur: blurOp, pixelate: pixelateOp, resize: resizeOp,
   adjust: adjustOp, sharpen: sharpenOp, straighten: straightenOp, lut: lutOp,
+  lensblur: lensblurOp,
 };
 
 function initOpRunner() {
@@ -20176,17 +20684,23 @@ function initOpRunner() {
     if (!state.image.working || !recipe?.ops?.length) return;
     let done = 0, skipped = 0;
     for (const { op, params } of recipe.ops) {
-      if (!OPS[op] || (op === 'lut' && !params?.data)) { skipped++; continue; }
+      if (!OPS[op] || (op === 'lut' && !params?.data) || (op === 'lensblur' && !params?.depth?.data)) { skipped++; continue; }
       await runOp(op, params);
       done++;
     }
     emit('fit:window', null);
-    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows or a LUT not stored in the file)` : ''}.`, level: 'ok' });
+    emit('toast', { message: `Applied ${done} edit${done === 1 ? '' : 's'}${skipped ? `; skipped ${skipped} (text, arrows, or a LUT or depth map not stored in the file)` : ''}.`, level: 'ok' });
   });
 
   on('op:lut', async (params) => {
     if (!state.image.working) return;
     await runOp('lut', params);
+  });
+
+  // Background blur: params carry the depth map, so replay never needs the depth model.
+  on('op:lensblur', async (params) => {
+    if (!state.image.working || !params?.depth) return;
+    await runOp('lensblur', params);
   });
 
   on('op:sharpen', async (params) => {
@@ -20391,6 +20905,9 @@ return { initOpRunner, replayOps };
 const __m_ui_modals = (() => {
 const parseCube = __m_ops_lut.parseCube;
 const extractText = __m_ops_ocr.extractText;
+const estimateDepth = __m_ops_depth.estimateDepth;
+const depthDownloadMB = __m_ops_depth.depthDownloadMB;
+const renderLensBlur = __m_ops_lensblur.renderLensBlur;
 const canDescribe = __m_ops_describe.canDescribe;
 const destination = __m_ops_describe.destination;
 const describeImage = __m_ops_describe.describeImage;
@@ -20405,6 +20922,7 @@ function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
   on('modal:ocr',       showOcr);
+  on('modal:lensblur',  showLensBlur);
   on('modal:describe',  showDescribe);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
@@ -20614,6 +21132,79 @@ async function showOcr() {
     a.download = `${name}.txt`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
+}
+
+// ── Background blur ───────────────────────────────────────────────────────────
+
+const LB_PREVIEW_W = 560, LB_PREVIEW_H = 400;
+
+async function showLensBlur() {
+  if (!state.image.working) return;
+  const src = state.image.working;
+  const dlg = getOrCreate('modal-lensblur');
+  dlg.setAttribute('aria-label', 'Background blur');
+  const k = Math.min(1, LB_PREVIEW_W / src.width, LB_PREVIEW_H / src.height);
+  const pw = Math.max(1, Math.round(src.width * k)), ph = Math.max(1, Math.round(src.height * k));
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Background blur</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="lb-status" role="status">Finding depth in this image…</p>
+      <div style="position:relative;width:${pw}px;height:${ph}px;margin:0 auto">
+        <canvas id="lb-preview" width="${pw}" height="${ph}" style="display:block;width:${pw}px;height:${ph}px;cursor:crosshair" aria-label="Preview. Click to set the focus point."></canvas>
+        <div id="lb-marker" aria-hidden="true" style="position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;left:50%;top:50%"></div>
+      </div>
+      <p class="help-p" style="margin:4px 0 0">Click the preview to choose what stays sharp. Areas nearer or farther than that point get more blur.</p>
+      ${slider('lb-strength', 'Strength', 0, 100, 1, 50)}
+      <p class="modal-info" style="font-size:11px;color:var(--fg-2)">Depth is estimated on this device. The depth model (about ${depthDownloadMB()} MB) downloads the first time and is then cached.</p>
+    </div>
+    ${modalFooter()}`;
+  const status = dlg.querySelector('#lb-status'), cv = dlg.querySelector('#lb-preview'), marker = dlg.querySelector('#lb-marker');
+  const strength = dlg.querySelector('#lb-strength'), applyBtn = dlg.querySelector('[data-apply]');
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(src, 0, 0, pw, ph);
+  const base = ctx.getImageData(0, 0, pw, ph);
+  const focus = { x: 0.5, y: 0.5 };
+  let depth = null, queued = false;
+  applyBtn.disabled = true;
+
+  const render = () => {
+    queued = false;
+    if (!depth || !dlg.open) return;
+    const px = renderLensBlur(base.data, pw, ph, { focus, strength: +strength.value, depth });
+    ctx.putImageData(new ImageData(px, pw, ph), 0, 0);
+  };
+  const update = () => { if (!queued) { queued = true; requestAnimationFrame(render); } };
+
+  bindSlider(dlg, 'lb-strength', '', update);
+  cv.addEventListener('click', (e) => {
+    const r = cv.getBoundingClientRect();
+    focus.x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    focus.y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    marker.style.left = `${focus.x * 100}%`;
+    marker.style.top = `${focus.y * 100}%`;
+    update();
+  });
+  bindFooter(dlg, () => {
+    if (!depth) return;
+    emit('toast', { message: 'Applying background blur…', level: 'ok', duration: 1500 });
+    emit('op:lensblur', { focus: { ...focus }, strength: +strength.value, depth });
+  });
+
+  dlg.showModal();
+  try {
+    depth = await estimateDepth(src, {
+      onProgress: (p) => {
+        if (!dlg.open || p?.status !== 'progress' || !p.total) return;
+        status.textContent = `Downloading the depth model (${Math.round(p.loaded / 1e6)} of ${Math.round(p.total / 1e6)} MB)…`;
+      },
+    });
+    if (!dlg.open) return;
+    status.textContent = 'Click the preview to set the focus point.';
+    applyBtn.disabled = false;
+    render();
+  } catch (err) {
+    status.textContent = `Could not estimate depth: ${err.message}. The depth model needs a connection the first time.`;
+  }
 }
 
 // ── Describe (NakliOS host model) ─────────────────────────────────────────────

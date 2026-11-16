@@ -46,6 +46,7 @@
 !package.json
 !scripts/gen-commands.mjs
 !scripts/mark-spec.py
+!scripts/build-photo-set.mjs
 !scripts/test-all.mjs
 !scripts/live-check*.mjs
 

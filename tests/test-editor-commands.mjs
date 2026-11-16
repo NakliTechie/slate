@@ -48,11 +48,11 @@ function fakeEditor({ image = true, folder = false } = {}) {
 const run = (name, args, ctx) => runCommand({}, name, args, ctx);
 
 await check(() => {
-  assert.equal(EDITOR_COMMANDS.length, 12);
+  assert.equal(EDITOR_COMMANDS.length, 14);
   for (const c of EDITOR_COMMANDS) assert.ok(COMMANDS.includes(c), `${c.name} is in the manifest list`);
   assert.ok(COMMANDS.length <= 64, `${COMMANDS.length} commands`);
   assert.deepEqual(EDITOR_COMMANDS.filter(c => c.scope === 'destructive'), []);
-}, 'the 12 editor commands join the manifest, none destructive, total at most 64');
+}, 'the 14 editor commands join the manifest, none destructive, total at most 64');
 
 await check(async () => {
   const { editor } = fakeEditor();

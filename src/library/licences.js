@@ -4,7 +4,8 @@
 // fetched from esm.sh the first time a matching file is opened or a feature that needs them is used (see SECURITY.md), and
 // carry their own licence in what esm.sh serves. `jsdelivr` packages load the same way from
 // cdn.jsdelivr.net, and `huggingface` entries are model weights downloaded from huggingface.co;
-// both only after the person turns on Search by meaning (src/library/clip.js).
+// both only after the person turns on Search by meaning (src/library/clip.js) or first opens
+// Background blur (src/ops/depth.js).
 // tests/test-licences.mjs keeps this list in step with src/vendor/ and README.md's Credits.
 
 export const LICENCES = [
@@ -80,7 +81,7 @@ SOFTWARE.` },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
   { name: '@zip.js/zip.js', version: '2.24.0', licence: 'BSD-3-Clause', loaded: 'esm.sh', use: 'Read Google Takeout zips when importing into the library', source: 'https://github.com/gildas-lormeau/zip.js' },
-  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning: runs the CLIP model in a worker, only after you turn it on', source: 'https://github.com/huggingface/transformers.js' },
+  { name: '@huggingface/transformers', version: '4.3.2', licence: 'Apache-2.0', loaded: 'jsdelivr', use: 'Search by meaning and Background blur: runs the CLIP and depth models in a worker, only after you turn on or first open them', source: 'https://github.com/huggingface/transformers.js' },
   { name: 'onnxruntime-web', version: '1.31.0-dev.20260914-8d85527a0', licence: 'MIT', loaded: 'jsdelivr', use: 'Fetched with @huggingface/transformers, with onnxruntime-common and its WebAssembly files', source: 'https://github.com/microsoft/onnxruntime' },
   { name: 'onnxruntime-web (faces)', version: '1.29.0', licence: 'MIT', loaded: 'jsdelivr', use: 'Runs the face models, only after you turn on People', source: 'https://github.com/microsoft/onnxruntime' },
   { name: 'YuNet face detector', version: '2023mar', licence: 'MIT', loaded: 'huggingface', use: 'Finds faces (OpenCV model zoo), downloaded once after you turn on People', source: 'https://huggingface.co/opencv/face_detection_yunet' },
@@ -90,5 +91,6 @@ SOFTWARE.` },
   { name: 'maplibre-gl', version: '6.16.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Draws a map from your own .pmtiles file in Places, only when you choose one', source: 'https://github.com/maplibre/maplibre-gl-js' },
   { name: 'pmtiles', version: '4.5.0', licence: 'BSD-3-Clause', loaded: 'jsdelivr', use: 'Reads your .pmtiles map file, with maplibre-gl', source: 'https://github.com/protomaps/PMTiles' },
   { name: 'Xenova/clip-vit-base-patch32', version: 'revision 6b7c523', licence: 'MIT', loaded: 'huggingface', use: 'OpenAI CLIP ViT-B/32 weights (ONNX) for Search by meaning, downloaded once after you turn it on', source: 'https://huggingface.co/Xenova/clip-vit-base-patch32' },
+  { name: 'onnx-community/depth-anything-v2-small', version: 'revision 4472b73', licence: 'Apache-2.0', loaded: 'huggingface', use: 'Depth Anything V2 Small weights (ONNX) for Background blur, about 50 MB (WebGPU) or 27 MB (WebAssembly), downloaded once the first time you open it; runs with @huggingface/transformers', source: 'https://huggingface.co/onnx-community/depth-anything-v2-small' },
   { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];

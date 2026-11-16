@@ -10,6 +10,8 @@
 import { state } from '../core/state.js';
 import { emit, on, off } from '../core/events.js';
 import { flattenLayers } from '../core/layers.js';
+import { extractText } from '../ops/ocr.js';
+import { estimateDepth } from '../ops/depth.js';
 
 export const OP_TIMEOUT_MS = 20000;
 export const SAVE_TIMEOUT_MS = 60000;
@@ -155,6 +157,18 @@ export const EDITOR_COMMANDS = [
       const to = exp.saveMode === 'sidecar' ? 'folder' : 'download';
       try { return { saved: true, name: await saved(e), to, format }; }
       finally { Object.assign(exp, prev); }
+    } },
+  { name: 'image.extract_text', label: 'Extract text', description: 'Read printed English text from the open image on this device (Tesseract.js; downloads about 5 MB the first time). Returns the text and a confidence from 0 to 100.', scope: 'read', input: obj(),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      return extractText(e.flatten(e.state.image.working));
+    } },
+  { name: 'image.lens_blur', label: 'Background blur', description: 'Blur the background by depth, keeping the subject at a focus point sharp. x and y are 0 to 1 across the image. The depth model (about 27 to 50 MB) downloads the first time. Undo with image.undo.', scope: 'write',
+    input: obj({ x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, strength: { type: 'integer', minimum: 1, maximum: 100, description: 'default 50' } }, ['x', 'y']),
+    run: async (lib, a, ctx) => {
+      const e = ed(ctx); needImage(e);
+      const depth = await estimateDepth(e.state.image.working);
+      return applied(e, 'op:lensblur', { focus: { x: inRange('x', a.x, 0, 1), y: inRange('y', a.y, 0, 1) }, strength: Math.round(inRange('strength', a.strength ?? 50, 1, 100)), depth }, 'the background blur');
     } },
   { name: 'image.snapshot', label: 'Snapshot', description: `A small JPEG data URL of the open image as it looks now (at most ${SNAPSHOT_MAX_PX} px on the long edge), for looking at it.`, scope: 'read', input: obj(),
     run: async (lib, a, ctx) => {

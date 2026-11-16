@@ -89,3 +89,8 @@
 .org-new { color: var(--fg-0); }
 .org-error { color: var(--danger); }
 .org-dialog input[type="password"] { font: inherit; }
+
+.org-choice { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.org-choice legend { padding: 0; margin-bottom: var(--space-1); }
+.org-radio { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-0); }
+.org-warn { color: var(--warn, var(--fg-1)); }

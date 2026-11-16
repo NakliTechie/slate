@@ -38,6 +38,8 @@ export function buildRecipe(ops, { w, h } = {}) {
   if (!ops?.length) return null;
   const list = ops.map(({ op, params }) => {
     if (op === 'lut') { const { data, ...rest } = params || {}; return { op, params: { ...rest, dataOmitted: true } }; }
+    // A depth map is about 200 KB, too large for a COM segment; the blur is recorded without it.
+    if (op === 'lensblur') { const { depth, ...rest } = params || {}; return { op, params: { ...rest, depthOmitted: true } }; }
     return { op, params };
   });
   const json = asciiJson({ app: 'slate', v: 1, w, h, ops: list });
