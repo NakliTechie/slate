@@ -67,7 +67,7 @@ Read from `src/` on 2026-11-16:
 | M2 | Grid tiles from the embedded thumbnail where one exists; otherwise decode and resize in a worker | R | v1 | Built (thumbs.js). Checked: live check: tiles fill after scrolling. The embedded-preview path for RAW is not driven live |
 | M3 | Videos (MP4, MOV, WebM) in the timeline with a poster frame and duration; play in a viewer | B | v1 | Built (poster, duration, viewer playback). Checked: live check: two WebM clips get posters and durations. MP4 and MOV not driven |
 | M4 | Read XMP sidecars: `dc:subject`, `xmp:Rating`, `xmp:Label`, date, GPS; both `photo.jpg.xmp` and `photo.xmp` | D R | v1 | Built (xmp.js). Checked: live check: a sidecar's tags and rating applied; tests/test-library-organise.mjs Lightroom, digiKam and darktable samples |
-| M5 | Write XMP sidecars for rating, label and keywords, as `photo.ext.xmp`, behind a setting | D L R | v1.x | Never edits the original |
+| M5 | Write XMP sidecars for rating, label and keywords, as `photo.ext.xmp`, behind a setting | D L R | v1.x | Built 2026-11-17 (xmpwrite.js, setting in the storage panel, off by default; reject writes Rating -1; existing sidecar properties kept). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-xmpwrite.mjs. Known limit: a tag Slate wrote comes back as a file tag on rescan, so Slate cannot remove it |
 | M6 | Google Motion Photos: play the MP4 embedded at the end of the JPEG | G R | v1.x | Located through the Container XMP item lengths |
 | M7 | Apple Live Photos: pair a HEIC and MOV by name and play the movie | A R | v1.x | Pairing by content identifier unverified in the research |
 | M8 | Ultra HDR gain maps shown as HDR | G | Waived | Tiles and viewer show the SDR base image, which every reader supports (R) |
@@ -86,7 +86,7 @@ Read from `src/` on 2026-11-16:
 | B7 | Sort and filter bar: date range, file type, folder, camera, rating, flag, tag, favourite | L P | v1 | Built (filter bar). Checked: tests/test-library-core.mjs filters; the filter bar controls are not driven live |
 | B8 | Slideshow of any selection or album | B | v1 | Built (selection or view into the editor slideshow, at most 1,000 photos). Not driven live |
 | B9 | Stacks: group an edited version, bursts and RAW plus JPEG pairs under one tile | L I | v1.x | |
-| B10 | Memories: "On this day" and year-ago groups | G A I P | v1.x | A date query; no model needed |
+| B10 | Memories: "On this day" and year-ago groups | G A I P | v1.x | Built 2026-11-17 (memories.js: On this day, nearest day within 7 days when today has none, 29 February on 28 February). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-memories.mjs |
 
 ## 4. Organising and culling
 
@@ -116,9 +116,9 @@ Read from `src/` on 2026-11-16:
 
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
-| D1 | Exact duplicates: same size and content hash, grouped for review | P I | v1.x | |
-| D2 | Near-duplicates and bursts by perceptual hash (dHash or pHash), Hamming threshold set by Slate's own tests | D R | v1.x | Hash computed when the thumbnail is made |
-| D3 | Review screen: keep the best, trash the rest in one step | I | v1.x | Through Trash (O6) |
+| D1 | Exact duplicates: same size and content hash, grouped for review | P I | v1.x | Built 2026-11-17 (dupes.js: same size, then SHA-256 of colliding files only). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-dupes.mjs. The synthetic folder had no exact copies, so exact grouping is checked in Node only |
+| D2 | Near-duplicates and bursts by perceptual hash (dHash or pHash), Hamming threshold set by Slate's own tests | D R | v1.x | Built 2026-11-17 (64-bit dHash from the thumbnail; bucket lookup; threshold slider 1 to 11, default 6 from synthetic images). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): 9 groups of similar photos; Node: matches brute force on 2,000 hashes, 100,000 grouped in 1.4 s |
+| D3 | Review screen: keep the best, trash the rest in one step | I | v1.x | Built 2026-11-17 (Duplicates view: keeper suggested by size, favourite, rating, age). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): keep-one trashes 59 others, Undo restores them |
 | D4 | Near-duplicates by CLIP similarity as a second pass | I R | v1.x | After Q2 |
 
 ## 7. Places
@@ -144,9 +144,9 @@ Read from `src/` on 2026-11-16:
 | # | Capability | Src | Scope | Note |
 |---|---|---|---|---|
 | I1 | Apple Photos: open an osxphotos export folder; its embedded keywords, GPS and album folders come in | A R | v1 | Built (an export folder scans like any folder; embedded XMP and IPTC keywords are read). Checked: tests/test-library-scan.mjs. Not driven with a real osxphotos export |
-| I2 | Google Takeout, extracted: match each JSON to its photo (47-character title truncation, `(N)` counters, `-edited` copies, fuzzy fallback); take the photo-taken time, description and GPS | G R | v1.x | Writes the result to the library file once, because matching is heuristic |
-| I3 | Google Takeout zips read in place with zip.js, one part at a time | G R | v1.x | No extraction needed; memory near one entry's size (inferred) |
-| I4 | Export an album or selection as a folder of originals, or as a zip | B | v1.x | |
+| I2 | Google Takeout, extracted: match each JSON to its photo (47-character title truncation, `(N)` counters, `-edited` copies, fuzzy fallback); take the photo-taken time, description and GPS | G R | v1.x | Built 2026-11-17 (takeout.js: 47-character titles, (N) counters, -edited, supplemental-metadata, fuzzy match; scan applies time, GPS, caption, people, favourite, archived as hidden, trashed as reject). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17); tests/test-library-takeout.mjs 31 checks. The JSON is re-read on each rescan rather than written once to the library file |
+| I3 | Google Takeout zips read in place with zip.js, one part at a time | G R | v1.x | Built 2026-11-17 (import.js; zip.js 2.24.0 from esm.sh; album folders kept; existing files skipped). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17): a synthetic zip imports, its dates apply, and a second import skips all 4 files. The dialog's pickers are not driven |
+| I4 | Export an album or selection as a folder of originals, or as a zip | B | v1.x | Built 2026-11-17 as a folder of originals (export.js; action bar and album menu). Checked: `scripts/live-check-v1x.mjs` 11/11 (Chrome over CDP, 2026-11-17). Zip export not built |
 | I5 | iCloud takeout CSV for dates and albums | A | v1.x | As immich-go's `from-icloud` |
 
 ## 10. AI (removable: the library works fully without a model)
