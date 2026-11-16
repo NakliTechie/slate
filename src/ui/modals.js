@@ -1,4 +1,5 @@
 import { parseCube } from '../ops/lut.js';
+import { extractText } from '../ops/ocr.js';
 import { state, savePrefs } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { hasDirPicker } from '../core/fs.js';
@@ -7,6 +8,7 @@ import { esc } from '../core/html.js';
 export function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
+  on('modal:ocr',       showOcr);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
   on('modal:export',    showExport);
@@ -169,6 +171,52 @@ function showAdjust() {
   });
 
   dlg.showModal();
+}
+
+// ── Extract text ──────────────────────────────────────────────────────────────
+
+async function showOcr() {
+  if (!state.image.working) return;
+  const dlg = getOrCreate('modal-ocr');
+  dlg.setAttribute('aria-label', 'Extract text');
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Extract text</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="ocr-status" role="status">Reading text in this image…</p>
+      <textarea id="ocr-text" rows="12" style="width:100%;min-width:420px;font:13px/1.45 ui-monospace,monospace;resize:vertical" aria-label="Extracted text" readonly></textarea>
+      <p class="modal-info" style="font-size:11px;color:var(--fg-2)">English text recognition runs on this device. The recogniser (about 5 MB) downloads the first time and is then cached.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-cancel>Close</button>
+      <button class="btn" id="ocr-save" disabled>Save as .txt</button>
+      <button class="btn btn-primary" id="ocr-copy" disabled>${icon('clipboard')} Copy</button>
+    </div>`;
+  dlg.querySelector('[data-cancel]').addEventListener('click', () => dlg.close());
+  const status = dlg.querySelector('#ocr-status'), area = dlg.querySelector('#ocr-text');
+  dlg.showModal();
+  try {
+    const r = await extractText(state.image.working, {
+      onProgress: (m) => { if (dlg.open && m?.status) status.textContent = `${m.status[0].toUpperCase()}${m.status.slice(1)}${m.progress ? ` (${Math.round(m.progress * 100)}%)` : ''}…`; },
+    });
+    if (!dlg.open) return;
+    area.value = r.text;
+    area.readOnly = false;
+    status.textContent = r.text ? `Found ${r.text.split(/\s+/).filter(Boolean).length} words (confidence ${r.confidence}%). You can edit before copying.` : 'No text found in this image.';
+    for (const b of dlg.querySelectorAll('#ocr-copy, #ocr-save')) b.disabled = !r.text;
+  } catch (err) {
+    status.textContent = `Could not read text: ${err.message}. The recogniser needs a connection the first time.`;
+  }
+  dlg.querySelector('#ocr-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(area.value); emit('toast', { message: 'Text copied.', level: 'ok' }); }
+    catch { area.select(); emit('toast', { message: 'Select the text and press Ctrl+C to copy it.', level: 'warn' }); }
+  });
+  dlg.querySelector('#ocr-save').addEventListener('click', () => {
+    const name = (state.session.files[state.session.currentIndex]?.name ?? 'image').replace(/\.[^.]+$/, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([area.value], { type: 'text/plain' }));
+    a.download = `${name}.txt`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
 }
 
 // ── Sharpen ───────────────────────────────────────────────────────────────────

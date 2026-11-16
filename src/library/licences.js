@@ -77,4 +77,5 @@ SOFTWARE.` },
   { name: 'wasm-feature-detect', version: '1.x', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Fetched with @jsquash/jxl', source: 'https://github.com/GoogleChromeLabs/wasm-feature-detect' },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
+  { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];

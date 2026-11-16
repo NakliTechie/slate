@@ -20,6 +20,7 @@ the supply-chain risk is mitigated.
 | HEIC / HEIF (decode) | `libheif-js@1.19.8` | esm.sh | ~2 MB WASM. Native browser decoders are tried first; libheif is the fallback. |
 | JPEG-XL (decode) | `@jsquash/jxl@1.3.0` | esm.sh | ~700 KB WASM. |
 | Photoshop (decode) | `ag-psd@30.1.1` | esm.sh | ~250 KB plus `pako` and `base64-js`. |
+| Extract text (OCR) | `tesseract.js@7.0.0` | esm.sh, then jsdelivr | Loads only when you press Extract text. The library pulls its worker, `tesseract.js-core` (WASM) and the English `eng.traineddata` from jsdelivr (about 5 MB, cached). Recognition runs locally; the image is never sent anywhere. |
 | Targa (decode) | `tga-js@1.1.1` | **Vendored** at `src/vendor/tga-js.mjs` | 4 KB pure JS, no transitive deps. |
 | DDS textures (decode) | `dds-parser@1.0.1` | **Vendored** at `src/vendor/dds-parser.mjs` | 4 KB pure JS, no transitive deps. |
 | Photo library metadata (EXIF, XMP, embedded thumbnails) | `exifr@7.1.3` | **Vendored** at `src/vendor/exifr.mjs` | 75 KB pure JS (full ESM build), MIT, no transitive deps; one line break added before `export default` for the bundler. |
@@ -60,13 +61,14 @@ To upgrade a vendored library:
 
 ## CDN-loaded modules — exact-version pin
 
-All four CDN-loaded packages are pinned to an exact version (no `@1`,
+All five CDN-loaded packages are pinned to an exact version (no `@1`,
 no `latest`):
 
 - `https://esm.sh/utif@3.1.0`
 - `https://esm.sh/libheif-js@1.19.8/wasm-bundle.js`
 - `https://esm.sh/@jsquash/jxl@1.3.0/decode`
 - `https://esm.sh/ag-psd@30.1.1`
+- `https://esm.sh/tesseract.js@7.0.0` (then `cdn.jsdelivr.net/npm/tesseract.js*` and the tessdata files)
 
 A new version of any of these published upstream — malicious or not —
 **does not reach a Slate user**. Their browser keeps requesting the

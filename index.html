@@ -3297,6 +3297,10 @@ kbd {
     <symbol id="icon-clipboard" viewBox="0 0 24 24">
       <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
     </symbol>
+    <!-- scan text (extract text) -->
+    <symbol id="icon-scan-text" viewBox="0 0 24 24">
+      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="17" y2="13"/><line x1="7" y1="17" x2="13" y2="17"/>
+    </symbol>
     <!-- sliders (batch) -->
     <symbol id="icon-batch" viewBox="0 0 24 24">
       <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
@@ -6429,6 +6433,7 @@ SOFTWARE.` },
   { name: 'wasm-feature-detect', version: '1.x', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Fetched with @jsquash/jxl', source: 'https://github.com/GoogleChromeLabs/wasm-feature-detect' },
   { name: 'ag-psd', version: '30.1.1', licence: 'MIT', loaded: 'esm.sh', use: 'Photoshop decode', source: 'https://github.com/Agamnentzar/ag-psd' },
   { name: 'base64-js', version: '1.5.1', licence: 'MIT', loaded: 'esm.sh', use: 'Fetched with ag-psd', source: 'https://github.com/beatgammit/base64-js' },
+  { name: 'tesseract.js', version: '7.0.0', licence: 'Apache-2.0', loaded: 'esm.sh', use: 'Extract text (OCR); its worker, tesseract.js-core and English data load from jsdelivr', source: 'https://github.com/naptha/tesseract.js' },
 ];
 
 return { LICENCES };
@@ -6629,12 +6634,16 @@ function adjustments() {
       ${row('Straighten', 'Fine rotation (−45° to +45°) — canvas expands to prevent cropping')}
     `)}
     ${section('Colour & tone', `
-      ${row('Brightness / Contrast', 'Additive brightness and contrast curve')}
-      ${row('Saturation', 'Boost or reduce colour saturation')}
+      ${row('Exposure / Contrast', 'Exposure in stops (±2) and a contrast curve about middle grey, in linear light')}
+      ${row('Saturation', 'Scales colour in Oklab, so hue and lightness hold')}
+      ${row('Look (LUT)', 'Load a .cube file in Adjust and set its strength')}
       ${row('Sharpen', 'Unsharp-mask sharpening (0.1×–5×)')}
     `)}
     ${section('Geometry', `
       ${row('Resize', 'Set exact output dimensions; aspect lock keeps proportions')}
+    `)}
+    ${section('Text', `
+      ${row('Extract text', 'Reads printed English text from the image, on this device; copy it or save it as .txt. The recogniser downloads once (about 5 MB).')}
     `)}
     ${section('Undo / Redo', `
       ${row('Undo', kbd('Ctrl+Z'))}
@@ -6854,6 +6863,7 @@ function initToolbar() {
       ${btn('tb-adjust', 'adjust', 'Brightness / Contrast')}
       ${btn('tb-sharpen', 'sharpen', 'Sharpen')}
       ${btn('tb-resize', 'resize', 'Resize image')}
+      ${btn('tb-ocr', 'scan-text', 'Extract text')}
     </div>
     <div class="toolbar-group" aria-label="View">
       ${btn('tb-zoom-in', 'zoom-in', 'Zoom in (Ctrl++)')}
@@ -6894,6 +6904,7 @@ function initToolbar() {
   bindButton('tb-flip-v', () => emit('op:flip', { axis: 'v' }));
   bindButton('tb-straighten', () => emit('modal:straighten', null));
   bindButton('tb-adjust', () => emit('modal:adjust', null));
+  bindButton('tb-ocr', () => emit('modal:ocr', null));
   bindButton('tb-sharpen', () => emit('modal:sharpen', null));
   bindButton('tb-resize', () => emit('modal:resize', null));
 
@@ -6962,7 +6973,7 @@ function bindButton(id, handler) {
 function setToolsEnabled(enabled) {
   const ids = ['tb-save','tb-crop','tb-redact','tb-blur','tb-pixelate','tb-rotate-cw','tb-rotate-ccw',
     'tb-flip-h','tb-flip-v','tb-straighten','tb-adjust','tb-sharpen','tb-text','tb-arrow','tb-pencil',
-    'tb-shape','tb-eyedropper','tb-resize','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
+    'tb-shape','tb-eyedropper','tb-resize','tb-ocr','tb-zoom-in','tb-zoom-out','tb-fullscreen','tb-rulers','tb-thumbstrip','tb-info'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el) el.disabled = !enabled;
@@ -14538,8 +14549,51 @@ async function replayOps(ops) {
 return { initOpRunner, replayOps };
 })();
 
+const __m_ops_ocr = (() => {
+// Extract text from the open image (plan/pending.md, 2026-10-14) with Tesseract.js (Apache-2.0).
+// Indra OCR was the first candidate, but its weights carry a modified OpenRAIL-M licence
+// ("cannot compete with our API"), so Slate does not ship it.
+//
+// Like the rare-format decoders, the library loads on first use from esm.sh at an exact
+// version. Its worker, core and English data then download from jsdelivr (about 5 MB, cached
+// by the browser). The image itself never leaves the page: recognition runs in a local worker.
+
+const TESSERACT_URL = 'https://esm.sh/tesseract.js@7.0.0';
+let workerPromise = null;
+
+async function getWorker(lang, onProgress) {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const mod = await import(/* @vite-ignore */ TESSERACT_URL);
+      const createWorker = mod.createWorker ?? mod.default?.createWorker;
+      if (!createWorker) throw new Error('the text recogniser did not load');
+      return createWorker(lang, 1, { logger: (m) => onProgressRef.fn?.(m) });
+    })().catch((err) => { workerPromise = null; throw err; });
+  }
+  onProgressRef.fn = onProgress;
+  return workerPromise;
+}
+const onProgressRef = { fn: null };
+
+// Returns { text, words, confidence }. `canvas` is an OffscreenCanvas or HTMLCanvasElement.
+async function extractText(canvas, { lang = 'eng', onProgress } = {}) {
+  const worker = await getWorker(lang, onProgress);
+  const blob = canvas.convertToBlob ? await canvas.convertToBlob({ type: 'image/png' }) : await new Promise(r => canvas.toBlob(r, 'image/png'));
+  const { data } = await worker.recognize(blob);
+  return { text: cleanText(data.text), confidence: Math.round(data.confidence ?? 0) };
+}
+
+// Trim trailing spaces on each line and collapse runs of three or more blank lines.
+function cleanText(text) {
+  return String(text ?? '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+return { TESSERACT_URL, extractText, cleanText };
+})();
+
 const __m_ui_modals = (() => {
 const parseCube = __m_ops_lut.parseCube;
+const extractText = __m_ops_ocr.extractText;
 const state = __m_core_state.state;
 const savePrefs = __m_core_state.savePrefs;
 const on = __m_core_events.on;
@@ -14550,6 +14604,7 @@ const esc = __m_core_html.esc;
 function initModals() {
   on('modal:resize',    showResize);
   on('modal:adjust',    showAdjust);
+  on('modal:ocr',       showOcr);
   on('modal:sharpen',   showSharpen);
   on('modal:straighten', showStraighten);
   on('modal:export',    showExport);
@@ -14712,6 +14767,52 @@ function showAdjust() {
   });
 
   dlg.showModal();
+}
+
+// ── Extract text ──────────────────────────────────────────────────────────────
+
+async function showOcr() {
+  if (!state.image.working) return;
+  const dlg = getOrCreate('modal-ocr');
+  dlg.setAttribute('aria-label', 'Extract text');
+  dlg.innerHTML = `
+    <div class="modal-header"><h2>Extract text</h2></div>
+    <div class="modal-fields">
+      <p class="modal-info" id="ocr-status" role="status">Reading text in this image…</p>
+      <textarea id="ocr-text" rows="12" style="width:100%;min-width:420px;font:13px/1.45 ui-monospace,monospace;resize:vertical" aria-label="Extracted text" readonly></textarea>
+      <p class="modal-info" style="font-size:11px;color:var(--fg-2)">English text recognition runs on this device. The recogniser (about 5 MB) downloads the first time and is then cached.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-cancel>Close</button>
+      <button class="btn" id="ocr-save" disabled>Save as .txt</button>
+      <button class="btn btn-primary" id="ocr-copy" disabled>${icon('clipboard')} Copy</button>
+    </div>`;
+  dlg.querySelector('[data-cancel]').addEventListener('click', () => dlg.close());
+  const status = dlg.querySelector('#ocr-status'), area = dlg.querySelector('#ocr-text');
+  dlg.showModal();
+  try {
+    const r = await extractText(state.image.working, {
+      onProgress: (m) => { if (dlg.open && m?.status) status.textContent = `${m.status[0].toUpperCase()}${m.status.slice(1)}${m.progress ? ` (${Math.round(m.progress * 100)}%)` : ''}…`; },
+    });
+    if (!dlg.open) return;
+    area.value = r.text;
+    area.readOnly = false;
+    status.textContent = r.text ? `Found ${r.text.split(/\s+/).filter(Boolean).length} words (confidence ${r.confidence}%). You can edit before copying.` : 'No text found in this image.';
+    for (const b of dlg.querySelectorAll('#ocr-copy, #ocr-save')) b.disabled = !r.text;
+  } catch (err) {
+    status.textContent = `Could not read text: ${err.message}. The recogniser needs a connection the first time.`;
+  }
+  dlg.querySelector('#ocr-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(area.value); emit('toast', { message: 'Text copied.', level: 'ok' }); }
+    catch { area.select(); emit('toast', { message: 'Select the text and press Ctrl+C to copy it.', level: 'warn' }); }
+  });
+  dlg.querySelector('#ocr-save').addEventListener('click', () => {
+    const name = (state.session.files[state.session.currentIndex]?.name ?? 'image').replace(/\.[^.]+$/, '');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([area.value], { type: 'text/plain' }));
+    a.download = `${name}.txt`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
 }
 
 // ── Sharpen ───────────────────────────────────────────────────────────────────

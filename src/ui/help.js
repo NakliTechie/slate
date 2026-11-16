@@ -189,12 +189,16 @@ function adjustments() {
       ${row('Straighten', 'Fine rotation (−45° to +45°) — canvas expands to prevent cropping')}
     `)}
     ${section('Colour & tone', `
-      ${row('Brightness / Contrast', 'Additive brightness and contrast curve')}
-      ${row('Saturation', 'Boost or reduce colour saturation')}
+      ${row('Exposure / Contrast', 'Exposure in stops (±2) and a contrast curve about middle grey, in linear light')}
+      ${row('Saturation', 'Scales colour in Oklab, so hue and lightness hold')}
+      ${row('Look (LUT)', 'Load a .cube file in Adjust and set its strength')}
       ${row('Sharpen', 'Unsharp-mask sharpening (0.1×–5×)')}
     `)}
     ${section('Geometry', `
       ${row('Resize', 'Set exact output dimensions; aspect lock keeps proportions')}
+    `)}
+    ${section('Text', `
+      ${row('Extract text', 'Reads printed English text from the image, on this device; copy it or save it as .txt. The recogniser downloads once (about 5 MB).')}
     `)}
     ${section('Undo / Redo', `
       ${row('Undo', kbd('Ctrl+Z'))}
